@@ -2,6 +2,8 @@
 
 *Encàrrec per a Claude Code · 4 de novembre de 2026*
 
+> **Document històric.** La fase 0 es va tancar el 8-11-2026 (D-020). Es van fer els passos 1 i 2; els passos 3 i 4 passen a la fase 1 d'Ona Bages 24h, perquè el codi d'àudio es copia i és independent de Play (D-019).
+
 ## Context
 
 Ona Bages 24h és una aplicació d'**emissió continuada les 24 hores**. Substituirà RadioDJ a l'ordinador de continuïtat de l'emissora. Tindrà la mateixa arquitectura que Ona Bages Play: Electron + JS pur + Bootstrap, i un motor en C# / .NET 10 amb NAudio, comunicats per WebSocket.

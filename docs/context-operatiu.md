@@ -75,4 +75,4 @@ L'administrador alterna periòdicament les bosses generalistes (Ona Bages Adult 
 Windows 10 ja no rep actualitzacions de seguretat des d'octubre del 2025, tret que s'hagi contractat l'ampliació (ESU). Abans del canvi, convé comprovar que la versió de .NET que es faci servir hi és compatible i planificar el pas a Windows 11 als PC 24h.
 
 ### 2.9. Ordre de desenvolupament
-Com que Ona Bages Play és prioritari, les peces que necessita Ona Bages 24h i que també són útils per a Play (solapament entre pistes, anàlisi de punts, biblioteca d'àudio compartida) es poden fer primer a Play. Ona Bages 24h comença quan Play estigui acabat i es prova en un ordinador de proves en paral·lel amb RadioDJ.
+Ona Bages Play ja està acabat (D-017). Ona Bages 24h en copia el codi d'àudio i després n'és independent (D-019): el solapament entre pistes, l'anàlisi de punts i el mesclador es fan en aquest projecte. Es prova en un ordinador de proves en paral·lel amb RadioDJ.

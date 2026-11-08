@@ -10,8 +10,8 @@ Aplicació d'escriptori per a Windows per a l'**emissió continuada les 24 hores
 
 ## Fase actual
 
-**Fase 0 — Preparació** (vegeu `docs/pla-de-fases.md`).
-Encara no hi ha codi en aquest repositori. Ona Bages Play ja està acabat (D-017): falta tancar la fase 0, que es fa al repositori d'Ona Bages Play amb l'encàrrec de `docs/referencia/preparar-motor-ona-bages-play.md`. Ja estan fets els passos 1 i 2; en falten el 3 i el 4 i la decisió de com es comparteix `OnaBages.Audio` (D-003).
+**Fase 1 — Esquelet i motor 24 h mínim** (vegeu `docs/pla-de-fases.md`). La fase 0 es va tancar a D-020.
+Encara no hi ha codi en aquest repositori. Abans de començar, proposa un pla breu de la fase 1.
 Quan una fase s'acabi, actualitza aquesta línia i afegeix una entrada a `docs/decisions.md`.
 
 ## Com treballem
@@ -37,7 +37,7 @@ Electron (app/) ── WebSocket 127.0.0.1 + testimoni ── Motor .NET (engine
 
 - **Motor** (`engine/`, C# / .NET 10): procés independent. Té l'àudio, la cua, l'AutoDJ, el **planificador**, la base de dades i tot l'estat. És la **font de veritat**. Si la interfície es tanca o es penja, l'emissió i la programació continuen.
 - **Interfície** (`app/`, Electron): només mostra l'estat i envia ordres. **Mai no reprodueix ni processa àudio, ni accedeix a la base de dades.**
-- **Àudio compartit:** `OnaBages.Audio` ve d'Ona Bages Play (D-003). Les correccions que afectin els dos projectes es fan allà.
+- **Àudio:** `OnaBages.Audio` és una còpia del d'Ona Bages Play, feta una sola vegada (D-019). Aquí és **propi**: es canvia lliurement i no s'ha de mantenir el comportament de Play. Mai no es modifica el repositori de Play des d'aquí. Si una correcció també li convindria, anota-ho i digues-ho al desenvolupador.
 - **Vigilant:** un procés separat comprova que el motor respon i el reinicia si cal (fase 5).
 
 ## Regles del motor
@@ -80,7 +80,8 @@ Específiques d'Ona Bages 24h:
 engine/OnaBages24.Engine/   procés del motor: WebSocket, ordres, estat, planificador
 engine/OnaBages24.Data/     base de dades SQLite, migracions, importació de RadioDJ
 engine/OnaBages24.Tests/    proves automàtiques (xUnit)
-(OnaBages.Audio)            àudio compartit amb Ona Bages Play (D-003)
+engine/OnaBages.Audio/      àudio, copiat d'Ona Bages Play (D-019)
+engine/OnaBages.ToneCheck/  eina de proves: to de prova i anàlisi de talls (copiada de Play)
 app/main/                   procés principal d'Electron i preload
 app/renderer/               interfície (HTML, CSS, JS)
 tools/                      eines de desenvolupament i de prova
@@ -100,10 +101,11 @@ Llegeix la secció corresponent abans de començar cada tasca nova.
 - `docs/context-operatiu.md` — ordinadors, recorregut del so, streams, supervisió i avisos, streaming amb BUTT, accés remot, bosses de música i Automatitzador.
 - `docs/maquetes/` — maquetes de les pantalles Emissió i Planificador (s'obren al navegador).
 - `docs/radiodj/` — esquema i dades de referència de RadioDJ per a la migració.
-- `docs/referencia/preparar-motor-ona-bages-play.md` — encàrrec de la fase 0 per al repositori d'Ona Bages Play.
+- `docs/referencia/preparar-motor-ona-bages-play.md` — encàrrec de la fase 0 (ja tancada; només com a història).
+- Al repositori de Play: `docs/notes-ona-bages-24h.md` (revisió d'`OnaBages.Audio`, què es pot reaprofitar i prova de fitxers bloquejats) i `docs/protocol.md` (base del protocol d'aquí).
 
 ## Projectes relacionats
 
-- **Ona Bages Play** (`adavins/onabages-play`): motor i interfície de directe. D'aquí ve `OnaBages.Audio`.
+- **Ona Bages Play** (`adavins/onabages-play`): motor i interfície de directe, a `D:\apps\onabages-play` a l'ordinador del desenvolupador. D'aquí es copia `OnaBages.Audio` (D-019). Només es llegeix: no s'hi fan canvis des d'aquest projecte.
 - **Programador del RadioDJ** (`adavins/programador`): graella setmanal i informes de falques que aquesta aplicació substitueix.
 - **Automatitzador** (`adavins/automatitzador`): actualitza els fitxers dels programes. Continua funcionant; vegeu `docs/context-operatiu.md` (2.7) i `docs/planificador.md` (12).

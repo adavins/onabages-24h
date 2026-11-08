@@ -191,7 +191,7 @@ Ona Bages Play ja té l'arquitectura que necessita Ona Bages 24h: **Electron + H
 6. **Streaming a Icecast/Shoutcast** (opcional; ara ho fa BUTT): codificació de l'entrada de línia amb `LameEncoder`. Vegeu el document de context operatiu, 2.4.
 7. **Supervisió desatesa:** vigilant del procés, reinici automàtic del motor i pista d'emergència si no hi ha res a sonar.
 
-**Recomanació:** convertir `OnaBages.Audio` en una biblioteca compartida entre els dos projectes (submòdul de Git o paquet NuGet local). Així les correccions del motor beneficien les dues aplicacions.
+**Com es reaprofita (D-019):** Ona Bages 24h és independent de Play. A l'inici de la fase 1 es copia `OnaBages.Audio` (i la resta de peces d'aquesta llista) una sola vegada, i a partir d'aquí cada projecte evoluciona pel seu compte. Es deixa anotat el commit de Play d'on surt la còpia, per poder revisar de tant en tant si alguna correcció de Play també convé aquí.
 
 ## 10. Falques: calendari per pista, informe de programació i certificat d'emissió
 

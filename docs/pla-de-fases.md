@@ -2,24 +2,27 @@
 
 Proposta inicial (novembre del 2026). Cada fase acaba amb un **criteri de tancament** que es pot comprovar. Quan una fase es tanca, s'anota a `docs/decisions.md` i s'actualitza la línia «Fase actual» de `CLAUDE.md`.
 
-El desenvolupament d'Ona Bages 24h comença quan Ona Bages Play estigui acabat (D-016). La fase 0 es fa dins del repositori d'Ona Bages Play.
+El desenvolupament d'Ona Bages 24h comença quan Ona Bages Play estigui acabat (D-016, complert a D-017). Ona Bages 24h és independent de Play: el codi d'àudio se'n copia una sola vegada (D-019).
 
 ---
 
-## Fase 0 — Preparació del motor (dins d'Ona Bages Play)
+## Fase 0 — Preparació del motor (dins d'Ona Bages Play) · tancada (D-020)
 
-Encàrrec detallat a `docs/referencia/preparar-motor-ona-bages-play.md`.
+Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 
-- Revisar que `OnaBages.Audio` no depengui del motor de Play i decidir com es comparteix (D-003).
-- Prova automàtica: un fitxer es pot substituir mentre sona.
-- Model de punts de pista (inici, mescla, final) i analitzador, si ja s'està fent el solapament a Play.
-- Document de disseny del mesclador i de l'inici a l'hora exacta.
+- ✔ Revisar que `OnaBages.Audio` no depengui del motor de Play (D-046 de Play).
+- ✔ Prova automàtica: un fitxer es pot substituir mentre sona (`FileLockTests` de Play).
+- ✔ Decidir com es comparteix `OnaBages.Audio`: es copia (D-019).
+- → Model de punts de pista i notes de disseny del mesclador: passen a la fase 1.
 
-**Criteri de tancament:** decisió sobre com es comparteix `OnaBages.Audio`, informe de fitxers bloquejats i notes de disseny escrites.
+**Criteri de tancament:** decisió sobre com es comparteix `OnaBages.Audio`, informe de fitxers bloquejats i notes de disseny escrites. Ajustat per D-019: les notes de disseny es fan a la fase 1.
 
 ## Fase 1 — Esquelet i motor 24 h mínim
 
 - Estructura del repositori (`engine/`, `app/`, `tools/`, `docs/`), copiada de l'organització d'Ona Bages Play.
+- **Còpia d'`OnaBages.Audio`** i de les peces reaprofitables de Play (D-019), amb el commit d'origen anotat. Tasques T-1, T-2 i T-3 de la revisió de Play.
+- **Notes de disseny** del mesclador intern, de l'inici a l'hora exacta i del solapament (abans d'implementar-los).
+- **Punts de pista** (`TrackCuePoints`: inici, mescla i final) i analitzador amb llindars configurables (−25 / −15 / −30 dB per defecte), amb proves amb àudio sintètic.
 - Base de dades SQLite amb migracions: pistes, categories, subcategories i gèneres.
 - **Importació de la biblioteca de RadioDJ**, amb els punts de mescla (`cue_times`) i les dates de cada pista.
 - Mesclador intern amb una sortida i cua amb encadenament i solapament (D-005, D-006).
