@@ -67,7 +67,7 @@ L'administrador alterna periòdicament les bosses generalistes (Ona Bages Adult 
 **Millora: bosses actives.** Els passos de la rotació apunten a una "bossa" amb nom (per exemple, *Generalista A* i *Generalista B*), i una taula diu a quina subcategoria correspon cada bossa ara mateix (A = Adult 5, B = Adult 9). Per canviar de bosses n'hi ha prou amb canviar aquesta taula, i les rotacions no es toquen. El canvi també es pot programar per data (per exemple, el dia 1 de cada mes).
 
 ### 2.7. Integració amb l'Automatitzador
-- L'Automatitzador continua substituint fitxers. Es recomana que escrigui primer a un fitxer temporal i el reanomeni en acabar.
+- L'Automatitzador continua substituint fitxers, sempre abans de l'hora d'emissió, quan el motor encara no els té oberts (D-018).
 - **Opcional:** l'Automatitzador pot avisar el motor quan ha actualitzat un fitxer (una ordre de l'API, com ara `library.fileUpdated {path}`), i el motor en torna a analitzar els punts de seguida.
 - Les incidències de l'Automatitzador i les del motor poden anar al mateix sistema d'avisos.
 

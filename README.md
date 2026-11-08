@@ -2,7 +2,7 @@
 
 Aplicació d'escriptori per a Windows per a l'emissió continuada les 24 hores d'una ràdio local. Substituirà RadioDJ i el Programador del RadioDJ a l'ordinador de continuïtat.
 
-**Estat:** disseny. El desenvolupament comença quan s'acabi Ona Bages Play.
+**Estat:** disseny. Ona Bages Play ja està acabat; falta tancar la fase 0 abans de començar el desenvolupament.
 
 ## Què hi ha en aquest repositori
 

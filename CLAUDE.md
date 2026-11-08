@@ -11,7 +11,7 @@ Aplicació d'escriptori per a Windows per a l'**emissió continuada les 24 hores
 ## Fase actual
 
 **Fase 0 — Preparació** (vegeu `docs/pla-de-fases.md`).
-Encara no hi ha codi en aquest repositori: el desenvolupament comença quan Ona Bages Play estigui acabat (D-016). La fase 0 es fa al repositori d'Ona Bages Play, amb l'encàrrec de `docs/referencia/preparar-motor-ona-bages-play.md`.
+Encara no hi ha codi en aquest repositori. Ona Bages Play ja està acabat (D-017): falta tancar la fase 0, que es fa al repositori d'Ona Bages Play amb l'encàrrec de `docs/referencia/preparar-motor-ona-bages-play.md`. Ja estan fets els passos 1 i 2; en falten el 3 i el 4 i la decisió de com es comparteix `OnaBages.Audio` (D-003).
 Quan una fase s'acabi, actualitza aquesta línia i afegeix una entrada a `docs/decisions.md`.
 
 ## Com treballem

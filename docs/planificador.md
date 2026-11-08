@@ -157,7 +157,7 @@ Les ordres `queue.replace` i `queue.insert` són **atòmiques**: l'AutoDJ no pot
 
 Com s'aconsegueix:
 1. **Preparació anticipada:** uns 30 segons abans de l'hora, el motor obre i descodifica el primer element de l'esdeveniment i el deixa a punt en un reproductor de reserva. Així no hi ha retard per llegir el fitxer.
-2. **Punt d'entrada:** es fa servir el *cue-in* de la pista (salt automàtic del silenci inicial), perquè el so comenci justament a l'hora i no uns mil·lisegons més tard.
+2. **Punt d'entrada:** es fa servir el *cue-in* de la pista (salt automàtic del silenci inicial), perquè el so comenci justament a l'hora i no uns mil·lisegons més tard. Per començar des d'un punt de la pista es fa servir el salt exacte d'`OnaBages.Audio` (`Mp3Seek`, D-155 d'Ona Bages Play), també amb els MP3 de bitrate variable.
 3. **Rellotge d'alta resolució:** el disparament fa servir `Stopwatch` sobre l'hora del sistema, no un temporitzador de la interfície. Els últims mil·lisegons es compensen amb la latència coneguda de la sortida WASAPI.
 4. **Tall a l'hora exacta:** en el mode TALLA, el fade de sortida de la pista actual comença `fade_ms` abans de l'hora, perquè el nou element entri a l'hora en punt i no després del fade. Per a esdeveniments d'hora exacta, `marge_seg` es deixa desactivat.
 5. **Hora del sistema sincronitzada:** cal configurar el servei d'hora de Windows (NTP) amb sincronització freqüent. L'aplicació avisa si detecta una desviació superior a 1 segon.
@@ -248,8 +248,8 @@ CREATE TABLE campanya_falca (
 **A Ona Bages 24h**
 - **Pista = ruta fixa:** el contingut pot canviar sense tocar la programació, els esdeveniments ni les campanyes.
 - **Detecció de canvis:** abans de preparar una pista per sonar (uns 30 s abans), el motor comprova la mida i la data de modificació del fitxer. Si han canviat, en torna a llegir la durada i els punts d'inici, mescla i final. Una vigilància de la carpeta (`FileSystemWatcher`) ho pot fer també en segon pla, perquè la cua mostri les hores previstes correctes.
-- **No bloquejar el fitxer:** el motor obre els fitxers en mode de lectura compartida, perquè l'Automatitzador o l'operador els puguin substituir encara que estiguin sonant. Les pistes curtes (promos i falques, menys de 3 minuts) es carreguen senceres a memòria en preparar-les, de manera que substituir el fitxer no afecta mai el que sona.
-- **Fitxer a mig escriure:** si el fitxer canvia en els últims segons abans de sonar, o no es pot llegir, el motor fa servir l'última versió bona que tenia preparada i deixa un avís. Es recomana que l'Automatitzador escrigui a un fitxer temporal i el reanomeni en acabar (substitució atòmica).
+- **Substitució abans de l'emissió (D-018):** l'Automatitzador substitueix el fitxer abans de l'hora d'emissió, quan el motor encara no el té obert, i per tant no hi ha bloqueig. No cal cap fitxer temporal. Les pistes curtes (promos i falques, menys de 3 minuts) es carreguen senceres a memòria en preparar-les, de manera que el fitxer queda lliure de seguida. A Ona Bages Play es va comprovar que un MP3 que sona es pot esborrar o reanomenar, però que no s'hi pot escriure a sobre (`docs/notes-ona-bages-24h.md`, secció 2, d'aquell repositori).
+- **Fitxer a mig escriure:** si el fitxer canvia en els últims segons abans de sonar, o no es pot llegir, el motor fa servir l'última versió bona que tenia preparada i deixa un avís.
 - **Avís de fitxer desactualitzat (opcional):** per a cada pista es pot indicar cada quant s'ha d'actualitzar (per exemple, un programa diari). Si el fitxer no ha canviat en aquest temps, l'aplicació ho avisa abans que soni.
 
 ## 12. Recurrències que no són setmanals
