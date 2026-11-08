@@ -1,0 +1,23 @@
+# Compilació .NET
+bin/
+obj/
+*.user
+
+# Node / Electron
+node_modules/
+dist/
+out/
+
+# Dades reals: no es pugen mai
+*.sqlite
+*.db
+*.mp3
+*.wav
+*.flac
+backups/
+docs/radiodj/backup-complet*.sql
+
+# Sistema
+.DS_Store
+Thumbs.db
+.vs/

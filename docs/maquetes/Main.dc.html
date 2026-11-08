@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="ca">
+<head>
+<meta charset="utf-8">
+<title>Ona Bages 24h — Planificador setmanal</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121417}
+a{color:#8cb8ff}a:hover{color:#b8d3ff}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="min-height: 1000px; box-sizing: border-box; background: #121417; color: #e6e8eb; font-family: Inter, system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column">
+
+  <!-- Capçalera de l'aplicació -->
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 24px; padding: 10px 20px; background: #0c0d10; border-bottom: 1px solid #2a2f37">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f0a35e" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 12a8 8 0 0 1 16 0"/><path d="M7.5 12a4.5 4.5 0 0 1 9 0"/><circle cx="12" cy="12" r="1.5"/><path d="M12 13.5V21"/></svg>
+      <span style="font-weight: 700; font-size: 16px; letter-spacing: 0.2px">Ona Bages 24h</span>
+    </div>
+    <nav aria-label="Seccions" style="display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 auto">
+      <a href="#" style="padding: 8px 12px; border-radius: 6px; color: #aab2bd; text-decoration: none">Emissió</a>
+      <a href="#" aria-current="page" style="padding: 8px 12px; border-radius: 6px; color: #ffffff; background: #262b33; text-decoration: none; font-weight: 600">Planificador</a>
+      <a href="#" style="padding: 8px 12px; border-radius: 6px; color: #aab2bd; text-decoration: none">Biblioteca</a>
+      <a href="#" style="padding: 8px 12px; border-radius: 6px; color: #aab2bd; text-decoration: none">Rotacions</a>
+      <a href="#" style="padding: 8px 12px; border-radius: 6px; color: #aab2bd; text-decoration: none">Campanyes</a>
+      <a href="#" style="padding: 8px 12px; border-radius: 6px; color: #aab2bd; text-decoration: none">Informes</a>
+      <a href="#" style="padding: 8px 12px; border-radius: 6px; color: #aab2bd; text-decoration: none">Configuració</a>
+    </nav>
+    <div style="display: flex; align-items: center; gap: 16px">
+      <span style="display: flex; align-items: center; gap: 6px; color: #8fdca8; font-size: 13px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        Motor connectat
+      </span>
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 18px; color: #ffffff">10:48:12</span>
+    </div>
+  </header>
+
+  <!-- Barra d'eines del planificador -->
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid #2a2f37; background: #16191d">
+    <div role="group" aria-label="Vista" style="display: flex; border: 1px solid #343a44; border-radius: 8px; overflow: hidden">
+      <button type="button" aria-pressed="true" style="padding: 8px 14px; background: #2f6fd6; color: #ffffff; border: 0; font-size: 13px; font-weight: 600; cursor: pointer">Setmana real</button>
+      <button type="button" aria-pressed="false" style="padding: 8px 14px; background: transparent; color: #c3c9d1; border: 0; font-size: 13px; cursor: pointer">Plantilla setmanal</button>
+    </div>
+    <div style="display: flex; align-items: center; gap: 6px">
+      <button type="button" aria-label="Setmana anterior" style="width: 36px; height: 36px; border-radius: 8px; border: 1px solid #343a44; background: transparent; color: #e6e8eb; cursor: pointer; display: flex; align-items: center; justify-content: center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+      <span style="font-weight: 600; font-size: 15px; min-width: 250px; text-align: center">Setmana del 16 al 22 de novembre de 2026</span>
+      <button type="button" aria-label="Setmana següent" style="width: 36px; height: 36px; border-radius: 8px; border: 1px solid #343a44; background: transparent; color: #e6e8eb; cursor: pointer; display: flex; align-items: center; justify-content: center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+      <button type="button" style="padding: 8px 12px; border-radius: 8px; border: 1px solid #343a44; background: transparent; color: #e6e8eb; font-size: 13px; cursor: pointer">Avui</button>
+    </div>
+    <div role="group" aria-label="Zoom" style="display: flex; align-items: center; gap: 8px">
+      <span style="color: #9aa3ae; font-size: 13px">Zoom</span>
+      <div style="display: flex; border: 1px solid #343a44; border-radius: 8px; overflow: hidden">
+        <button type="button" aria-pressed="true" style="padding: 7px 10px; background: #2b313a; color: #ffffff; border: 0; font-size: 13px; cursor: pointer">30 min</button>
+        <button type="button" aria-pressed="false" style="padding: 7px 10px; background: transparent; color: #c3c9d1; border: 0; font-size: 13px; cursor: pointer">15 min</button>
+        <button type="button" aria-pressed="false" style="padding: 7px 10px; background: transparent; color: #c3c9d1; border: 0; font-size: 13px; cursor: pointer">5 min</button>
+      </div>
+    </div>
+    <div style="flex: 1 1 auto"></div>
+    <button type="button" style="display: flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 8px; border: 0; background: #2f6fd6; color: #ffffff; font-size: 14px; font-weight: 600; cursor: pointer">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Nou esdeveniment
+    </button>
+  </div>
+
+  <!-- Llegenda de modes i esdeveniments de cada hora -->
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 10px 20px; border-bottom: 1px solid #2a2f37">
+    <span style="color: #9aa3ae; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px">Modes</span>
+    <span style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #5a2913; color: #ffd8c2; font-size: 12px; font-weight: 600">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg>
+      Talla
+    </span>
+    <span style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #173a66; color: #cfe2ff; font-size: 12px; font-weight: 600">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h12M3 12h12M3 18h8M18 15v6M15 18h6"/></svg>
+      Encua
+    </span>
+    <span style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #3b2b64; color: #e2d5ff; font-size: 12px; font-weight: 600">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 16 10 5 10-5"/></svg>
+      Superposa
+    </span>
+    <span style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #30353e; color: #d9dee5; font-size: 12px; font-weight: 600">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M4 12h4M12 12h8M4 18h12"/><circle cx="17" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="19" cy="18" r="2"/></svg>
+      Sistema
+    </span>
+    <span style="width: 1px; height: 22px; background: #343a44"></span>
+    <span style="color: #9aa3ae; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px">Cada hora</span>
+    <span style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; border: 1px solid #4b3a7a; color: #e2d5ff; font-size: 12px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 16 10 5 10-5"/></svg>
+      :00 Senyal horari · 7–23 h
+    </span>
+    <span style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; border: 1px solid #4b3a7a; color: #e2d5ff; font-size: 12px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 16 10 5 10-5"/></svg>
+      :30 Senyal mitja hora · totes les hores
+    </span>
+  </div>
+
+  <!-- Graella + panell de detall -->
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 20px; padding: 16px 20px; flex: 1 1 auto">
+
+    <section aria-label="Graella setmanal" style="flex: 999 1 760px; min-width: 0; overflow-x: auto; border: 1px solid #2a2f37; border-radius: 10px; background: #16191d">
+      <div style="min-width: 820px">
+        <!-- Capçalera de dies -->
+        <div style="display: grid; grid-template-columns: 60px repeat(7, minmax(0, 1fr)); border-bottom: 1px solid #2a2f37; background: #1b1f24">
+          <div></div>
+          <sc-for list="{{ days }}" as="d" hint-placeholder-count="7">
+            <div style="padding: 10px 8px; text-align: center; border-left: 1px solid #2a2f37">
+              <div style="font-size: 12px; color: #9aa3ae; text-transform: uppercase; letter-spacing: 0.6px">{{ d.dow }}</div>
+              <div style="font-size: 18px; font-weight: 600; color: #ffffff">{{ d.num }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <!-- Cos de la graella -->
+        <div style="display: grid; grid-template-columns: 60px repeat(7, minmax(0, 1fr))">
+          <div style="position: relative; height: 672px">
+            <sc-for list="{{ times }}" as="t" hint-placeholder-count="14">
+              <div style="position: absolute; left: 0; right: 8px; top: {{ t.top }}px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: {{ t.color }}; transform: translateY(-1px); padding-top: 3px">{{ t.label }}</div>
+            </sc-for>
+          </div>
+          <sc-for list="{{ days }}" as="d" hint-placeholder-count="7">
+            <div style="position: relative; height: 672px; border-left: 1px solid #2a2f37; background: repeating-linear-gradient(to bottom, #2c3139 0px, #2c3139 1px, transparent 1px, transparent 48px, #20242a 48px, #20242a 49px, transparent 49px, transparent 96px)">
+              <sc-for list="{{ d.cards }}" as="c" hint-placeholder-count="2">
+                <button type="button" onClick="{{ c.pick }}" aria-label="{{ c.aria }}" aria-pressed="{{ c.pressed }}" style="position: absolute; top: {{ c.top }}px; height: {{ c.h }}px; left: {{ c.left }}; width: {{ c.width }}; box-sizing: border-box; margin: 0; padding: 3px 6px; border: 0; border-radius: 6px; background: {{ c.bg }}; color: {{ c.fg }}; outline: {{ c.outline }}; outline-offset: 1px; text-align: left; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; gap: 1px">
+                  <span style="display: flex; align-items: center; gap: 5px; font-size: 11.5px; line-height: 15px; white-space: nowrap">
+                    <sc-if value="{{ c.isTalla }}" hint-placeholder-val="{{ true }}">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex: none" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg>
+                    </sc-if>
+                    <sc-if value="{{ c.isEncua }}" hint-placeholder-val="{{ false }}">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex: none" aria-hidden="true"><path d="M3 6h12M3 12h12M3 18h8M18 15v6M15 18h6"/></svg>
+                    </sc-if>
+                    <sc-if value="{{ c.isSuperposa }}" hint-placeholder-val="{{ false }}">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: none" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 16 10 5 10-5"/></svg>
+                    </sc-if>
+                    <sc-if value="{{ c.isSistema }}" hint-placeholder-val="{{ false }}">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex: none" aria-hidden="true"><path d="M4 6h10M4 12h4M12 12h8M4 18h12"/><circle cx="17" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="19" cy="18" r="2"/></svg>
+                    </sc-if>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-weight: 500">{{ c.time }}</span>
+                    <span style="font-weight: 600; overflow: hidden; text-overflow: ellipsis">{{ c.name }}</span>
+                  </span>
+                  <span style="font-size: 11px; line-height: 14px; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ c.sub }}</span>
+                  <sc-if value="{{ c.hasBadge }}" hint-placeholder-val="{{ false }}">
+                    <span style="align-self: flex-start; margin-top: 3px; padding: 1px 7px; border-radius: 999px; background: #ffffff; color: #1b1f24; font-size: 10.5px; font-weight: 700; line-height: 16px">{{ c.badge }}</span>
+                  </sc-if>
+                </button>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <!-- Panell de detall de l'esdeveniment seleccionat -->
+    <aside aria-label="Detall de l'esdeveniment" style="flex: 1 1 340px; min-width: 300px; box-sizing: border-box; border: 1px solid #2a2f37; border-radius: 10px; background: #16191d; padding: 18px; display: flex; flex-direction: column; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="align-self: flex-start; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: {{ sel.bg }}; color: {{ sel.fg }}; font-size: 12px; font-weight: 600">
+          <sc-if value="{{ sel.isTalla }}" hint-placeholder-val="{{ true }}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg>
+          </sc-if>
+          <sc-if value="{{ sel.isEncua }}" hint-placeholder-val="{{ false }}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h12M3 12h12M3 18h8M18 15v6M15 18h6"/></svg>
+          </sc-if>
+          <sc-if value="{{ sel.isSuperposa }}" hint-placeholder-val="{{ false }}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 16 10 5 10-5"/></svg>
+          </sc-if>
+          <sc-if value="{{ sel.isSistema }}" hint-placeholder-val="{{ false }}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M4 12h4M12 12h8M4 18h12"/><circle cx="17" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="19" cy="18" r="2"/></svg>
+          </sc-if>
+          {{ sel.modeLabel }}
+        </span>
+        <h2 style="margin: 0; font-size: 20px; font-weight: 700; color: #ffffff">{{ sel.name }}</h2>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <label for="hora" style="font-size: 12px; color: #9aa3ae">Hora d'inici</label>
+          <input id="hora" type="text" value="{{ sel.timeFull }}" style="padding: 8px 10px; border-radius: 6px; border: 1px solid #343a44; background: #0f1114; color: #ffffff; font-family: 'JetBrains Mono', monospace; font-size: 14px">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <label for="durada" style="font-size: 12px; color: #9aa3ae">Durada a la graella</label>
+          <input id="durada" type="text" value="{{ sel.dur }}" style="padding: 8px 10px; border-radius: 6px; border: 1px solid #343a44; background: #0f1114; color: #ffffff; font-size: 14px">
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12px; color: #9aa3ae">Recurrència</span>
+        <div style="padding: 10px 12px; border-radius: 8px; background: #1e2329; border: 1px solid #2f353e; display: flex; align-items: center; gap: 8px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8cb8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
+          <span style="font-weight: 600">{{ sel.rec }}</span>
+        </div>
+        <sc-if value="{{ sel.hasExc }}" hint-placeholder-val="{{ true }}">
+          <span style="font-size: 12.5px; color: #f2c38b; display: flex; align-items: center; gap: 6px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>
+            {{ sel.exc }}
+          </span>
+        </sc-if>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12px; color: #9aa3ae">Pròximes emissions</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px">
+          <sc-for list="{{ sel.next }}" as="n" hint-placeholder-count="5">
+            <span style="padding: 4px 8px; border-radius: 6px; background: #1e2329; border: 1px solid #2f353e; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #dfe3e8">{{ n.label }}</span>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 12px; color: #9aa3ae">Accions, en ordre d'emissió</span>
+        <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px">
+          <sc-for list="{{ sel.actions }}" as="a" hint-placeholder-count="3">
+            <li style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: #1e2329; border: 1px solid #2f353e">
+              <span style="width: 22px; height: 22px; flex: none; border-radius: 999px; background: #2b313a; color: #ffffff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center">{{ a.n }}</span>
+              <span style="display: flex; flex-direction: column; min-width: 0">
+                <span style="font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ a.label }}</span>
+                <span style="font-size: 12px; color: #a9b1bc">{{ a.kind }}</span>
+              </span>
+            </li>
+          </sc-for>
+        </ol>
+        <button type="button" style="align-self: flex-start; display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; border: 1px dashed #4a525e; background: transparent; color: #c3c9d1; font-size: 13px; cursor: pointer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Afegeix una acció
+        </button>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; border-top: 1px solid #2a2f37">
+        <button type="button" style="margin-top: 12px; padding: 9px 18px; border-radius: 8px; border: 0; background: #2f6fd6; color: #ffffff; font-weight: 600; font-size: 14px; cursor: pointer">Desa</button>
+        <button type="button" style="margin-top: 12px; padding: 9px 14px; border-radius: 8px; border: 1px solid #343a44; background: transparent; color: #e6e8eb; font-size: 14px; cursor: pointer">Duplica</button>
+        <button type="button" style="margin-top: 12px; padding: 9px 14px; border-radius: 8px; border: 1px solid #6b2f2f; background: transparent; color: #ffb4a8; font-size: 14px; cursor: pointer">Esborra…</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Barra d'estat -->
+  <footer style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding: 10px 20px; border-top: 1px solid #2a2f37; background: #0c0d10; font-size: 13px; color: #c3c9d1">
+    <span style="display: flex; align-items: center; gap: 6px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      Pròxim esdeveniment: <strong style="color: #ffffff">avui 13:00 · Informatiu migdia · Talla</strong> (d'aquí 2 h 11 min)
+    </span>
+    <span style="display: flex; align-items: center; gap: 6px; color: #8fdca8">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+      Hora sincronitzada · desviació 12 ms
+    </span>
+    <span style="display: flex; align-items: center; gap: 6px; color: #f2c38b">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"/><path d="M12 10v5M12 18h.01"/></svg>
+      1 avís: dc 18 · «Promo esports» encara no té fitxer
+    </span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { selected: 'magazin' };
+  }
+
+  renderVals() {
+    var PX = 1.6;          // píxels per minut (zoom 30 min)
+    var START = 7 * 60;    // la graella comença a les 07:00
+    var MIN_H = 22;
+
+    var modes = {
+      TALLA:     { label: 'Talla',     bg: '#5a2913', fg: '#ffd8c2' },
+      ENCUA:     { label: 'Encua',     bg: '#173a66', fg: '#cfe2ff' },
+      SUPERPOSA: { label: 'Superposa', bg: '#3b2b64', fg: '#e2d5ff' },
+      SISTEMA:   { label: 'Sistema',   bg: '#30353e', fg: '#d9dee5' }
+    };
+
+    var events = [
+      { id: 'xarxa', name: 'Butlletí La Xarxa', mode: 'TALLA', times: ['07:00', '08:00'], dur: 4, days: [0,1,2,3,4], lane: 0, lanes: 2, sub: 'Connexió 3 min',
+        rec: 'Setmanal · dl–dv · 7:00 i 8:00', next: ['dl 16/11 07:00', 'dl 16/11 08:00', 'dt 17/11 07:00', 'dt 17/11 08:00', 'dc 18/11 07:00'],
+        actions: [{ label: 'Senyal horari', kind: 'Pista' }, { label: 'La Xarxa · butlletí', kind: 'Stream · 3 min · reserva: falca Ona Bages' }, { label: 'Sintonia de tornada', kind: 'Pista' }] },
+      { id: 'agenda', name: "Agenda d'avui", mode: 'ENCUA', times: ['07:05'], dur: 5, days: [0,1,2,3,4], lane: 1, lanes: 2, sub: 'Durada variable',
+        rec: 'Setmanal · dl–dv', next: ['dl 16/11 07:05', 'dt 17/11 07:05', 'dc 18/11 07:05', 'dj 19/11 07:05', 'dv 20/11 07:05'],
+        actions: [{ label: "Agenda d'avui", kind: "Pista · durada variable · l'actualitza l'Automatitzador" }] },
+      { id: 'ferreteria', name: 'Campanya Ferreteria', mode: 'ENCUA', times: ['08:30'], dur: 1, days: [0,1,2,3,4], sub: 'Falques A / B',
+        rec: 'Setmanal · dl–dv · del 2 al 30/11', next: ['dl 16/11 08:30', 'dt 17/11 08:30', 'dc 18/11 08:30', 'dj 19/11 08:30', 'dv 20/11 08:30'],
+        actions: [{ label: 'Campanya Ferreteria', kind: 'Campanya · alterna A i B · C només del 24 al 28/11' }] },
+      { id: 'bondia', name: 'Bon dia Bages', mode: 'TALLA', times: ['09:00'], dur: 60, days: [0,2,4], sub: 'Programa · 60 min',
+        rec: 'Setmanal · dl, dc, dv', next: ['dl 16/11 09:00', 'dc 18/11 09:00', 'dv 20/11 09:00', 'dl 23/11 09:00', 'dc 25/11 09:00'],
+        actions: [{ label: 'Senyal horari', kind: 'Pista' }, { label: 'Bon dia Bages', kind: "Pista · durada variable · l'actualitza l'Automatitzador" }, { label: 'Rotació OnaBages', kind: 'Rotació · torna l’AutoDJ' }] },
+      { id: 'magazin', name: 'El Magazín de la Comarca', mode: 'TALLA', times: ['10:00'], dur: 60, days: [4], sub: 'Programa · 60 min', badge: 'Cada 15 dies',
+        rec: 'Cada 2 setmanes · dv · des del 6/11/2026', exc: 'Excepció: dv 1/1/2027 no s’emet',
+        next: ['dv 20/11 10:00', 'dv 4/12 10:00', 'dv 18/12 10:00', 'dv 15/1 10:00', 'dv 29/1 10:00'],
+        actions: [{ label: 'Senyal horari', kind: 'Pista' }, { label: 'El Magazín de la Comarca', kind: "Pista · durada variable · actualitzat fa 2 h per l'Automatitzador" }, { label: 'Rotació OnaBages', kind: 'Rotació · torna l’AutoDJ' }] },
+      { id: 'converses', name: 'Converses', mode: 'TALLA', times: ['10:00'], dur: 30, days: [1,3], sub: 'Programa · 30 min',
+        rec: 'Setmanal · dt, dj', next: ['dt 17/11 10:00', 'dj 19/11 10:00', 'dt 24/11 10:00', 'dj 26/11 10:00', 'dt 1/12 10:00'],
+        actions: [{ label: 'Converses', kind: 'Pista · durada variable' }, { label: 'Rotació OnaBages', kind: 'Rotació' }] },
+      { id: 'ajuntament', name: 'Falca Ajuntament', mode: 'ENCUA', times: ['11:15'], dur: 1, days: [3], sub: 'Dates soltes',
+        rec: 'Dates soltes · 19/11, 26/11, 3/12', next: ['dj 19/11 11:15', 'dj 26/11 11:15', 'dj 3/12 11:15'],
+        actions: [{ label: 'Falca Ajuntament', kind: 'Pista' }] },
+      { id: 'promo', name: 'Promo esports', mode: 'ENCUA', times: ['12:10'], dur: 1, days: [2], sub: 'Promo',
+        rec: 'Setmanal · dc', next: ['dc 18/11 12:10', 'dc 25/11 12:10', 'dc 2/12 12:10', 'dc 9/12 12:10', 'dc 16/12 12:10'],
+        actions: [{ label: 'Promo esports', kind: 'Pista · fitxer pendent' }] },
+      { id: 'migdia', name: 'Informatiu migdia', mode: 'TALLA', times: ['13:00'], dur: 30, days: [0,1,2,3,4], sub: 'Programa · 30 min',
+        rec: 'Setmanal · dl–dv', next: ['dl 16/11 13:00', 'dt 17/11 13:00', 'dc 18/11 13:00', 'dj 19/11 13:00', 'dv 20/11 13:00'],
+        actions: [{ label: 'Senyal horari', kind: 'Pista' }, { label: 'La Xarxa · butlletí', kind: 'Stream · 3 min' }, { label: 'Informatiu local', kind: "Pista · durada variable · l'actualitza l'Automatitzador" }] },
+      { id: 'rotcap', name: 'Rotació cap de setmana', mode: 'SISTEMA', times: ['07:00'], dur: 1, days: [5,6], sub: 'Canvi de rotació',
+        rec: 'Setmanal · ds, dg', next: ['ds 21/11 07:00', 'dg 22/11 07:00', 'ds 28/11 07:00', 'dg 29/11 07:00', 'ds 5/12 07:00'],
+        actions: [{ label: 'Rotació Cap de setmana', kind: 'Rotació' }, { label: 'Sweepers Ona Bages català', kind: 'Sweepers' }] },
+      { id: 'classica', name: 'Ona Clàssica', mode: 'TALLA', times: ['09:00'], dur: 120, days: [5], sub: 'Programa · 2 h', badge: '3r dissabte',
+        rec: 'Mensual · 3r dissabte de mes', next: ['ds 21/11 09:00', 'ds 19/12 09:00', 'ds 16/1 09:00', 'ds 20/2 09:00', 'ds 20/3 09:00'],
+        actions: [{ label: 'Senyal horari', kind: 'Pista' }, { label: 'Ona Clàssica', kind: "Pista · durada variable · l'actualitza l'Automatitzador" }, { label: 'Rotació Cap de setmana', kind: 'Rotació' }] },
+      { id: 'esports', name: 'Esports de diumenge', mode: 'TALLA', times: ['11:00'], dur: 60, days: [6], sub: 'Programa · 60 min',
+        rec: 'Setmanal · dg', next: ['dg 22/11 11:00', 'dg 29/11 11:00', 'dg 6/12 11:00', 'dg 13/12 11:00', 'dg 20/12 11:00'],
+        actions: [{ label: 'Senyal horari', kind: 'Pista' }, { label: 'Esports de diumenge', kind: 'Pista · durada variable' }] },
+      { id: 'promocap', name: 'Promo de la setmana', mode: 'ENCUA', times: ['12:00'], dur: 1, days: [5,6], sub: 'Promo',
+        rec: 'Setmanal · ds, dg', next: ['ds 21/11 12:00', 'dg 22/11 12:00', 'ds 28/11 12:00', 'dg 29/11 12:00', 'ds 5/12 12:00'],
+        actions: [{ label: 'Promo de la setmana', kind: 'Pista · durada variable' }] }
+    ];
+
+    var self = this;
+    var selected = this.state.selected;
+    var dow = ['dl', 'dt', 'dc', 'dj', 'dv', 'ds', 'dg'];
+    var nums = [16, 17, 18, 19, 20, 21, 22];
+
+    var days = dow.map(function (d, i) {
+      var cards = [];
+      events.forEach(function (ev) {
+        if (ev.days.indexOf(i) < 0) return;
+        ev.times.forEach(function (t) {
+          var parts = t.split(':');
+          var mins = Number(parts[0]) * 60 + Number(parts[1]);
+          var m = modes[ev.mode];
+          var lanes = ev.lanes || 1;
+          var lane = ev.lane || 0;
+          var isSel = ev.id === selected;
+          cards.push({
+            key: ev.id + t,
+            top: Math.round((mins - START) * PX),
+            h: Math.max(MIN_H, Math.round(ev.dur * PX) - 2),
+            left: 'calc(' + (lane * 100 / lanes) + '% + 3px)',
+            width: 'calc(' + (100 / lanes) + '% - 6px)',
+            bg: m.bg, fg: m.fg,
+            outline: isSel ? '2px solid #ffffff' : 'none',
+            pressed: isSel ? 'true' : 'false',
+            time: t, name: ev.name, sub: m.label + ' · ' + ev.sub,
+            aria: t + ' ' + ev.name + ', ' + m.label,
+            isTalla: ev.mode === 'TALLA', isEncua: ev.mode === 'ENCUA',
+            isSuperposa: ev.mode === 'SUPERPOSA', isSistema: ev.mode === 'SISTEMA',
+            hasBadge: !!ev.badge, badge: ev.badge || '',
+            pick: function () { self.setState({ selected: ev.id }); }
+          });
+        });
+      });
+      return { dow: d, num: nums[i], cards: cards };
+    });
+
+    var times = [];
+    for (var k = 0; k < 14; k++) {
+      var mm = START + k * 30;
+      var hh = Math.floor(mm / 60);
+      var label = (hh < 10 ? '0' : '') + hh + ':' + (mm % 60 === 0 ? '00' : '30');
+      times.push({ top: k * 48, label: label, color: mm % 60 === 0 ? '#c3c9d1' : '#7d8794' });
+    }
+
+    var ev = events.filter(function (e) { return e.id === selected; })[0] || events[0];
+    var sm = modes[ev.mode];
+    var sel = {
+      name: ev.name, modeLabel: sm.label, bg: sm.bg, fg: sm.fg,
+      isTalla: ev.mode === 'TALLA', isEncua: ev.mode === 'ENCUA',
+      isSuperposa: ev.mode === 'SUPERPOSA', isSistema: ev.mode === 'SISTEMA',
+      timeFull: ev.times.join(' i ') + (ev.times.length === 1 ? ':00' : ''),
+      dur: ev.dur >= 5 ? ev.dur + ' min' : 'Marca puntual',
+      rec: ev.rec, hasExc: !!ev.exc, exc: ev.exc || '',
+      next: ev.next.map(function (n) { return { label: n }; }),
+      actions: ev.actions.map(function (a, i) { return { n: i + 1, label: a.label, kind: a.kind }; })
+    };
+
+    return { days: days, times: times, sel: sel };
+  }
+}
+</script>
+</body>
+</html>

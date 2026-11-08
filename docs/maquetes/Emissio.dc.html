@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="ca">
+<head>
+<meta charset="utf-8">
+<title>Ona Bages 24h — Emissió</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121417}
+a{color:#8cb8ff}a:hover{color:#b8d3ff}
+button,input,select{font-family:inherit}
+</style>
+</helmet>
+<div style="min-height: 1040px; box-sizing: border-box; background: #121417; color: #e6e8eb; font-family: Inter, system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column">
+
+  <!-- Capçalera de l'aplicació -->
+  <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 24px; padding: 10px 20px; background: #0c0d10; border-bottom: 1px solid #2a2f37">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f0a35e" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 12a8 8 0 0 1 16 0"/><path d="M7.5 12a4.5 4.5 0 0 1 9 0"/><circle cx="12" cy="12" r="1.5"/><path d="M12 13.5V21"/></svg>
+      <span style="font-weight: 700; font-size: 16px">Ona Bages 24h</span>
+    </div>
+    <nav aria-label="Seccions" style="display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 auto">
+      <a href="#" aria-current="page" style="padding: 8px 12px; border-radius: 6px; color: #ffffff; background: #262b33; text-decoration: none; font-weight: 600">Emissió</a>
+      <a href="Main.dc.html" style="padding: 8px 12px; border-radius: 6px; color: #aab2bd; text-decoration: none">Planificador</a>
+      <a href="#" style="padding: 8px 12px; border-radius: 6px; color: #aab2bd; text-decoration: none">Biblioteca</a>
+      <a href="#" style="padding: 8px 12px; border-radius: 6px; color: #aab2bd; text-decoration: none">Rotacions</a>
+      <a href="#" style="padding: 8px 12px; border-radius: 6px; color: #aab2bd; text-decoration: none">Campanyes</a>
+      <a href="#" style="padding: 8px 12px; border-radius: 6px; color: #aab2bd; text-decoration: none">Informes</a>
+      <a href="#" style="padding: 8px 12px; border-radius: 6px; color: #aab2bd; text-decoration: none">Configuració</a>
+    </nav>
+    <span style="display: flex; align-items: center; gap: 6px; color: #8fdca8; font-size: 13px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+      Motor connectat
+    </span>
+  </header>
+
+  <!-- Pista que sona -->
+  <section aria-label="Pista que sona" style="display: flex; flex-wrap: wrap; align-items: stretch; gap: 20px; padding: 16px 20px; background: #16191d; border-bottom: 1px solid #2a2f37">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <button type="button" aria-label="Reprodueix" style="width: 52px; height: 52px; border-radius: 10px; border: 0; background: #1f7a45; color: #ffffff; cursor: pointer; display: flex; align-items: center; justify-content: center">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>
+      </button>
+      <button type="button" aria-label="Pausa" style="width: 52px; height: 52px; border-radius: 10px; border: 1px solid #343a44; background: #1e2329; color: #e6e8eb; cursor: pointer; display: flex; align-items: center; justify-content: center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+      <button type="button" aria-label="Atura amb fade" style="width: 52px; height: 52px; border-radius: 10px; border: 1px solid #343a44; background: #1e2329; color: #e6e8eb; cursor: pointer; display: flex; align-items: center; justify-content: center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+      </button>
+      <button type="button" aria-label="Passa a la següent amb mescla" style="width: 52px; height: 52px; border-radius: 10px; border: 1px solid #343a44; background: #1e2329; color: #e6e8eb; cursor: pointer; display: flex; align-items: center; justify-content: center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 5v14l9-7z"/><rect x="16" y="5" width="3" height="14" rx="1"/></svg>
+      </button>
+    </div>
+
+    <div style="flex: 999 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 8px; justify-content: center">
+      <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap">
+        <span style="font-size: 26px; font-weight: 700; color: #ffffff">Blue Monday</span>
+        <span style="font-size: 17px; color: #c3c9d1">New Order</span>
+        <span style="padding: 2px 8px; border-radius: 999px; background: #262b33; color: #c3c9d1; font-size: 12px">Música · Ona Bages Adult 5</span>
+      </div>
+      <!-- Progrés amb la zona de mescla -->
+      <div style="position: relative; height: 10px; border-radius: 5px; background: #262b33; overflow: hidden" role="img" aria-label="Progrés: 1 min 44 s de 3 min 58 s">
+        <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 44%; background: #3d8bfd"></div>
+        <div style="position: absolute; right: 0; top: 0; bottom: 0; width: 0.6%; background: #f0a35e"></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 12px; color: #9aa3ae">
+        <span>01:44 sonats</span>
+        <span style="color: #f2c38b">Mescla amb la següent a 03:57 · solapament 1,2 s</span>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 22px; align-items: center">
+      <div style="display: flex; flex-direction: column; align-items: flex-end">
+        <span style="font-size: 11px; color: #9aa3ae; text-transform: uppercase; letter-spacing: 0.6px">Intro</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 20px; color: #7d8794">—</span>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: flex-end">
+        <span style="font-size: 11px; color: #9aa3ae; text-transform: uppercase; letter-spacing: 0.6px">Mescla en</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 20px; color: #f2c38b">02:13</span>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: flex-end">
+        <span style="font-size: 11px; color: #9aa3ae; text-transform: uppercase; letter-spacing: 0.6px">Restant</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 30px; font-weight: 700; color: #ffffff">02:14</span>
+      </div>
+    </div>
+
+    <!-- Vúmetres de sortida -->
+    <div style="display: flex; flex-direction: column; justify-content: center; gap: 6px; width: 200px" role="img" aria-label="Nivell de sortida: esquerre −6 dB, dret −7 dB">
+      <span style="font-size: 11px; color: #9aa3ae; text-transform: uppercase; letter-spacing: 0.6px">Sortida a la taula</span>
+      <div style="display: flex; align-items: center; gap: 6px">
+        <span style="font-size: 11px; color: #9aa3ae; width: 10px">E</span>
+        <div style="flex: 1; height: 10px; border-radius: 3px; background: #262b33; overflow: hidden"><div style="width: 74%; height: 100%; background: linear-gradient(90deg, #2fb36b 0%, #2fb36b 75%, #e3c13b 88%, #e05252 100%); background-size: 135px 100%"></div></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px">
+        <span style="font-size: 11px; color: #9aa3ae; width: 10px">D</span>
+        <div style="flex: 1; height: 10px; border-radius: 3px; background: #262b33; overflow: hidden"><div style="width: 70%; height: 100%; background: linear-gradient(90deg, #2fb36b 0%, #2fb36b 75%, #e3c13b 88%, #e05252 100%); background-size: 135px 100%"></div></div>
+      </div>
+      <span style="font-size: 11px; color: #9aa3ae">Compressor «Suau» · −3 dB</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-left: 20px; border-left: 1px solid #2a2f37">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 38px; font-weight: 700; color: #8fdca8; line-height: 1">12:56:40</span>
+      <span style="font-size: 13px; color: #c3c9d1; margin-top: 4px">dijous, 19 de novembre de 2026</span>
+    </div>
+  </section>
+
+  <!-- Pròxims esdeveniments i modes -->
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 20px; border-bottom: 1px solid #2a2f37">
+    <span style="color: #9aa3ae; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; margin-right: 4px">Pròxims esdeveniments</span>
+    <a href="Main.dc.html" style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; background: #5a2913; color: #ffd8c2; text-decoration: none; font-size: 13px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg>
+      <strong style="font-family: 'JetBrains Mono', monospace">13:00</strong> Informatiu migdia · Talla
+      <span style="padding: 1px 7px; border-radius: 999px; background: #ffd8c2; color: #3a1708; font-size: 11.5px; font-weight: 700">d'aquí 3:20</span>
+    </a>
+    <a href="Main.dc.html" style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; background: #3b2b64; color: #e2d5ff; text-decoration: none; font-size: 13px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 16 10 5 10-5"/></svg>
+      <strong style="font-family: 'JetBrains Mono', monospace">13:30</strong> Senyal mitja hora · Superposa
+    </a>
+    <a href="Main.dc.html" style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; background: #3b2b64; color: #e2d5ff; text-decoration: none; font-size: 13px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 16 10 5 10-5"/></svg>
+      <strong style="font-family: 'JetBrains Mono', monospace">14:00</strong> Senyal horari · Superposa
+    </a>
+    <a href="Main.dc.html" style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; background: #173a66; color: #cfe2ff; text-decoration: none; font-size: 13px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h12M3 12h12M3 18h8M18 15v6M15 18h6"/></svg>
+      <strong style="font-family: 'JetBrains Mono', monospace">14:30</strong> Campanya Ferreteria · Encua
+    </a>
+    <div style="flex: 1 1 auto"></div>
+    <div role="group" aria-label="Mode d'emissió" style="display: flex; border: 1px solid #343a44; border-radius: 8px; overflow: hidden">
+      <button type="button" aria-pressed="true" style="padding: 8px 14px; border: 0; background: #1f7a45; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        AutoDJ
+      </button>
+      <button type="button" aria-pressed="false" style="padding: 8px 14px; border: 0; background: transparent; color: #c3c9d1; font-size: 13px; cursor: pointer">Assistit</button>
+      <button type="button" aria-pressed="false" style="padding: 8px 14px; border: 0; background: transparent; color: #c3c9d1; font-size: 13px; cursor: pointer">Manual</button>
+    </div>
+    <button type="button" aria-pressed="false" style="padding: 8px 14px; border-radius: 8px; border: 1px solid #343a44; background: transparent; color: #c3c9d1; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      Entrada de línia: desactivada
+    </button>
+  </div>
+
+  <!-- Cos: cua + historial | cerca + auxiliars -->
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 20px; padding: 16px 20px; flex: 1 1 auto">
+
+    <div style="flex: 1 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+      <!-- Cua -->
+      <section aria-label="Cua d'emissió" style="border: 1px solid #2a2f37; border-radius: 10px; background: #16191d; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #2a2f37">
+          <h2 style="margin: 0; font-size: 15px; font-weight: 700">Cua</h2>
+          <span style="color: #9aa3ae; font-size: 12.5px">Rotació OnaBages · pas 7 de 12</span>
+          <div style="flex: 1"></div>
+          <span style="font-size: 12.5px; color: #9aa3ae">4 pistes · 6:27</span>
+        </div>
+
+        <!-- Avís de previsió -->
+        <div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; background: #3a2a12; color: #f6d7a6; font-size: 13px; border-bottom: 1px solid #2a2f37">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"/><path d="M12 10v5M12 18h.01"/></svg>
+          <span style="flex: 1">A les <strong>13:00</strong> l'Informatiu migdia tallarà la cua: «Living Next Door To Alice» sonarà <strong>1:03 de 3:28</strong> i 2 pistes no sonaran.</span>
+          <button type="button" style="flex: none; padding: 5px 10px; border-radius: 6px; border: 1px solid #a8803f; background: transparent; color: #f6d7a6; font-size: 12.5px; cursor: pointer">Ajusta amb una pista curta</button>
+        </div>
+
+        <ol style="margin: 0; padding: 0; list-style: none">
+          <sc-for list="{{ queue }}" as="q" hint-placeholder-count="5">
+            <li style="display: flex; align-items: center; gap: 12px; padding: 9px 14px; border-bottom: 1px solid #22262c; opacity: {{ q.opacity }}; background: {{ q.rowBg }}">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #9aa3ae; width: 62px; flex: none">{{ q.at }}</span>
+              <span style="display: flex; flex-direction: column; flex: 1; min-width: 0">
+                <span style="font-weight: 600; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: {{ q.strike }}">{{ q.title }}</span>
+                <span style="font-size: 12.5px; color: #a9b1bc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ q.artist }}</span>
+              </span>
+              <span style="flex: none; padding: 2px 8px; border-radius: 999px; background: {{ q.catBg }}; color: {{ q.catFg }}; font-size: 11.5px">{{ q.cat }}</span>
+              <sc-if value="{{ q.hasNote }}" hint-placeholder-val="{{ false }}">
+                <span style="flex: none; display: flex; align-items: center; gap: 4px; font-size: 12px; color: {{ q.noteColor }}">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg>
+                  {{ q.note }}
+                </span>
+              </sc-if>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #dfe3e8; width: 42px; text-align: right; flex: none">{{ q.dur }}</span>
+            </li>
+          </sc-for>
+        </ol>
+        <!-- Marca de l'esdeveniment dins de la cua -->
+        <div style="display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: #5a2913; color: #ffd8c2; font-size: 13px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></svg>
+          <strong style="font-family: 'JetBrains Mono', monospace">13:00:00</strong> Talla · Informatiu migdia — preparat (senyal horari, La Xarxa, informatiu local)
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px">
+          <button type="button" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #343a44; background: transparent; color: #c3c9d1; font-size: 12.5px; cursor: pointer">Insereix com a següent</button>
+          <button type="button" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #343a44; background: transparent; color: #c3c9d1; font-size: 12.5px; cursor: pointer">Substitueix</button>
+          <button type="button" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #343a44; background: transparent; color: #c3c9d1; font-size: 12.5px; cursor: pointer">Mou amunt</button>
+          <button type="button" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #343a44; background: transparent; color: #c3c9d1; font-size: 12.5px; cursor: pointer">Mou avall</button>
+          <button type="button" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #6b2f2f; background: transparent; color: #ffb4a8; font-size: 12.5px; cursor: pointer">Treu de la cua</button>
+        </div>
+      </section>
+
+      <!-- Historial breu -->
+      <section aria-label="Últimes pistes" style="border: 1px solid #2a2f37; border-radius: 10px; background: #16191d; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #2a2f37">
+          <h2 style="margin: 0; font-size: 15px; font-weight: 700">Últimes pistes</h2>
+          <div style="flex: 1"></div>
+          <a href="#" style="font-size: 12.5px">Cerca a l'historial</a>
+        </div>
+        <ul style="margin: 0; padding: 0; list-style: none">
+          <sc-for list="{{ history }}" as="h" hint-placeholder-count="4">
+            <li style="display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #22262c; font-size: 13px">
+              <span style="font-family: 'JetBrains Mono', monospace; color: #9aa3ae; width: 62px; flex: none">{{ h.at }}</span>
+              <span style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis"><span style="color: #ffffff">{{ h.title }}</span> <span style="color: #a9b1bc">· {{ h.artist }}</span></span>
+              <span style="font-family: 'JetBrains Mono', monospace; color: #c3c9d1">{{ h.dur }}</span>
+            </li>
+          </sc-for>
+        </ul>
+      </section>
+    </div>
+
+    <div style="flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+      <!-- Biblioteca -->
+      <section aria-label="Biblioteca" style="border: 1px solid #2a2f37; border-radius: 10px; background: #16191d; overflow: hidden">
+        <div role="tablist" aria-label="Panell" style="display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid #2a2f37">
+          <button type="button" role="tab" aria-selected="true" style="padding: 9px 14px; border: 0; border-bottom: 2px solid #3d8bfd; background: transparent; color: #ffffff; font-weight: 600; font-size: 13px; cursor: pointer">Cerca</button>
+          <button type="button" role="tab" aria-selected="false" style="padding: 9px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #aab2bd; font-size: 13px; cursor: pointer">Cartutxeres</button>
+          <button type="button" role="tab" aria-selected="false" style="padding: 9px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #aab2bd; font-size: 13px; cursor: pointer">Notes</button>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; padding: 12px 14px">
+          <div style="position: relative">
+            <label for="cerca" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Cerca a la biblioteca</label>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9aa3ae" stroke-width="2" stroke-linecap="round" style="position: absolute; left: 10px; top: 10px" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="cerca" type="search" placeholder="Cerca artista, títol o àlbum…" style="width: 100%; box-sizing: border-box; padding: 9px 10px 9px 34px; border-radius: 8px; border: 1px solid #343a44; background: #0f1114; color: #ffffff; font-size: 14px">
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+            <select aria-label="Categoria" style="padding: 7px 8px; border-radius: 6px; border: 1px solid #343a44; background: #0f1114; color: #e6e8eb; font-size: 13px"><option>Totes les categories</option></select>
+            <select aria-label="Subcategoria" style="padding: 7px 8px; border-radius: 6px; border: 1px solid #343a44; background: #0f1114; color: #e6e8eb; font-size: 13px"><option>Totes les subcategories</option></select>
+            <select aria-label="Gènere" style="padding: 7px 8px; border-radius: 6px; border: 1px solid #343a44; background: #0f1114; color: #e6e8eb; font-size: 13px"><option>Tots els gèneres</option></select>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) 74px 54px; gap: 8px; padding: 6px 14px; background: #1b1f24; font-size: 11.5px; color: #9aa3ae; text-transform: uppercase; letter-spacing: 0.5px">
+          <span>Artista</span><span>Títol</span><span>Ha sonat</span><span style="text-align: right">Durada</span>
+        </div>
+        <ul style="margin: 0; padding: 0; list-style: none">
+          <sc-for list="{{ library }}" as="l" hint-placeholder-count="7">
+            <li style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) 74px 54px; gap: 8px; padding: 7px 14px; border-bottom: 1px solid #22262c; font-size: 13px; background: {{ l.bg }}">
+              <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ffffff">{{ l.artist }}</span>
+              <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #dfe3e8">{{ l.title }}</span>
+              <span style="color: #a9b1bc">{{ l.last }}</span>
+              <span style="font-family: 'JetBrains Mono', monospace; text-align: right; color: #dfe3e8">{{ l.dur }}</span>
+            </li>
+          </sc-for>
+        </ul>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; font-size: 12.5px; color: #9aa3ae">
+          <span>5.056 pistes · llista contínua, sense pàgines</span>
+          <span>Arrossega a la cua o fes doble clic</span>
+        </div>
+      </section>
+
+      <!-- Reproductors auxiliars -->
+      <section aria-label="Reproductors auxiliars" style="border: 1px solid #2a2f37; border-radius: 10px; background: #16191d; overflow: hidden">
+        <div style="padding: 10px 14px; border-bottom: 1px solid #2a2f37">
+          <h2 style="margin: 0; font-size: 15px; font-weight: 700">Reproductors auxiliars</h2>
+        </div>
+        <sc-for list="{{ aux }}" as="a" hint-placeholder-count="3">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #22262c">
+            <button type="button" aria-label="{{ a.playLabel }}" style="width: 36px; height: 36px; flex: none; border-radius: 8px; border: 1px solid #343a44; background: #1e2329; color: #8fdca8; cursor: pointer; display: flex; align-items: center; justify-content: center">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>
+            </button>
+            <button type="button" aria-label="{{ a.stopLabel }}" style="width: 36px; height: 36px; flex: none; border-radius: 8px; border: 1px solid #343a44; background: #1e2329; color: #ff9b8a; cursor: pointer; display: flex; align-items: center; justify-content: center">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+            </button>
+            <span style="display: flex; flex-direction: column; flex: 1; min-width: 0">
+              <span style="font-weight: 600; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ a.name }}</span>
+              <span style="font-size: 12.5px; color: #a9b1bc">{{ a.sub }}</span>
+            </span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #dfe3e8">{{ a.dur }}</span>
+          </div>
+        </sc-for>
+      </section>
+    </div>
+  </div>
+
+  <!-- Barra d'estat -->
+  <footer style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding: 10px 20px; border-top: 1px solid #2a2f37; background: #0c0d10; font-size: 13px; color: #c3c9d1">
+    <span>Rotació: <strong style="color: #ffffff">OnaBages</strong> (des de les 10:30, «Converses»)</span>
+    <span>Sweepers: <strong style="color: #ffffff">Ona Bages català</strong></span>
+    <span style="display: flex; align-items: center; gap: 6px; color: #8fdca8">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+      Títol exportat per a BUTT
+    </span>
+    <span style="display: flex; align-items: center; gap: 6px; color: #8fdca8">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+      Hora sincronitzada · 12 ms
+    </span>
+    <span style="display: flex; align-items: center; gap: 6px; color: #f2c38b">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"/><path d="M12 10v5M12 18h.01"/></svg>
+      1 avís
+    </span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var music = { catBg: '#262b33', catFg: '#c3c9d1' };
+    var sweeper = { catBg: '#123f3a', catFg: '#b6efe5' };
+    var ident = { catBg: '#1f4a2a', catFg: '#c4f2cf' };
+    function row(o, cat) {
+      return Object.assign({ opacity: 1, rowBg: 'transparent', strike: 'none', hasNote: false, note: '', noteColor: '#f2c38b' }, cat, o);
+    }
+    var queue = [
+      row({ at: '12:58:53', title: 'Ona Bages (música denominació)', artist: 'Sweeper', cat: 'Sweeper', dur: '0:04' }, sweeper),
+      row({ at: '12:58:57', title: 'Living Next Door To Alice', artist: 'Smokie', cat: 'Adult 9', dur: '3:28', hasNote: true, note: 'Es tallarà a 1:03', rowBg: '#2a2216' }, music),
+      row({ at: '—', title: 'First Original Thought', artist: 'Alessi Rose', cat: 'Actualitat', dur: '2:45', opacity: 0.55, strike: 'line-through', hasNote: true, note: 'No sonarà', noteColor: '#c3c9d1' }, music),
+      row({ at: '—', title: 'Ràdio Santpedor', artist: 'Ona Bages', cat: 'ID emissora', dur: '0:10', opacity: 0.55, strike: 'line-through', hasNote: true, note: 'No sonarà', noteColor: '#c3c9d1' }, ident)
+    ];
+    var history = [
+      { at: '12:50:32', title: 'Blood Bank', artist: 'Bon Iver', dur: '4:24' },
+      { at: '12:50:22', title: 'Ràdio Santpedor', artist: 'Ona Bages', dur: '0:10' },
+      { at: '12:47:09', title: 'Say My Name', artist: 'David Guetta ft Bebe Rexha', dur: '3:14' },
+      { at: '12:43:47', title: 'I Really Like You', artist: 'Carly Rae Jepsen', dur: '3:22' }
+    ];
+    var lib = [
+      { artist: '100 ft Jennifer John', title: 'Just Cant Wait', last: 'fa 3 dies', dur: '2:59' },
+      { artist: '2 4 Grooves', title: 'Here I Go', last: 'fa 6 dies', dur: '3:12' },
+      { artist: '2 Black', title: 'Waves Of Luv', last: 'fa 2 dies', dur: '3:50' },
+      { artist: '2 Eivissa', title: 'Oh la la la', last: 'ahir', dur: '3:28' },
+      { artist: '3 Force', title: "It's Real", last: 'fa 9 dies', dur: '3:36' },
+      { artist: '3LAU', title: 'On My Mind', last: 'fa 4 dies', dur: '3:03' },
+      { artist: '4 Strings', title: 'Until You Love Me', last: 'fa 12 dies', dur: '3:30' }
+    ];
+    var library = lib.map(function (l, i) { return Object.assign({ bg: i === 0 ? '#1f2a3a' : 'transparent' }, l); });
+    var aux = [
+      { name: 'Senyals horaris', sub: 'Preparat: senyal 13:00 · automàtic', dur: '0:05', playLabel: 'Reprodueix el reproductor auxiliar 1', stopLabel: 'Atura el reproductor auxiliar 1' },
+      { name: 'Auxiliar 2', sub: 'Buit', dur: '—', playLabel: 'Reprodueix el reproductor auxiliar 2', stopLabel: 'Atura el reproductor auxiliar 2' },
+      { name: 'Auxiliar 3', sub: 'Buit', dur: '—', playLabel: 'Reprodueix el reproductor auxiliar 3', stopLabel: 'Atura el reproductor auxiliar 3' }
+    ];
+    return { queue: queue, history: history, library: library, aux: aux };
+  }
+}
+</script>
+</body>
+</html>
