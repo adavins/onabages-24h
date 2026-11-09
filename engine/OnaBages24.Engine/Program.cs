@@ -48,7 +48,7 @@ public static class Program
               importa-radiodj FITXER.sql [FITXER.sql…] [opcions]
                   Importa la biblioteca de RadioDJ (categories, subcategories, gèneres i pistes) des d'un backup.
                   Es pot tornar a executar: les pistes ja importades s'actualitzen.
-                  --bd RUTA            base de dades (per defecte, %ProgramData%\OnaBages24\onabages24.db)
+                  --bd RUTA            base de dades (per defecte, la de la carpeta «dades» de l'aplicació)
                   --arrel DE A         canvi d'arrel de les rutes (es pot repetir; s'aplica el primer que coincideixi)
                   --sense-fitxers      no comprova si els fitxers existeixen
 

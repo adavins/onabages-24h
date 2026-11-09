@@ -147,3 +147,41 @@ public class EngineOptionsTests
         Assert.False(EngineOptions.TokenMatches(null, "abc"));
     }
 }
+
+/// <summary>Carpeta de dades de la versió portable (D-044).</summary>
+public class PortableDataFolderTests
+{
+    [Fact]
+    public void Troba_la_carpeta_dades_marcada_pujant_des_de_la_del_motor()
+    {
+        using var temp = new TempFolder();
+        string engine = Path.Combine(temp.Path, "OnaBages24", "resources", "engine");
+        Directory.CreateDirectory(engine);
+        string data = Path.Combine(temp.Path, "OnaBages24", "dades");
+        Directory.CreateDirectory(data);
+        File.WriteAllText(Path.Combine(data, RuntimeFile.PortableMarkerFile), "");
+
+        Assert.Equal(data, RuntimeFile.FindPortableDataFolder(engine));
+    }
+
+    [Fact]
+    public void Una_carpeta_dades_sense_la_marca_no_compta()
+    {
+        using var temp = new TempFolder();
+        string engine = Path.Combine(temp.Path, "app", "resources", "engine");
+        Directory.CreateDirectory(engine);
+        Directory.CreateDirectory(Path.Combine(temp.Path, "app", "dades")); // sense LLEGEIX-ME.txt
+
+        Assert.Null(RuntimeFile.FindPortableDataFolder(engine));
+    }
+
+    [Fact]
+    public void En_desenvolupament_es_la_carpeta_dades_del_repositori()
+    {
+        // Les proves corren des de engine\OnaBages24.Tests\bin\…, igual que el motor des de engine\OnaBages24.Engine\bin\…
+        string? found = RuntimeFile.FindPortableDataFolder(AppContext.BaseDirectory);
+
+        Assert.NotNull(found);
+        Assert.True(File.Exists(Path.Combine(found, "..", "engine", "OnaBages24.slnx")));
+    }
+}

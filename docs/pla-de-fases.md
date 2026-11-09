@@ -91,8 +91,8 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 
 - Una o dues setmanes a l'ordinador de proves, en paral·lel amb RadioDJ i amb la mateixa programació.
 - Llista de diferències i correccions.
-- Instal·lació al PC 24h, amb RadioDJ preparat per tornar-hi si cal.
-- Instal·lador amb sons i rotació de mostra per a les instal·lacions noves (mode de demostració, D-038).
+- Posada en marxa al PC 24h: còpia de la carpeta portable i inici automàtic amb Windows, amb RadioDJ preparat per tornar-hi si cal.
+- Paquet portable (`.zip`, sense instal·lador, D-044) amb sons i rotació de mostra per a les instal·lacions noves (mode de demostració, D-038).
 
 **Criteri de tancament:** decisió de l'emissora de deixar RadioDJ.
 

@@ -32,7 +32,8 @@ public sealed record EngineOptions(int Port, string Token, string? DataDir = nul
                     token = args[++i];
                     break;
 
-                // Carpeta de dades (base de dades, registres, fitxer d'execució). Sense aquesta opció, %ProgramData%\OnaBages24.
+                // Carpeta de dades (base de dades, registres, fitxer d'execució). Sense aquesta opció, la carpeta
+                // «dades» de l'aplicació (RuntimeFile.FindPortableDataFolder) o, si no es troba, %ProgramData%\OnaBages24.
                 case "--data-dir" when i + 1 < args.Length:
                     dataDir = args[++i];
                     if (!Path.IsPathFullyQualified(dataDir))

@@ -111,10 +111,10 @@ Així el motor **sempre emet** si hi ha alguna sortida, també després de desin
 
 **Canvi de targeta planificat.** Mentre s'emet per la sortida d'emergència, l'avís es manté fins que es resol: o bé torna la targeta configurada, o bé es desa una altra sortida a la configuració. Perquè sigui ràpid, l'avís té el botó **«Fes servir aquesta sortida»**, que desa la sortida d'emergència com a configurada (cal sessió iniciada, D-035). El rellotge de mostres es torna a ajustar, perquè durant el canvi no han sortit mostres.
 
-**Instal·lació nova (D-038).** Si no hi ha cap configuració (primera vegada):
+**Primera posada en marxa (D-038).** Si no hi ha cap configuració (primera vegada):
 - el motor arrenca sol, tria la sortida com a la sortida d'emergència (la primera analògica) i comença a sonar amb una **rotació de mostra** de sons inclosos al paquet;
 - la pantalla mostra «Mode de demostració» (color, icona i text) fins que es configura la sortida i s'importa la biblioteca;
-- els sons de mostra han de tenir una llicència que en permeti la distribució (fets per nosaltres, sintètics o de domini públic). Es preparen a la fase 6, amb l'instal·lador.
+- els sons de mostra han de tenir una llicència que en permeti la distribució (fets per nosaltres, sintètics o de domini públic). Es preparen a la fase 6, amb el paquet portable (D-044).
 
 ## 7. Estat que sobreviu a un reinici
 

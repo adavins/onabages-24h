@@ -51,6 +51,9 @@ public static class EngineServer
         var log = app.Logger;
         log.LogInformation("{Name} {Version} arrencant (port {Port}, PID {Pid}, dades a {DataDir})",
             EngineInfo.Name, EngineInfo.Version, options.Port, Environment.ProcessId, RuntimeFile.DirectoryPath);
+        if (RuntimeFile.UsingFallback)
+            log.LogWarning("No s'ha trobat la carpeta «{Folder}» de l'aplicació (amb {Marker}): les dades van a la carpeta de reserva {DataDir}",
+                RuntimeFile.PortableFolderName, RuntimeFile.PortableMarkerFile, RuntimeFile.DirectoryPath);
 
         // Un error no previst que fes caure el motor: com a mínim, que quedi al registre.
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>

@@ -26,3 +26,7 @@ Thumbs.db
 TestResults/
 test-audio/
 *.rec
+
+# Dades de l'aplicació (versió portable, D-044): només es puja el fitxer que marca la carpeta
+dades/*
+!dades/LLEGEIX-ME.txt

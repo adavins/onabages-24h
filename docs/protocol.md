@@ -16,7 +16,7 @@ Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** q
 { "schemaVersion": 1, "pid": 1234, "port": 47824, "token": "…", "startedAt": "2026-11-09T15:51:20.0000000+00:00", "version": "0.1.0" }
 ```
 
-- `<dades>` és `%ProgramData%\OnaBages24` (comuna a tots els usuaris de l'ordinador) o la carpeta indicada amb `--data-dir`. Hi ha també la base de dades (`onabages24.db`), les còpies de seguretat (`copies\`) i els registres (`logs\`).
+- `<dades>` és la carpeta `dades\` de l'aplicació portable (D-044; la interfície la passa amb `--data-dir`). Si el motor arrenca sol, la busca pujant des de la seva carpeta (ha de contenir `LLEGEIX-ME.txt`) i, si no la troba, fa servir la de reserva `%ProgramData%\OnaBages24`, amb un avís al registre. Hi ha també la base de dades (`onabages24.db`), les còpies de seguretat (`copies\`) i els registres (`logs\`).
 - Comprovació de vida sense testimoni: `GET http://127.0.0.1:<port>/health` → `200 ok`.
 - Es poden connectar diversos clients alhora (la interfície, `tools/prova-motor.mjs`…). Els esdeveniments s'envien a tots.
 - Mida màxima d'un missatge: 64 KB.

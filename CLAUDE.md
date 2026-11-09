@@ -73,6 +73,7 @@ Específiques d'Ona Bages 24h:
 - Cada canvi d'esquema porta una **migració** numerada.
 - Els fitxers d'àudio no es copien mai: només se'n guarden les rutes.
 - L'historial de falques es conserva com a mínim 2 anys (D-011).
+- **Aplicació portable, sense instal·lador** (D-044): totes les dades (base de dades, còpies, registres) van a la carpeta `dades\` de l'aplicació, marcada amb `LLEGEIX-ME.txt`. En desenvolupament és `dades/` del repositori, que no es puja a Git (excepte el `LLEGEIX-ME.txt`). No s'escriu res a `%APPDATA%` ni al registre de Windows.
 
 ## Estructura prevista
 
@@ -85,10 +86,11 @@ engine/OnaBages.ToneCheck/  eina de proves: to de prova i anàlisi de talls (cop
 app/main/                   procés principal d'Electron i preload
 app/renderer/               interfície (HTML, CSS, JS)
 tools/                      eines de desenvolupament i de prova
+dades/                      dades de l'aplicació en desenvolupament (fora de Git, D-044)
 docs/                       especificació, decisions, maquetes, dades de RadioDJ
 ```
 
-Es confirmarà a la fase 1; els noms dels projectes es poden canviar amb una decisió.
+Confirmada a la fase 1 (D-037); els noms dels projectes es poden canviar amb una decisió.
 
 ## Documents de referència
 

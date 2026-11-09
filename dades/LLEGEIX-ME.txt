@@ -1,0 +1,16 @@
+Ona Bages 24h - carpeta de dades
+================================
+
+Aquesta carpeta conte totes les dades de l'aplicacio (versio portable, D-044):
+
+  onabages24.db   base de dades (biblioteca, programacio, historial, configuracio)
+  copies\         copies de seguretat automatiques (una al dia)
+  logs\           registres del motor (un fitxer per dia)
+  engine.json     port i testimoni del motor mentre funciona (es crea i s'esborra sol)
+
+No l'esborreu ni la canvieu de lloc: el motor la troba perque hi ha aquest fitxer.
+Per passar l'aplicacio a un altre ordinador, copieu la carpeta sencera de l'aplicacio
+(amb l'aplicacio tancada). Per actualitzar l'aplicacio, substituiu-ne els fitxers
+pero conserveu aquesta carpeta.
+
+Els fitxers d'audio no es copien mai aqui: la base de dades nomes en desa les rutes.
