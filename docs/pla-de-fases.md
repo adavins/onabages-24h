@@ -80,7 +80,8 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 
 ## Fase 5 — Supervisió, avisos i integracions
 
-- Vigilant extern del motor, detecció de pista encallada i de silencis, avisos per correu (D-013).
+- Detecció de pista encallada i de silencis, i avisos per correu enviats pel mateix motor (D-013, D-045). `/health` només respon «ok» si el mesclador funciona.
+- Vigilant extern: de moment, l'Inicialitzador arrenca el motor i el torna a obrir si es tanca. Els canvis a l'Inicialitzador (o reescriure'l) es decideixen quan Ona Bages 24h estigui acabat (D-045).
 - Avís de programa no actualitzat; avís opcional de l'Automatitzador quan actualitza un fitxer (`library.fileUpdated`).
 - **Usuaris, rols** (administrador, programador, operador), inici de sessió per operar i **registre de canvis** (D-035).
 - Opcional: edició remota a la xarxa local; codificador intern cap a Icecast.

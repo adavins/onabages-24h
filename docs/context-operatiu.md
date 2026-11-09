@@ -57,7 +57,8 @@ Ara hi ha un detector de silencis amb avís per correu, però no hi ha manera de
 
 Com que el motor sap en tot moment què sona i on és, la supervisió pot ser interna:
 - **Pista encallada:** la posició no avança, o la pista ha durat més que la seva durada més un marge.
-- **Motor penjat:** un vigilant extern (procés separat o servei de Windows) comprova cada pocs segons que el motor respon. Si no respon, el reinicia i avisa.
+- **Motor penjat:** un vigilant extern comprova cada pocs segons que el motor respon (`/health`, que només diu «ok» si el mesclador funciona). Si no respon, el reinicia. **A l'emissora ja hi ha l'Inicialitzador** (`D:\apps\Inicialitzador`, VB.NET): arrenca tots els programes amb Windows i torna a obrir els que es tanquen, però només mira si el procés existeix, cada minut. Mentrestant arrencarà el motor com un programa més. Quan Ona Bages 24h estigui acabat es decidirà si s'hi afegeix la comprovació de `/health` amb un interval curt o si es reescriu (D-045).
+- **Qui avisa:** Ona Bages 24h gestiona les seves incidències i envia ell mateix els avisos per correu (D-045), sense dependre de l'Inicialitzador.
 - **Silenci a la sortida:** el motor mesura el nivell que envia a la taula.
 - **Silenci a l'entrada** (opcional): el motor pot mesurar també l'entrada de línia, que és la sortida d'emissió de la taula. Detectaria silencis encara que vinguin del directe, i podria substituir el detector actual.
 - **Altres avisos:** esdeveniment omès o fet tard, stream que no connecta, fitxer que falta o il·legible, programa no actualitzat (secció 11 del document del planificador), rellotge desajustat i reinici del motor.
