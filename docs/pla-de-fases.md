@@ -44,7 +44,7 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 7. Mesclador, sortida i cua, en tres parts:
    - 7a. ✔ Mesclador amb veus, provat sense targeta de so (D-046).
    - 7b. ✔ Cua amb encadenament, solapament (D-024) i origen de cada element (D-034); lectura dels fitxers en fils propis (D-047).
-   - 7c. ✔ Sortida WASAPI real (amb la d'emergència, D-038), `/health` segons el mesclador i recàlcul dels punts en segon pla (D-042, D-048). Pendent: escolta d'encadenaments reals pel desenvolupador.
+   - 7c. ✔ Sortida WASAPI real (amb la d'emergència, D-038), `/health` segons el mesclador i recàlcul dels punts en segon pla (D-042, D-048). Escolta feta pel desenvolupador (2026-11-09): so net; encadenaments bastant bé. El solapament màxim (10 s) es torna a revisar quan l'AutoDJ faci sonar hores seguides.
 8. AutoDJ amb una rotació importada; arrencada automàtica.
 9. Historial i `NowPlaying.txt` amb plantilla.
 10. Interfície mínima (Electron), oberta sense contrasenya (D-035).
