@@ -156,6 +156,15 @@ public sealed class Library(Database database)
     public IReadOnlyList<Track> TracksInSubcategory(long subcategoryId) =>
         QueryTracks("WHERE subcategoria_id = $v ORDER BY id", subcategoryId);
 
+    /// <summary>Pistes la ruta de les quals comença per aquesta carpeta (sense distingir majúscules).</summary>
+    public IReadOnlyList<Track> TracksInFolder(string folder)
+    {
+        string prefix = folder.TrimEnd('\\') + "\\";
+        // LIKE amb els caràcters especials escapats (%, _ i el mateix caràcter d'escapament)
+        string pattern = prefix.Replace("!", "!!").Replace("%", "!%").Replace("_", "!_") + "%";
+        return QueryTracks("WHERE ruta LIKE $v ESCAPE '!' ORDER BY ruta", pattern);
+    }
+
     public long CountTracks()
     {
         lock (database.Sync)

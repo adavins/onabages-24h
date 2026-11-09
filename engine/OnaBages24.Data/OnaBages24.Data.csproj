@@ -11,6 +11,11 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
   </ItemGroup>
 
+  <!-- Les proves poden fer servir els mètodes interns (p. ex. les regles de la importació de RadioDJ) -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="OnaBages24.Tests" />
+  </ItemGroup>
+
   <!-- Migracions: fitxers SQL numerats, inclosos dins de la DLL -->
   <ItemGroup>
     <EmbeddedResource Include="Migrations\*.sql" />

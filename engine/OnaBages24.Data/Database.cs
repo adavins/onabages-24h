@@ -50,7 +50,9 @@ public sealed class Database : IDisposable
         try
         {
             connection.Open();
-            Execute(connection, "PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
+            // synchronous = NORMAL: amb WAL és segur (un tall de corrent no corromp la base de dades; com a molt es
+            // perd l'últim canvi) i les escriptures són molt més ràpides (p. ex. importar 5.000 pistes).
+            Execute(connection, "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
             var database = new Database(path, connection);
             database.Migrate();
             return database;

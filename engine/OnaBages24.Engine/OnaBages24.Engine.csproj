@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Motor d'Ona Bages 24h: àudio, cua, AutoDJ, planificador i estat (font de veritat).
+    Fase 1, pas 5: de moment, només les ordres d'importació per a la línia d'ordres.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>OnaBages24.Engine</RootNamespace>
+    <AssemblyName>OnaBages24.Engine</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OnaBages.Audio\OnaBages.Audio.csproj" />
+    <ProjectReference Include="..\OnaBages24.Data\OnaBages24.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OnaBages24.Tests" />
+  </ItemGroup>
+</Project>
