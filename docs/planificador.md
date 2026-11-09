@@ -297,18 +297,18 @@ CREATE TABLE campanya_passi (
   campanya_id     INTEGER NOT NULL REFERENCES campanya(id) ON DELETE CASCADE,
   esdeveniment_id INTEGER NOT NULL,
   programat_per   TEXT NOT NULL,       -- data i hora previstes del passi
-  song_id         INTEGER,             -- null = cap falca vàlida aquell dia
+  pista_id         INTEGER,             -- null = cap falca vàlida aquell dia
   PRIMARY KEY (campanya_id, esdeveniment_id, programat_per)
 );
 
 CREATE TABLE campanya_falca (
   campanya_id INTEGER NOT NULL REFERENCES campanya(id) ON DELETE CASCADE,
-  song_id     INTEGER NOT NULL,
+  pista_id     INTEGER NOT NULL,
   data_inici  TEXT,            -- null = les de la campanya
   data_fi     TEXT,
   dies_mask   INTEGER NOT NULL DEFAULT 127,
   pes         INTEGER NOT NULL DEFAULT 1,
-  PRIMARY KEY (campanya_id, song_id)
+  PRIMARY KEY (campanya_id, pista_id)
 );
 ```
 

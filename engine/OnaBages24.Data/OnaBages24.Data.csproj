@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Base de dades d'Ona Bages 24h (D-004). Tot l'accés a la base de dades passa per aquest projecte.
+    Microsoft.Data.Sqlite (MIT): accés a SQLite des de .NET, sense Entity Framework (D-040).
+  -->
+  <PropertyGroup>
+    <RootNamespace>OnaBages24.Data</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+  </ItemGroup>
+
+  <!-- Migracions: fitxers SQL numerats, inclosos dins de la DLL -->
+  <ItemGroup>
+    <EmbeddedResource Include="Migrations\*.sql" />
+  </ItemGroup>
+</Project>

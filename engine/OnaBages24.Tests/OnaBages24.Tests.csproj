@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OnaBages.Audio\OnaBages.Audio.csproj" />
+    <ProjectReference Include="..\OnaBages24.Data\OnaBages24.Data.csproj" />
   </ItemGroup>
 
   <ItemGroup>
