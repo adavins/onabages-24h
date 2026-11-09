@@ -1,6 +1,8 @@
 using System.Net;
+using OnaBages.Audio;
 using OnaBages24.Data;
 using OnaBages24.Engine.Infrastructure;
+using OnaBages24.Engine.Playback;
 using OnaBages24.Engine.Protocol;
 
 namespace OnaBages24.Engine;
@@ -87,13 +89,36 @@ public static class EngineServer
         var backups = new Backups(database, Path.Combine(RuntimeFile.DirectoryPath, "copies"));
         var state = new EngineState();
         var hub = new ClientHub(state.SetClients, log);
+
+        void Broadcast(System.Text.Json.Nodes.JsonObject ev) => _ = Task.Run(async () =>
+        {
+            try { await hub.BroadcastAsync(ev, app.Lifetime.ApplicationStopping); }
+            catch (OperationCanceledException) { }
+        });
+
+        // Àudio (D-005, D-039): mesclador estèreo a 48 kHz, una sola sortida i la cua d'emissió
+        var mixer = new Mixer(sampleRate: 48000);
+        var outputs = new OutputManager(mixer);
+        outputs.Configure(ReadConfiguredOutput(library, log));
+        var queue = new QueuePlayer(mixer);
+        var playback = new PlaybackEvents(queue, outputs, log, Broadcast);
+
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
-        var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library);
+        var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
+            queue: queue, outputs: outputs);
 
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15) });
 
-        // Comprovació de vida (sense testimoni): la fa servir la interfície per saber si el motor ja funciona.
-        app.MapGet("/health", () => Results.Text("ok"));
+        // Comprovació de vida (sense testimoni). Només diu «ok» si el mesclador ha enviat àudio a la sortida en els
+        // últims 2 segons (D-045): un motor penjat o sense sortida respon 503, i el vigilant el pot reiniciar.
+        app.MapGet("/health", () =>
+        {
+            var since = mixer.SinceLastRender;
+            return since < TimeSpan.FromSeconds(2)
+                ? Results.Text("ok")
+                : Results.Text(since == TimeSpan.MaxValue ? "sense àudio: la sortida no ha començat" : $"sense àudio fa {since.TotalSeconds:0} s",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+        });
 
         // Canal principal amb la interfície.
         app.Map("/ws", async (HttpContext ctx) =>
@@ -126,9 +151,30 @@ public static class EngineServer
             Console.WriteLine($"Fitxer d'execució: {RuntimeFile.FilePath}");
         });
 
+        // Fil de control (docs/disseny-motor.md, 3): la cua cada 10 ms i la sortida cada 0,5 s. Mai no fa esperar el fil d'àudio.
+        var control = new ControlLoop(queue, outputs, log);
+        var deviceWatcher = new DeviceWatcher();
+        deviceWatcher.Changed += _ => outputs.Poke();
+        try { deviceWatcher.Start(); }
+        catch (Exception ex) { log.LogWarning("No s'han pogut activar els avisos de dispositius: {Message}", ex.Message); }
+
+        // Recàlcul dels punts amb el nostre analitzador, en segon pla (D-042)
+        var recalculator = new LibraryTools.CueRecalculator(library, log: message => log.LogInformation("{Message}", message));
+
+        app.Lifetime.ApplicationStarted.Register(() =>
+        {
+            control.Start();
+            recalculator.Start();
+        });
+
         app.Lifetime.ApplicationStopping.Register(() =>
         {
             log.LogInformation("Aturant el motor");
+            recalculator.Dispose();
+            deviceWatcher.Dispose();
+            control.Dispose();
+            queue.Dispose();
+            outputs.Dispose();
             RuntimeFile.DeleteIfOwned();
         });
 
@@ -188,5 +234,21 @@ public static class EngineServer
 
         log.LogInformation("Motor aturat");
         return 0;
+    }
+
+    /// <summary>La sortida desada a la configuració (D-038). Si no n'hi ha cap, s'emet per la d'emergència.</summary>
+    private static ConfiguredOutput ReadConfiguredOutput(Library library, ILogger log)
+    {
+        try
+        {
+            if (library.GetSetting(CommandRouter.OutputSettingKey) is not { } json) return new ConfiguredOutput(null, null);
+            var node = System.Text.Json.Nodes.JsonNode.Parse(json);
+            return new ConfiguredOutput(node?["id"]?.GetValue<string>(), node?["name"]?.GetValue<string>());
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning("La sortida desada no és vàlida ({Message}): s'emetrà per la d'emergència", ex.Message);
+            return new ConfiguredOutput(null, null);
+        }
     }
 }

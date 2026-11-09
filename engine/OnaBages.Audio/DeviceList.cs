@@ -48,8 +48,33 @@ public static class DeviceList
             _ => DeviceStatus.Unplugged,
         };
 
-        return new AudioDevice(device.ID, device.FriendlyName, kind, status, ReadFormat(device));
+        return new AudioDevice(device.ID, device.FriendlyName, kind, status, ReadFormat(device), ReadConnector(device));
     }
+
+    /// <summary>Tipus de connector (D-038), segons el «form factor» de Windows.</summary>
+    private static DeviceConnector ReadConnector(MMDevice device)
+    {
+        try
+        {
+            var key = PropertyKeys.PKEY_AudioEndpoint_FormFactor;
+            if (!device.Properties.Contains(key)) return DeviceConnector.Unknown;
+            return ConnectorFromFormFactor(Convert.ToInt32(device.Properties[key].Value));
+        }
+        catch (Exception)
+        {
+            return DeviceConnector.Unknown;
+        }
+    }
+
+    /// <summary>Valors de l'enumeració EndpointFormFactor de Windows. Pública per provar-la sense maquinari.</summary>
+    public static DeviceConnector ConnectorFromFormFactor(int formFactor) => formFactor switch
+    {
+        0 => DeviceConnector.Remote,               // RemoteNetworkDevice
+        1 or 2 or 3 or 5 => DeviceConnector.Analog, // Speakers, LineLevel, Headphones, Headset
+        7 or 8 => DeviceConnector.Digital,         // UnknownDigitalPassthrough, SPDIF
+        9 => DeviceConnector.Hdmi,                 // DigitalAudioDisplayDevice
+        _ => DeviceConnector.Unknown,
+    };
 
     /// <summary>
     /// Format triat a Windows (Propietats → Opcions avançades). Si no n'hi ha cap de desat,

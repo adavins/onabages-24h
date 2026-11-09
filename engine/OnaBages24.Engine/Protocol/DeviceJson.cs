@@ -15,6 +15,7 @@ public static class DeviceJson
         ["kind"] = device.Kind == DeviceKind.Output ? "output" : "input",
         ["status"] = Status(device.Status),
         ["format"] = Format(device.Format),
+        ["connector"] = device.Connector.ToString().ToLowerInvariant(), // analog, digital, hdmi, remote, unknown (D-038)
     };
 
     /// <summary>Esdeveniment <c>devices.changed</c> amb la llista de canvis.</summary>

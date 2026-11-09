@@ -165,6 +165,27 @@ public sealed class Library(Database database)
         return QueryTracks("WHERE ruta LIKE $v ESCAPE '!' ORDER BY ruta", pattern);
     }
 
+    /// <summary>
+    /// Pistes que cal (tornar a) analitzar amb el nostre analitzador (D-042): punts de RadioDJ o sense punts, amb el
+    /// fitxer disponible i que no siguin streams. Mai les de punts manuals. Per ordre d'id, a partir de <paramref name="afterId"/>.
+    /// </summary>
+    public IReadOnlyList<Track> TracksNeedingCueAnalysis(long afterId, int limit)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                $"SELECT id FROM pista WHERE id > $after AND estat_fitxer = 'OK' AND tipus <> 'STREAM' " +
+                "AND (punts_origen IS NULL OR punts_origen = 'RADIODJ') ORDER BY id LIMIT $limit;");
+            command.Parameters.AddWithValue("$after", afterId);
+            command.Parameters.AddWithValue("$limit", limit);
+            using var reader = command.ExecuteReader();
+            var ids = new List<long>();
+            while (reader.Read()) ids.Add(reader.GetInt64(0));
+            reader.Close();
+            return ids.Select(id => QueryTracks("WHERE id = $v", id)[0]).ToList();
+        }
+    }
+
     public long CountTracks()
     {
         lock (database.Sync)

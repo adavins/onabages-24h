@@ -22,6 +22,23 @@ public enum DeviceStatus
 public sealed record DeviceFormat(int SampleRate, int Bits, int Channels);
 
 /// <summary>
+/// Tipus de connector, segons Windows (<c>PKEY_AudioEndpoint_FormFactor</c>). Serveix per triar la sortida
+/// d'emergència (D-038): primer les analògiques, després les digitals i, al final, HDMI.
+/// </summary>
+public enum DeviceConnector
+{
+    Unknown,
+    /// <summary>Altaveus, sortida de línia, auriculars.</summary>
+    Analog,
+    /// <summary>S/PDIF o un altre connector digital.</summary>
+    Digital,
+    /// <summary>HDMI o DisplayPort (pantalla).</summary>
+    Hdmi,
+    /// <summary>Dispositiu de xarxa o remot (p. ex. l'àudio de l'escriptori remot).</summary>
+    Remote,
+}
+
+/// <summary>
 /// Un dispositiu d'àudio de Windows.
 /// L'<see cref="Id"/> és l'identificador estable de Windows: és el que es desa a la configuració.
 /// </summary>
@@ -30,4 +47,5 @@ public sealed record AudioDevice(
     string Name,
     DeviceKind Kind,
     DeviceStatus Status,
-    DeviceFormat? Format);
+    DeviceFormat? Format,
+    DeviceConnector Connector = DeviceConnector.Unknown);

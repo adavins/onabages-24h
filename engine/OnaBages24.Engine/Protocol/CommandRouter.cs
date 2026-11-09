@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using OnaBages.Audio;
 using OnaBages24.Data;
+using OnaBages24.Engine.Playback;
 
 namespace OnaBages24.Engine.Protocol;
 
@@ -11,21 +12,31 @@ namespace OnaBages24.Engine.Protocol;
 /// </summary>
 public sealed class CommandRouter
 {
+    /// <summary>Clau de la configuració on es desa la sortida (JSON: <c>{ "id": …, "name": … }</c>).</summary>
+    public const string OutputSettingKey = "sortida";
+
     private readonly EngineState _state;
     private readonly Action _requestShutdown;
     private readonly Library? _library;
     private readonly Func<IReadOnlyList<AudioDevice>> _listDevices;
+    private readonly QueuePlayer? _queue;
+    private readonly OutputManager? _outputs;
 
     /// <param name="state">Estat del motor.</param>
     /// <param name="requestShutdown">Atura el motor (s'executa després de respondre).</param>
     /// <param name="library">Biblioteca (les proves que no en necessiten hi passen null).</param>
     /// <param name="listDevices">Dispositius d'àudio. Per defecte, els reals de Windows; les proves en passen una llista inventada.</param>
-    public CommandRouter(EngineState state, Action requestShutdown, Library? library = null, Func<IReadOnlyList<AudioDevice>>? listDevices = null)
+    /// <param name="queue">Cua d'emissió (null a les proves que no en necessiten).</param>
+    /// <param name="outputs">Sortida d'emissió (igual).</param>
+    public CommandRouter(EngineState state, Action requestShutdown, Library? library = null, Func<IReadOnlyList<AudioDevice>>? listDevices = null,
+        QueuePlayer? queue = null, OutputManager? outputs = null)
     {
         _state = state;
         _requestShutdown = requestShutdown;
         _library = library;
         _listDevices = listDevices ?? DeviceList.GetAll;
+        _queue = queue;
+        _outputs = outputs;
     }
 
     public JsonObject Handle(string text)
@@ -64,6 +75,13 @@ public sealed class CommandRouter
                 "engine.shutdown" => Shutdown(),
                 "state.get" => StateGet(),
                 "devices.list" => DevicesList(msg),
+                "output.get" => new JsonObject { ["output"] = QueueJson.Output(Outputs()) },
+                "output.set" => OutputSet(msg),
+                "queue.get" => new JsonObject { ["queue"] = QueueJson.Queue(Queue()) },
+                "queue.insert" => QueueInsert(msg),
+                "queue.remove" => QueueRemove(msg),
+                "player.next" => PlayerNext(msg),
+                "library.list" => LibraryList(msg),
                 _ => null,
             };
 
@@ -138,6 +156,121 @@ public sealed class CommandRouter
             list.Add(DeviceJson.Device(device));
         }
         return new JsonObject { ["devices"] = list };
+    }
+
+    // --- Sortida (D-038) ---
+
+    private OutputManager Outputs() => _outputs ?? throw new BadParamsException("El motor no té sortida d'àudio.");
+
+    private JsonObject OutputSet(JsonObject msg)
+    {
+        var outputs = Outputs();
+        string deviceId = RequireString(msg, "deviceId");
+        var device = _listDevices().FirstOrDefault(d => d.Id == deviceId && d.Kind == DeviceKind.Output)
+            ?? throw new BadParamsException("No existeix aquesta sortida d'àudio.");
+        var configured = new ConfiguredOutput(device.Id, device.Name);
+        _library?.SetSetting(OutputSettingKey, JsonSerializer.Serialize(new { id = configured.Id, name = configured.Name }));
+        outputs.Configure(configured);
+        return new JsonObject { ["output"] = QueueJson.Output(outputs) };
+    }
+
+    // --- Cua ---
+
+    private QueuePlayer Queue() => _queue ?? throw new BadParamsException("El motor no té cua d'emissió.");
+
+    /// <summary>
+    /// Afegeix pistes a la cua: <c>items</c> és una llista de <c>{ "trackId": 12 }</c> (de la biblioteca) o
+    /// <c>{ "path": "D:\…" }</c> (un fitxer que no hi és); <c>position</c> és <c>"end"</c> (per defecte), <c>"next"</c> o un índex.
+    /// </summary>
+    private JsonObject QueueInsert(JsonObject msg)
+    {
+        var queue = Queue();
+        var items = new List<QueueItem>();
+
+        // Per a les proves d'escolta (fase 1): pistes d'una carpeta de la biblioteca, barrejades
+        if (ReadString(msg["folder"]) is { Length: > 0 } folder)
+        {
+            var library = _library ?? throw new BadParamsException("El motor no té biblioteca.");
+            int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 10, 1, 500);
+            var tracks = library.TracksInFolder(folder).Where(t => t.FileState == FileState.Ok).ToList();
+            if (tracks.Count == 0) throw new BadParamsException("No hi ha cap pista disponible en aquesta carpeta de la biblioteca.");
+            items.AddRange(tracks.OrderBy(_ => Random.Shared.Next()).Take(limit).Select(t => QueueItem.FromTrack(t, QueueOrigin.Manual)));
+        }
+        else if (msg["items"] is not JsonArray { Count: > 0 })
+        {
+            throw new BadParamsException("Falta el camp 'items' (llista de pistes) o 'folder'.");
+        }
+
+        foreach (var node in msg["items"] as JsonArray ?? [])
+        {
+            if (node is not JsonObject entry) throw new BadParamsException("Cada element d'items ha de ser un objecte.");
+            if (entry["trackId"] is JsonValue idValue && idValue.TryGetValue(out long trackId))
+            {
+                var track = _library?.GetTrack(trackId) ?? throw new BadParamsException($"No existeix la pista {trackId}.");
+                items.Add(QueueItem.FromTrack(track, QueueOrigin.Manual));
+            }
+            else if (ReadString(entry["path"]) is { Length: > 0 } path)
+            {
+                items.Add(_library?.FindByPath(path) is { } known
+                    ? QueueItem.FromTrack(known, QueueOrigin.Manual)
+                    : new QueueItem { Path = path, Title = System.IO.Path.GetFileNameWithoutExtension(path), Origin = QueueOrigin.Manual });
+            }
+            else throw new BadParamsException("Cada element d'items necessita 'trackId' o 'path'.");
+        }
+
+        switch (msg["position"])
+        {
+            case null:
+            case JsonValue v when v.TryGetValue(out string? p) && p == "end":
+                queue.Enqueue(items.ToArray());
+                break;
+            case JsonValue v when v.TryGetValue(out string? p) && p == "next":
+                queue.Insert(0, items.ToArray());
+                break;
+            case JsonValue v when v.TryGetValue(out int index) && index >= 0:
+                queue.Insert(index, items.ToArray());
+                break;
+            default:
+                throw new BadParamsException("El camp 'position' ha de ser \"end\", \"next\" o un índex (0 = la primera que sonarà).");
+        }
+        return new JsonObject { ["queue"] = QueueJson.Queue(queue) };
+    }
+
+    private JsonObject QueueRemove(JsonObject msg)
+    {
+        var queue = Queue();
+        if (!Guid.TryParse(RequireString(msg, "itemId"), out var itemId) || !queue.Remove(itemId))
+            throw new BadParamsException("Aquest element no és a la cua o ja ha començat a sonar.");
+        return new JsonObject { ["queue"] = QueueJson.Queue(queue) };
+    }
+
+    private JsonObject PlayerNext(JsonObject msg)
+    {
+        var queue = Queue();
+        int fadeMs = ReadInt(msg["fadeMs"]) ?? 1000;
+        if (fadeMs is < 0 or > 10_000) throw new BadParamsException("El camp 'fadeMs' ha de ser entre 0 i 10.000.");
+        queue.Skip(TimeSpan.FromMilliseconds(fadeMs));
+        return new JsonObject { ["queue"] = QueueJson.Queue(queue) };
+    }
+
+    // --- Biblioteca ---
+
+    /// <summary>Pistes d'una carpeta (i subcarpetes), com a molt <c>limit</c> (per defecte 100). De moment, per a les proves.</summary>
+    private JsonObject LibraryList(JsonObject msg)
+    {
+        var library = _library ?? throw new BadParamsException("El motor no té biblioteca.");
+        string folder = RequireString(msg, "folder");
+        int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 100, 1, 1000);
+        var tracks = library.TracksInFolder(folder).Take(limit);
+        return new JsonObject { ["tracks"] = new JsonArray(tracks.Select(t => (JsonNode)QueueJson.Track(t)).ToArray()) };
+    }
+
+    private static string RequireString(JsonObject msg, string field)
+    {
+        string? value = ReadString(msg[field]);
+        if (string.IsNullOrWhiteSpace(value))
+            throw new BadParamsException($"Falta el camp '{field}'.");
+        return value;
     }
 
     /// <summary>Error en els paràmetres d'una ordre: es respon amb el codi <c>bad_params</c>.</summary>

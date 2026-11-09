@@ -1,22 +1,31 @@
 // Prova ràpida del motor des de la línia d'ordres (sense paquets: Node 22 o posterior ja porta WebSocket).
 //
 // Ús:
-//   node tools/prova-motor.mjs [--dades CARPETA] [ordre ...]
+//   node tools/prova-motor.mjs [--dades CARPETA] [--carpeta CARPETA_DE_MUSICA [--quantes N]] [ordre ...]
 //
 // Llegeix el port i el testimoni del fitxer d'execució (engine.json) de la carpeta de dades
-// (per defecte, %ProgramData%\OnaBages24), envia les ordres (per defecte: engine.hello, state.get
+// (per defecte, la carpeta «dades» del repositori), envia les ordres (per defecte: engine.hello, state.get
 // i devices.list) i mostra les respostes i el primer esdeveniment engine.status.
 //
-// Exemple:  node tools/prova-motor.mjs engine.hello devices.list
+// Una ordre pot ser només el nom o un objecte JSON amb els paràmetres (sense "v" ni "id"):
+//   node tools/prova-motor.mjs engine.hello devices.list
+//   node tools/prova-motor.mjs "{\"cmd\":\"queue.insert\",\"items\":[{\"trackId\":12}]}"
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const args = process.argv.slice(2);
-let dataDir = join(process.env.ProgramData ?? 'C:\\ProgramData', 'OnaBages24');
+// Per defecte, la carpeta «dades» del repositori (D-044): aquest fitxer és a tools\
+let dataDir = join(import.meta.dirname, '..', 'dades');
 const commands = [];
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--dades') dataDir = args[++i];
+  // Drecera: --carpeta "O:\musica\BOSSA 9…" [--quantes 10] → afegeix pistes barrejades d'aquesta carpeta a la cua
+  else if (args[i] === '--carpeta') commands.push(JSON.stringify({ cmd: 'queue.insert', folder: args[++i], limit: 10 }));
+  else if (args[i] === '--quantes') {
+    const last = JSON.parse(commands.pop());
+    commands.push(JSON.stringify({ ...last, limit: Number(args[++i]) }));
+  }
   else commands.push(args[i]);
 }
 if (commands.length === 0) commands.push('engine.hello', 'state.get', 'devices.list');
@@ -33,15 +42,20 @@ const socket = new WebSocket(`ws://127.0.0.1:${runtime.port}/ws?token=${encodeUR
 const pending = new Map();
 let statusSeen = false;
 let opened = false;
+// Cada ordre: un nom («engine.hello») o un objecte JSON amb els paràmetres
+const messages = commands.map((text, i) => {
+  const params = text.trim().startsWith('{') ? JSON.parse(text) : { cmd: text };
+  return { v: 1, id: i + 1, ...params };
+});
 // Amb engine.shutdown no arribarà cap engine.status: no cal esperar-lo.
-const waitForStatus = !commands.includes('engine.shutdown');
+const waitForStatus = !messages.some((m) => m.cmd === 'engine.shutdown');
 
 socket.addEventListener('open', () => {
   opened = true;
-  commands.forEach((cmd, i) => {
-    pending.set(i + 1, cmd);
-    socket.send(JSON.stringify({ v: 1, id: i + 1, cmd }));
-  });
+  for (const message of messages) {
+    pending.set(message.id, message.cmd);
+    socket.send(JSON.stringify(message));
+  }
 });
 
 socket.addEventListener('message', (event) => {
