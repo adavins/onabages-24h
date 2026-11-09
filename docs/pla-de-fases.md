@@ -36,7 +36,7 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 
 **Passos** (cadascun compila i té una prova concreta):
 1. ✔ Esquelet i còpia d'`OnaBages.Audio` i `OnaBages.ToneCheck` de Play (`2f1608e`), T-1 i T-2 (D-037).
-2. Notes de disseny (`docs/disseny-motor.md`): mesclador, cua i encadenament, solapament, fils, inici a l'hora exacta.
+2. ✔ Notes de disseny (`docs/disseny-motor.md`, D-039): mesclador, cua i encadenament, solapament, fils, inici a l'hora exacta.
 3. `TrackCuePoints` i analitzador, amb proves amb àudio sintètic.
 4. `OnaBages24.Data`: SQLite (Microsoft.Data.Sqlite), migracions, taules de pistes, classificació, historial i configuració; còpies de seguretat i restauració (D-032).
 5. Importació de RadioDJ des del fitxer `.sql` del backup (fora del repositori, p. ex. `D:\backup`), amb canvi d'arrel i informe. Les carpetes de música són al NAS Synology, compartides pels dos ordinadors de proves.
@@ -92,6 +92,7 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 - Una o dues setmanes a l'ordinador de proves, en paral·lel amb RadioDJ i amb la mateixa programació.
 - Llista de diferències i correccions.
 - Instal·lació al PC 24h, amb RadioDJ preparat per tornar-hi si cal.
+- Instal·lador amb sons i rotació de mostra per a les instal·lacions noves (mode de demostració, D-038).
 
 **Criteri de tancament:** decisió de l'emissora de deixar RadioDJ.
 

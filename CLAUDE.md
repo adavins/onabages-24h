@@ -45,7 +45,7 @@ Electron (app/) ── WebSocket 127.0.0.1 + testimoni ── Motor .NET (engine
 Les d'Ona Bages Play continuen vigents:
 - El **fil d'àudio** no pot crear objectes a cada crida, bloquejar, esperar disc o xarxa, ni escriure registres. La lectura de fitxers i de streams va en fils separats, amb memòria intermèdia.
 - Un error en un flux **no pot afectar els altres** ni fer caure el procés: es converteix en un estat d'error i un esdeveniment.
-- Dispositius en mode compartit de WASAPI, identificats per id de Windows i, com a alternativa, pel nom. Mai el «dispositiu predeterminat» per a la sortida d'emissió.
+- Dispositius en mode compartit de WASAPI, identificats per id de Windows i, com a alternativa, pel nom. Mai el «dispositiu predeterminat» per a la sortida d'emissió. Si la sortida configurada no hi és, s'emet per una **sortida d'emergència** (la primera analògica activa) amb avís, mai en silenci (D-038; `docs/disseny-motor.md`, secció 6).
 
 Específiques d'Ona Bages 24h:
 - **Una sola sortida** amb mesclador intern (D-005). El processador d'àudio va a la sortida.
