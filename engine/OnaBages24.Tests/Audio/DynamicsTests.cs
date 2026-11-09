@@ -232,7 +232,10 @@ public class DynamicsTests
     {
         var dynamics = new DynamicsProcessor(Rate, DynamicsSettings.SqrSoftLaCentral);
         var buffer = Sine(-3, 1);
-        dynamics.Process(buffer.AsSpan(0, 960)); // escalfar
+        // Escalfar amb les mateixes crides que es mesuren: la primera crida d'un mètode pot crear objectes interns
+        // de .NET, i llavors la prova fallava de tant en tant (24h, fase 1, pas 3).
+        ProcessInBlocks(dynamics, buffer);
+        dynamics.TakeMaxReductionDb();
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         ProcessInBlocks(dynamics, buffer);
