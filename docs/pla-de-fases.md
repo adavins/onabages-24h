@@ -34,6 +34,19 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 
 **Criteri de tancament:** 48 hores seguides sonant amb AutoDJ a l'ordinador de proves, sense talls (comprovat amb `OnaBages.ToneCheck` o equivalent) i amb el títol actualitzat per a BUTT.
 
+**Passos** (cadascun compila i té una prova concreta):
+1. ✔ Esquelet i còpia d'`OnaBages.Audio` i `OnaBages.ToneCheck` de Play (`2f1608e`), T-1 i T-2 (D-037).
+2. Notes de disseny (`docs/disseny-motor.md`): mesclador, cua i encadenament, solapament, fils, inici a l'hora exacta.
+3. `TrackCuePoints` i analitzador, amb proves amb àudio sintètic.
+4. `OnaBages24.Data`: SQLite (Microsoft.Data.Sqlite), migracions, taules de pistes, classificació, historial i configuració; còpies de seguretat i restauració (D-032).
+5. Importació de RadioDJ des del fitxer `.sql` del backup (fora del repositori, p. ex. `D:\backup`), amb canvi d'arrel i informe. Les carpetes de música són al NAS Synology, compartides pels dos ordinadors de proves.
+6. Procés del motor, WebSocket amb testimoni i `docs/protocol.md`.
+7. Mesclador, sortida WASAPI i cua amb encadenament, solapament i origen de cada element (D-034).
+8. AutoDJ amb una rotació importada; arrencada automàtica.
+9. Historial i `NowPlaying.txt` amb plantilla.
+10. Interfície mínima (Electron), oberta sense contrasenya (D-035).
+11. Prova de 48 hores: primer a l'ordinador del desenvolupador, després a un altre ordinador de proves.
+
 ## Fase 2 — Planificador i puntualitat
 
 - Esdeveniments amb modes, accions i recurrències (`docs/planificador.md`, seccions 2–4 i 12).

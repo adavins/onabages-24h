@@ -1,0 +1,12 @@
+<Project>
+  <!-- Configuració comuna a tots els projectes del motor d'Ona Bages 24h -->
+  <PropertyGroup>
+    <!-- Només Windows: l'àudio fa servir WASAPI a través de NAudio -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Version>0.1.0</Version>
+    <Product>Ona Bages 24h</Product>
+  </PropertyGroup>
+</Project>

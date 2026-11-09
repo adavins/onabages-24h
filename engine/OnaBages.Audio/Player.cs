@@ -1,0 +1,1253 @@
+using System.Collections.Concurrent;
+
+namespace OnaBages.Audio;
+
+/// <summary>Estats del reproductor (especificació 6.5).</summary>
+public enum PlayerState
+{
+    /// <summary>Encara no ha sonat res (o la llista és buida).</summary>
+    Empty,
+    /// <summary>Pista preparada i a punt per sonar (p. ex. després de Reintentar).</summary>
+    Ready,
+    Playing,
+    Paused,
+    /// <summary>
+    /// Aturat: la pista s'ha acabat (avanç manual) o s'ha premut Stop. La pista queda com a
+    /// «última reproduïda»; Play fa sonar la següent (o la del cue).
+    /// </summary>
+    Ended,
+    /// <summary>Dispositiu no disponible o fitxer il·legible. Es conserva la pista i la posició.</summary>
+    Error,
+}
+
+/// <summary>Ordre que no es pot fer en l'estat actual. El missatge és per a l'operador.</summary>
+public sealed class PlayerCommandException(string message) : Exception(message);
+
+/// <summary>
+/// Un reproductor: una llista, una sortida, els seus propis fils.
+///
+/// Fils que hi intervenen:
+/// - <b>ordres</b> (des del WebSocket) i <see cref="Tick"/>: sempre dins del bloqueig <c>_sync</c>;
+/// - <b>lectura</b>: un fil propi que descodifica el fitxer i omple la memòria intermèdia.
+///   Quan una pista s'acaba i n'ha de venir una altra (bucle o avanç automàtic), hi continua
+///   escrivint la següent sense tancar la sortida: no hi ha silenci entre pistes;
+/// - <b>àudio</b>: el de Windows, que només toca <see cref="PlayerStream"/>.
+///
+/// Un error d'aquest reproductor el posa en estat <see cref="PlayerState.Error"/>,
+/// però no llança res cap als altres reproductors ni atura el motor.
+/// </summary>
+public sealed class Player : IDisposable
+{
+    /// <summary>Segons de so que el fil de lectura intenta tenir preparats.</summary>
+    public const int BufferSeconds = 5;
+
+    /// <summary>
+    /// Quan s'acaba de llegir una pista, el fil de lectura espera que en quedi aquest so per sonar
+    /// abans de decidir si n'encadena una altra. Així els canvis de cue, bucle o avanç automàtic
+    /// fets fins a aquest moment encara compten.
+    /// </summary>
+    public static readonly TimeSpan DecideBeforeEnd = TimeSpan.FromSeconds(1);
+
+    /// <summary>Volum mínim del fader: en aquest punt el reproductor queda en silenci.</summary>
+    public const double MinVolumeDb = -60;
+
+    private const int ReadChunkSamples = 8192;
+    private const string DeviceLostMessage = "Dispositiu no disponible: s'ha desconnectat o Windows l'ha reconfigurat.";
+
+    private readonly Func<string, IAudioOutput> _openOutput;
+    private readonly Lock _sync = new();
+
+    private IAudioOutput? _output;
+    private PlayerStream? _stream;
+    private SampleRingBuffer? _ring;
+    private Thread? _readerThread;
+    private volatile bool _stopReader;
+    private volatile Exception? _readerError;
+    private volatile Exception? _outputError;
+    private int _underrunsBefore; // talls de pistes anteriors (cada preparació crea un PlayerStream nou)
+    private TimeSpan _keptPosition; // posició conservada quan no hi ha sortida oberta (p. ex. en error)
+    private TimeSpan _startOffset;  // on ha començat a llegir la pista actual (0, o la posició en saltar/reintentar)
+    private long _trackStartFrame;  // mostra de la sortida on ha començat la pista actual
+    private string? _format;        // format de la pista actual (es conserva si s'esborra de la llista)
+    private bool _changed;
+
+    /// <summary>Pistes encadenades pel fil de lectura que encara no han començat a sonar.</summary>
+    private readonly ConcurrentQueue<Transition> _transitions = new();
+
+    private sealed record Transition(long StartFrame, PlaylistItem Item, TimeSpan Duration, double? NormalizationDb, TimeSpan StartOffset);
+
+    /// <param name="id">Identificador del reproductor ("1", "2"...).</param>
+    /// <param name="openOutput">Obre una sortida per identificador de dispositiu. Per defecte, WASAPI.</param>
+    /// <param name="analyzer">Comprova les pistes de la llista en segon pla.</param>
+    public Player(string id, Func<string, IAudioOutput>? openOutput = null, TrackAnalyzer? analyzer = null)
+    {
+        Id = id;
+        _openOutput = openOutput ?? (deviceId => WasapiAudioOutput.Open(deviceId));
+        Playlist = new Playlist(analyzer);
+    }
+
+    public string Id { get; }
+    public PlayerState State { get; private set; } = PlayerState.Empty;
+    public string? DeviceId { get; private set; }
+    public Playlist Playlist { get; }
+
+    /// <summary>Pista de la llista que sona (o preparada, en pausa, en error). Null si no n'hi ha.</summary>
+    public string? CurrentItemId { get; private set; }
+
+    /// <summary>Última pista que ha sonat (es marca en blau). Play fa sonar la següent.</summary>
+    public string? LastPlayedId { get; private set; }
+
+    /// <summary>Fitxer de la pista actual.</summary>
+    public string? FilePath { get; private set; }
+
+    public TimeSpan Duration { get; private set; }
+
+    /// <summary>Format abreujat de la pista actual (p. ex. «MP3 192 kbps estèreo 44,1 kHz»), si ja es coneix.</summary>
+    public string? Format
+    {
+        get
+        {
+            lock (_sync)
+                return Playlist.Find(CurrentItemId)?.Format ?? (CurrentItemId is null ? null : _format);
+        }
+    }
+
+    /// <summary>Volum en dB, de <see cref="MinVolumeDb"/> (silenci) a 0 (sense canvi). En arrencar, sempre 0.</summary>
+    public double VolumeDb { get; private set; }
+
+    /// <summary>Motiu de l'error, en català, per a l'operador.</summary>
+    public string? ErrorMessage { get; private set; }
+
+    /// <summary>Detall tècnic de l'error (sovint en anglès, de Windows). Només per al registre del motor.</summary>
+    public string? ErrorDetail { get; private set; }
+
+    /// <summary>Posició dins la pista actual (el que ja s'ha enviat a la targeta).</summary>
+    public TimeSpan Position
+    {
+        get { lock (_sync) return CurrentPosition(); }
+    }
+
+    /// <summary>Talls des que es va crear el reproductor (la sortida va demanar dades i no n'hi havia).</summary>
+    public int Underruns
+    {
+        get { lock (_sync) return _underrunsBefore + (_stream?.Underruns ?? 0); }
+    }
+
+    /// <summary>Es dispara quan canvia l'estat, la pista, el dispositiu, el volum o l'error.</summary>
+    public event Action<Player>? StateChanged;
+
+    // -----------------------------------------------------------------------
+    // Ordres
+    // -----------------------------------------------------------------------
+
+    /// <summary>Canvia el volum (en qualsevol estat, també mentre sona). Fora de marge, es queda al límit.</summary>
+    public void SetVolume(double db)
+    {
+        lock (_sync)
+        {
+            VolumeDb = Math.Round(Math.Clamp(db, MinVolumeDb, 0), 1);
+            if (_stream is not null)
+                _stream.Gain = GainFor(VolumeDb);
+            _changed = true;
+        }
+        RaiseStateChanged();
+    }
+
+    /// <summary>
+    /// Compressor/limitador del reproductor (fase 4, pas 4b; D-067). Es conserva d'una pista a l'altra.
+    /// </summary>
+    public DynamicsSettings Dynamics { get; private set; } = new();
+
+    /// <summary>Canvia el compressor/limitador (en qualsevol estat; si sona, s'aplica de seguida i sense clics).</summary>
+    public void SetDynamics(DynamicsSettings settings)
+    {
+        lock (_sync)
+        {
+            Dynamics = settings.Clamped();
+            if (_stream is not null)
+                _stream.Dynamics.Settings = Dynamics;
+            _changed = true;
+        }
+        RaiseStateChanged();
+    }
+
+    // --- Encadenament amb fos (fase 5; D-077) ---
+
+    /// <summary>Durada màxima del fos entre pistes encadenades.</summary>
+    public const int MaxCrossfadeMs = 10_000;
+
+    private volatile int _crossfadeMs;
+
+    /// <summary>
+    /// Fos entre pistes que s'encadenen soles (avanç automàtic), en mil·lisegons. 0 (per defecte) = sense fos.
+    /// No s'aplica als bucles ni quan es fa sonar una pista a mà. Es llegeix en començar cada pista.
+    /// </summary>
+    public int CrossfadeMs => _crossfadeMs;
+
+    /// <summary>Canvia la durada del fos (fora de marge, al límit). S'aplica a partir de la pista següent.</summary>
+    public void SetCrossfade(int ms)
+    {
+        lock (_sync)
+        {
+            _crossfadeMs = Math.Clamp(ms, 0, MaxCrossfadeMs);
+            _changed = true;
+        }
+        RaiseStateChanged();
+    }
+
+    /// <summary>Mostres (estèreo intercalades) que dura el fos a aquesta freqüència.</summary>
+    private int CrossfadeSamples(int sampleRate) => (int)((long)_crossfadeMs * sampleRate / 1000) * 2;
+
+    // --- Retall automàtic de silencis (fase 5, pas 8b; D-080) ---
+
+    /// <summary>Ajustos del retall: llindar (dBFS, un de <see cref="TrackLoudness.SilenceThresholdsDb"/>) i marges en ms.</summary>
+    public readonly record struct TrimSettings(bool Enabled, int ThresholdDb = -60, int LeadMs = 10, int TailMs = 50);
+
+    public const int MaxTrimMarginMs = 2000;
+
+    private volatile TrimSettingsBox _trim = new(new TrimSettings(false));
+
+    /// <summary>Capsa immutable perquè el fil de lectura llegeixi els ajustos d'un sol cop (sense bloqueig).</summary>
+    private sealed record TrimSettingsBox(TrimSettings Value);
+
+    /// <summary>Retall de silencis del reproductor. Desactivat per defecte.</summary>
+    public TrimSettings Trim => _trim.Value;
+
+    /// <summary>
+    /// Activa o desactiva el retall i en fixa el llindar i els marges (fora de marge, al límit; un llindar
+    /// que no és dels que es mesuren, el més proper). S'aplica a partir de la pista següent.
+    /// </summary>
+    public void SetTrim(TrimSettings settings)
+    {
+        int threshold = TrackLoudness.SilenceThresholdsDb.MinBy(t => Math.Abs(t - settings.ThresholdDb));
+        var clean = new TrimSettings(settings.Enabled, threshold,
+            Math.Clamp(settings.LeadMs, 0, MaxTrimMarginMs), Math.Clamp(settings.TailMs, 0, MaxTrimMarginMs));
+        lock (_sync)
+        {
+            _trim = new TrimSettingsBox(clean);
+            _changed = true;
+        }
+        RaiseStateChanged();
+    }
+
+    /// <summary>
+    /// On comença i on acaba de sonar una pista: amb el retall, del primer so (menys el marge) a l'últim
+    /// (més el marge); si no, de <paramref name="requestedStart"/> al final. Si se n'ha demanat un començament
+    /// concret (p. ex. un salt), es respecta. Es pot cridar des del fil de lectura (llegeix els ajustos d'un cop).
+    /// </summary>
+    private (TimeSpan Start, TimeSpan? End, bool Exact) TrimFor(PlaylistItem item, TimeSpan requestedStart)
+    {
+        var trim = _trim.Value;
+        if (!trim.Enabled || item.Sound is null) return (requestedStart, null, false);
+        SoundBounds? bounds = null;
+        foreach (var b in item.Sound)
+        {
+            if (b.ThresholdDb == trim.ThresholdDb) bounds = b;
+        }
+        if (bounds is not { } sound) return (requestedStart, null, false); // tot silenci, o sense anàlisi: no es toca
+
+        var end = TimeSpan.FromSeconds(sound.End + trim.TailMs / 1000.0);
+        if (requestedStart > TimeSpan.Zero) return (requestedStart, end, false);
+        var start = TimeSpan.FromSeconds(Math.Max(0, sound.Start - trim.LeadMs / 1000.0));
+        return (start, end, start > TimeSpan.Zero);
+    }
+
+    /// <summary>Quantes mostres per canal es poden llegir d'una pista que comença a <paramref name="start"/> (−1 = fins al final).</summary>
+    private static long FramesUntil(TimeSpan start, TimeSpan? end, int sampleRate) =>
+        end is { } e ? Math.Max(0, (long)Math.Round((e - start).TotalSeconds * sampleRate)) : -1;
+
+    /// <summary>
+    /// Obre una pista per al fil de lectura: des de <paramref name="start"/> (a la mostra exacta si
+    /// <paramref name="exact"/>) i, amb el retall, fins a <paramref name="end"/>.
+    /// </summary>
+    /// <exception cref="AudioFileException">Si no es pot llegir.</exception>
+    private TrackReader OpenTrack(PlaylistItem item, int sampleRate, TimeSpan start, TimeSpan? end, bool exact)
+    {
+        var source = AudioFileSource.Open(item.Path, sampleRate, start, exact);
+        // El final no pot passar del final del fitxer.
+        TimeSpan? limit = end is { } e && e < source.Duration ? e : null;
+        // Anivellador (D-135): llegeix tant per endavant com cal, a sobre de la lectura de la pista. Sense bloqueig
+        // (també el crida el fil de lectura): són valors simples que es llegeixen sencers.
+        // En desactivar el NIV mentre sona (D-153), la pista es torna a obrir amb un anivellador que va tornant a 0 dB.
+        var change = _levelerSwitch;
+        var leveler = _level || change is { Release: true } ? (NormalizationTargetLufs, _levelerMaxBoostDb) : ((double, double)?)null;
+        return new TrackReader(source, start, limit is { } l ? l : source.Duration, FramesUntil(start, limit, sampleRate), sampleRate,
+            leveler, change);
+    }
+
+    /// <summary>
+    /// Una pista oberta per al fil de lectura: no en dona més mostres de les que toquen (amb el retall,
+    /// para a l'últim so més el marge). <see cref="Duration"/> és on s'acaba de sonar (temps del fitxer).
+    /// </summary>
+    private sealed class TrackReader : IDisposable
+    {
+        private readonly AudioFileSource _source;
+        private readonly TimeSpan _start, _duration;
+        private long _remaining; // mostres (estèreo)
+        private readonly Leveler? _leveler;
+
+        /// <param name="leveler">Objectiu (LUFS) i màxim que pot pujar l'anivellador; null = sense anivellador.</param>
+        /// <param name="levelerSwitch">
+        /// Només en activar o desactivar el NIV mentre sona (D-153): el guany amb què comença l'anivellador (el que
+        /// s'aplicava fins ara) i, en desactivar-lo, que vagi tornant a 0 dB. Així el volum no salta.
+        /// </param>
+        public TrackReader(AudioFileSource source, TimeSpan start, TimeSpan duration, long frames, int sampleRate,
+            (double TargetLufs, double MaxBoostDb)? leveler, (double StartDb, bool Release)? levelerSwitch = null)
+        {
+            _source = source;
+            _start = start;
+            _duration = duration;
+            _remaining = frames < 0 ? long.MaxValue : frames * 2;
+            if (leveler is { } l)
+            {
+                _leveler = new Leveler(ReadRaw, sampleRate, l.TargetLufs, l.MaxBoostDb, startGainDb: levelerSwitch?.StartDb);
+                if (levelerSwitch is { Release: true }) _leveler.Release();
+            }
+        }
+
+        /// <summary>Guany de l'anivellador al punt que s'acaba de llegir (null sense anivellador).</summary>
+        public double? LevelerGainDb => _leveler?.CurrentGainDb;
+
+        /// <summary>On comença a sonar (temps del fitxer).</summary>
+        public TimeSpan Start => _start;
+
+        /// <summary>On s'acaba de sonar (temps del fitxer): el final o, amb el retall, l'últim so més el marge.</summary>
+        public TimeSpan Duration => _duration;
+
+        public int Read(Span<float> buffer) => _leveler is { } l ? l.Read(buffer) : ReadRaw(buffer);
+
+        private int ReadRaw(Span<float> buffer)
+        {
+            if (_remaining <= 0) return 0;
+            int read = _source.Read(buffer[..(int)Math.Min(buffer.Length, _remaining)]);
+            _remaining -= read;
+            return read;
+        }
+
+        public void Dispose() => _source.Dispose();
+    }
+
+    // --- Normalització de sonoritat (fase 4, pas 5b; D-071) ---
+
+    /// <summary>Guany màxim de la normalització: que no pugi massa el soroll de les pistes molt fluixes.</summary>
+    public const double MaxNormalizationBoostDb = 10;
+
+    /// <summary>Iguala la sonoritat de les pistes a <see cref="NormalizationTargetLufs"/>. S'aplica a partir de la pista següent.</summary>
+    public bool Normalize { get; private set; }
+
+    /// <summary>Objectiu de la normalització (LUFS).</summary>
+    public double NormalizationTargetLufs { get; private set; } = -12;
+
+    /// <summary>Guany de normalització de la pista que sona (dB), o null si no se n'aplica cap.</summary>
+    public double? NormalizationDb { get; private set; }
+
+    /// <summary>Activa o desactiva la normalització i en fixa l'objectiu. No canvia la pista que ja sona.</summary>
+    public void SetNormalization(bool enabled, double targetLufs)
+    {
+        lock (_sync)
+        {
+            Normalize = enabled;
+            NormalizationTargetLufs = targetLufs;
+            _changed = true;
+        }
+        RaiseStateChanged();
+    }
+
+    /// <summary>Guany per a una pista amb la configuració d'ara (dB), o null si no se n'hi aplica cap.</summary>
+    /// Si sona un sol canal pels dos (D-132), sona 3 dB més fort del que s'ha mesurat (amb el canal buit): es compta.
+    /// Amb l'anivellador (D-135) no se n'aplica cap: ja porta la pista a l'objectiu (seria corregir-ho dues vegades).
+    private double? NormalizationFor(PlaylistItem item) =>
+        Normalize && !_level && item.LoudnessLufs is { } lufs
+            ? Math.Round(Math.Min(MaxNormalizationBoostDb, NormalizationTargetLufs - lufs - ChannelFixLoudnessDb(item)), 1)
+            : null;
+
+    // --- Anivellador (fase 5, pas 30b; D-135) ---
+
+    private volatile bool _level;
+    private double _levelerMaxBoostDb = Leveler.DefaultMaxBoostDb;
+    // Guany de l'anivellador per fotograma escrit (el fil de lectura va uns segons per davant): Tick agafa el del que sona.
+    private readonly ConcurrentQueue<(long Frame, double GainDb)> _levelerGains = new();
+
+    /// <summary>L'anivellador és activat (iguala el volum de la parla mentre sona).</summary>
+    public bool Level => _level;
+
+    /// <summary>El màxim que pot pujar l'anivellador (dB).</summary>
+    public double LevelerMaxBoostDb => _levelerMaxBoostDb;
+
+    /// <summary>Guany de l'anivellador al punt que sona ara (dB), o null si no n'hi ha.</summary>
+    public double? LevelerGainDb { get; private set; }
+
+    /// <summary>
+    /// Activa o desactiva l'anivellador i en fixa el màxim. Si hi ha una pista carregada i canvia l'interruptor, s'aplica
+    /// de seguida: sonant, es torna a obrir on és amb un fos de <see cref="LevelerSwitchFadeMs"/> (no se sent el canvi);
+    /// en pausa o preparada, es torna a obrir al mateix punt. El màxim nou, a partir de la pista següent.
+    /// </summary>
+    public void SetLeveler(bool enabled, double maxBoostDb)
+    {
+        lock (_sync)
+        {
+            _levelerMaxBoostDb = Math.Clamp(double.IsFinite(maxBoostDb) ? maxBoostDb : Leveler.DefaultMaxBoostDb, 0, Leveler.MaxMaxBoostDb);
+            bool changed = enabled != _level;
+            // El guany que s'aplica ara: el de l'anivellador o, sense, el de la normalització (D-153).
+            double before = (_level ? LevelerGainDb : NormalizationDb) ?? 0;
+            _level = enabled;
+            if (!enabled) LevelerGainDb = null;
+            _changed = true;
+            if (changed && CurrentItemId is { } id && Playlist.Find(id) is { } item)
+            {
+                // On sona ara la pista (D-153): la que es torna a obrir hi quedarà alineada a la mostra. Una sola lectura del
+                // comptador per a la posició i per a l'alineació (D-154): el fil d'àudio el va avançant mentrestant.
+                long alignFrame = _stream is { SwitchPending: false } ? _stream.FramesPlayed : -1;
+                long alignRead = alignFrame >= 0 && _ring is not null ? _ring.ReadCount : -1; // on és, a la memòria (D-154)
+                var position = alignFrame >= 0 ? CurrentPosition(alignFrame) : CurrentPosition();
+                if (State == PlayerState.Playing && _stream is not null && _output is not null)
+                {
+                    // Sense salt de volum (D-153): l'anivellador de la pista que es torna a obrir comença al guany d'ara.
+                    // En activar-lo, va cap al seu; en desactivar-lo, torna a 0 dB (a sobre de la normalització, si n'hi ha).
+                    double after = enabled ? 0 : NormalizationFor(item) ?? 0;
+                    _levelerSwitch = (before - after, !enabled);
+                    try { CrossfadeTo(item, position, LevelerSwitchFadeMs, alignFrame, alignRead); }
+                    finally { _levelerSwitch = null; }
+                }
+                else if (State is PlayerState.Ready or PlayerState.Paused)
+                {
+                    var previous = State;
+                    PrepareItem(id, position);
+                    if (State == PlayerState.Ready && previous == PlayerState.Paused) SetState(PlayerState.Paused);
+                }
+            }
+        }
+        RaiseStateChanged();
+    }
+
+    /// <summary>
+    /// Quantes mostres per canal està desplaçada la pista que es torna a obrir respecte de la que sonava (D-154): positiu, la
+    /// nova comença més tard. Compara, en mono, uns 85 ms de la nova (després dels primers 85 ms, on el descodificador i el
+    /// remostrejador encara s'assenten) amb la que sonava, buscant fins a ±30 ms. Si no s'assemblen prou (silenci, soroll) o no
+    /// hi ha prou so a les memòries, 0. Fil de les ordres (no el d'àudio): crea objectes i triga uns pocs mil·lisegons.
+    /// </summary>
+    public static int FindOffset(SampleRingBuffer oldRing, long oldRead, SampleRingBuffer newRing, int sampleRate)
+    {
+        const int Skip = 4096, Length = 4096;
+        int search = sampleRate * 30 / 1000;
+        var fresh = new float[Length * 2];
+        var before = new float[(Length + 2 * search) * 2];
+        if (!newRing.Peek(newRing.ReadCount + 2L * Skip, fresh)) return 0;
+        if (!oldRing.Peek(oldRead + 2L * (Skip - search), before)) return 0;
+
+        var x = new double[Length];
+        var y = new double[Length + 2 * search];
+        for (int i = 0; i < x.Length; i++) x[i] = fresh[i * 2] + fresh[i * 2 + 1];
+        for (int i = 0; i < y.Length; i++) y[i] = before[i * 2] + before[i * 2 + 1];
+        double ex = 0;
+        foreach (double v in x) ex += v * v;
+        if (ex < 1e-6) return 0; // silenci: no hi ha res a comparar (ni es notaria)
+
+        // Correlació normalitzada per a cada desplaçament; l'energia de la finestra de «before» es va actualitzant.
+        double ey = 0;
+        for (int i = 0; i < Length; i++) ey += y[i] * y[i];
+        double best = -1;
+        int bestLag = search;
+        for (int lag = 0; lag <= 2 * search; lag++)
+        {
+            if (lag > 0) ey += y[lag + Length - 1] * y[lag + Length - 1] - y[lag - 1] * y[lag - 1];
+            double dot = 0;
+            for (int i = 0; i < Length; i++) dot += x[i] * y[i + lag];
+            double score = ey > 1e-9 ? dot / Math.Sqrt(ex * ey) : 0;
+            if (score > best) { best = score; bestLag = lag; }
+        }
+        return best >= 0.9 ? bestLag - search : 0;
+    }
+
+    /// <summary>Fos en activar o desactivar l'anivellador mentre sona (ms).</summary>
+    public const int LevelerSwitchFadeMs = 100;
+
+    // Només mentre es torna a obrir la pista en activar o desactivar el NIV (D-153): vegeu TrackReader. Dins de _sync.
+    private (double StartDb, bool Release)? _levelerSwitch;
+
+    /// <summary>Quant més fort sona la pista amb la correcció de canals: un canal pels dos, el doble de potència (+3 dB).</summary>
+    private static double ChannelFixLoudnessDb(PlaylistItem item) =>
+        item.ChannelFix is ChannelFix.UseLeft or ChannelFix.UseRight ? 10 * Math.Log10(2) : 0;
+
+    // Correcció de canals que ja s'ha aplicat (Tick només la torna a posar si canvia: el botó o una anàlisi que arriba tard).
+    private string? _channelFixItem;
+    private ChannelFix _channelFixApplied;
+
+    /// <summary>Posa al fil d'àudio la correcció de canals de la pista que sona, si ha canviat (dins de _sync).</summary>
+    private void UpdateChannelFix()
+    {
+        if (_stream is null || CurrentItemId is null) return;
+        var fix = Playlist.Find(CurrentItemId)?.ChannelFix ?? ChannelFix.None;
+        if (fix == _channelFixApplied && CurrentItemId == _channelFixItem) return;
+        _channelFixItem = CurrentItemId;
+        _channelFixApplied = fix;
+        // Si ja n'hi ha una de programada (una pista que encadena), és la que val: no es trepitja.
+        if (!_stream.ChannelFixScheduled) _stream.ChannelFix = fix;
+    }
+
+    /// <summary>Abaixada màxima del compressor/limitador des de l'última crida (dB, ≥ 0), per a l'indicador.</summary>
+    public float TakeGainReductionDb()
+    {
+        var stream = _stream;
+        return stream is null ? 0f : stream.Dynamics.TakeMaxReductionDb();
+    }
+
+    /// <summary>Pic del que ha sortit des de l'última crida, per al mesurador (0 si no sona).</summary>
+    public (float Left, float Right) TakePeaks()
+    {
+        var stream = _stream;
+        return stream is null ? (0f, 0f) : stream.Meter.Take();
+    }
+
+    /// <summary>Guany lineal d'un volum en dB. Al mínim del fader, silenci.</summary>
+    public static float GainFor(double db) =>
+        db <= MinVolumeDb ? 0f : (float)Math.Pow(10, db / 20);
+
+    /// <summary>Assigna la sortida. No es pot canviar mentre sona.</summary>
+    public void SetDevice(string deviceId)
+    {
+        lock (_sync)
+        {
+            if (State == PlayerState.Playing)
+                throw new PlayerCommandException("No es pot canviar la sortida mentre sona. Atura'l primer.");
+
+            DeviceId = deviceId;
+            _changed = true;
+
+            // Si hi havia una pista preparada, es torna a preparar per la sortida nova
+            // (des del mateix punt si era en pausa o en error).
+            if (CurrentItemId is not null && State is PlayerState.Ready or PlayerState.Paused or PlayerState.Error)
+            {
+                var resumeAt = State is PlayerState.Paused or PlayerState.Error ? CurrentPosition() : _startOffset;
+                bool wasPaused = State == PlayerState.Paused;
+                PrepareItem(CurrentItemId, resumeAt);
+                if (wasPaused && State == PlayerState.Ready) SetState(PlayerState.Paused);
+            }
+        }
+        RaiseStateChanged();
+    }
+
+    /// <summary>
+    /// Afegeix un fitxer al final de la llista i el deixa preparat per sonar (si no sona res).
+    /// Es manté per a la consola de proves i per a les proves; la interfície fa servir la llista.
+    /// </summary>
+    public void Load(string path)
+    {
+        lock (_sync)
+        {
+            if (State == PlayerState.Playing)
+                throw new PlayerCommandException("No es pot carregar una pista mentre sona. Afegeix-la a la llista.");
+            if (DeviceId is null)
+                throw new PlayerCommandException("Cal triar abans una sortida per a aquest reproductor.");
+
+            string id = Playlist.Add([path])[0];
+            ReleaseTrack();
+            PrepareItem(id, TimeSpan.Zero);
+        }
+        RaiseStateChanged();
+    }
+
+    /// <summary>
+    /// Doble clic: atura el que sona (si n'hi ha) i fa sonar aquesta pista des de l'inici
+    /// (o des de <paramref name="startAt"/>: la preescolta, per als botons de salt).
+    /// </summary>
+    public void PlayItem(string itemId, TimeSpan startAt = default)
+    {
+        lock (_sync)
+        {
+            var target = Playlist.Find(itemId)
+                ?? throw new PlayerCommandException("Aquesta pista ja no és a la llista.");
+            if (target.IsSection)
+                throw new PlayerCommandException("Això és un separador de secció: no sona.");
+            if (DeviceId is null)
+                throw new PlayerCommandException("Cal triar abans una sortida per a aquest reproductor.");
+
+            if (CurrentItemId is not null && State is PlayerState.Playing or PlayerState.Paused)
+                LastPlayedId = CurrentItemId;
+            // Una pista nova a mà durant un fade-out: el fade-out es treu (la nova sona al volum normal).
+            CancelFadeOut();
+            // Amb fos configurat i una pista sonant: la nova entra amb fos (D-078). Si no, com sempre.
+            if (State == PlayerState.Playing && _crossfadeMs > 0 && _stream is not null && _output is not null)
+                CrossfadeTo(target, startAt < TimeSpan.Zero ? TimeSpan.Zero : startAt);
+            else
+                StartItem(itemId, startAt);
+        }
+        RaiseStateChanged();
+    }
+
+    /// <summary>
+    /// Play. En pausa o preparat, continua la pista actual. Si no, fa sonar la pista amb cue o,
+    /// si no n'hi ha, la que va després de l'última reproduïda (D-031).
+    /// </summary>
+    public void Play()
+    {
+        lock (_sync)
+        {
+            switch (State)
+            {
+                case PlayerState.Playing:
+                    return;
+                case PlayerState.Error:
+                    throw new PlayerCommandException($"El reproductor té un error: {ErrorMessage} Prem Reintentar o tria una altra sortida.");
+                case PlayerState.Ready or PlayerState.Paused:
+                    StartOutput();
+                    break;
+                default: // Empty, Ended
+                    if (DeviceId is null)
+                        throw new PlayerCommandException("Cal triar abans una sortida per a aquest reproductor.");
+                    string? next = Playlist.CueId ?? Playlist.NextAfter(LastPlayedId);
+                    if (next is null)
+                        throw new PlayerCommandException(Playlist.Items.Count == 0
+                            ? "La llista és buida."
+                            : "S'ha arribat al final de la llista. Fes doble clic a una pista o marca'n una amb cue.");
+                    StartItem(next);
+                    break;
+            }
+        }
+        RaiseStateChanged();
+    }
+
+    public void Pause()
+    {
+        lock (_sync)
+        {
+            if (State != PlayerState.Playing)
+                throw new PlayerCommandException("Només es pot posar en pausa mentre sona.");
+
+            try
+            {
+                _output!.Pause();
+                SetState(PlayerState.Paused);
+            }
+            catch (Exception ex)
+            {
+                FailKeepingTrack(DeviceLostMessage, ex.Message);
+            }
+        }
+        RaiseStateChanged();
+    }
+
+    /// <summary>
+    /// Salta a un punt de la pista actual. Si sonava, continua sonant des d'allà (amb un silenci
+    /// molt curt mentre es torna a obrir la sortida); si era en pausa, hi continua.
+    /// Tornar a començar la pista és saltar a 0.
+    /// </summary>
+    public void Seek(TimeSpan position)
+    {
+        lock (_sync)
+        {
+            if (CurrentItemId is null || State is PlayerState.Empty or PlayerState.Ended or PlayerState.Error)
+                throw new PlayerCommandException("No hi ha cap pista preparada on saltar.");
+
+            var previous = State;
+            if (position < TimeSpan.Zero) position = TimeSpan.Zero;
+            if (position > Duration) position = Duration;
+
+            PrepareItem(CurrentItemId, position);
+            if (State == PlayerState.Ready)
+            {
+                if (previous == PlayerState.Playing) StartOutput();
+                else if (previous == PlayerState.Paused) SetState(PlayerState.Paused);
+            }
+        }
+        RaiseStateChanged();
+    }
+
+    /// <summary>Stop: s'atura la llista. La pista queda com a última reproduïda; Play farà sonar la següent.</summary>
+    public void Stop()
+    {
+        lock (_sync)
+        {
+            if (State is PlayerState.Empty or PlayerState.Ended)
+                return;
+            if (State == PlayerState.Error)
+                throw new PlayerCommandException($"El reproductor té un error: {ErrorMessage} Prem Reintentar o tria una altra sortida.");
+
+            FinishList();
+        }
+        RaiseStateChanged();
+    }
+
+    /// <summary>Durada mínima i màxima del fade-out (pas 20; D-107).</summary>
+    public const int MinFadeOutMs = 500;
+    public const int MaxFadeOutMs = 10_000;
+
+    /// <summary>
+    /// Hi ha un fade-out en marxa: el so baixa i, quan arriba al final, el reproductor s'atura com amb Stop.
+    /// Es treu sol si el reproductor deixa de sonar (pausa, Stop, salt) o si es fa sonar una altra pista.
+    /// </summary>
+    public bool FadingOut { get; private set; }
+
+    /// <summary>
+    /// Fade-out (pas 20; D-107): baixa el so durant <paramref name="ms"/> i després fa Stop. Només mentre sona.
+    /// Si ja n'hi ha un en marxa, no fa res (per aturar de cop, Stop).
+    /// </summary>
+    public void FadeOut(int ms)
+    {
+        lock (_sync)
+        {
+            if (State != PlayerState.Playing || _stream is null || _output is null)
+                throw new PlayerCommandException("Només es pot fer un fade-out mentre sona.");
+            if (FadingOut) return;
+
+            int frames = (int)((long)Math.Clamp(ms, MinFadeOutMs, MaxFadeOutMs) * _output.SampleRate / 1000);
+            _stream.StartFadeOut(frames);
+            FadingOut = true;
+            _changed = true;
+        }
+        RaiseStateChanged();
+    }
+
+    /// <summary>Treu el fade-out en marxa (dins de _sync).</summary>
+    private void CancelFadeOut()
+    {
+        if (!FadingOut) return;
+        _stream?.CancelFadeOut();
+        FadingOut = false;
+        _changed = true;
+    }
+
+    /// <summary>
+    /// Després d'un error, torna a obrir la sortida i el fitxer i deixa el reproductor
+    /// preparat a la <b>mateixa posició</b>. No torna a sonar sol: cal prémer Play.
+    /// </summary>
+    public void Retry()
+    {
+        lock (_sync)
+        {
+            if (State != PlayerState.Error || CurrentItemId is null)
+                throw new PlayerCommandException("Només es pot reintentar quan el reproductor té un error.");
+
+            PrepareItem(CurrentItemId, _keptPosition);
+        }
+        RaiseStateChanged();
+    }
+
+    /// <summary>
+    /// Revisió periòdica (unes 10 vegades per segon), fora del fil d'àudio: detecta el pas
+    /// d'una pista a la següent, el final i els errors del fil de lectura o de la sortida.
+    /// </summary>
+    public void Tick()
+    {
+        lock (_sync)
+        {
+            if (_outputError is { } outputError && State is not (PlayerState.Error or PlayerState.Empty or PlayerState.Ended))
+            {
+                _outputError = null;
+                FailKeepingTrack(DeviceLostMessage, outputError.Message);
+            }
+            else if (_readerError is { } readerError && State is not (PlayerState.Error or PlayerState.Empty or PlayerState.Ended))
+            {
+                _readerError = null;
+                FailKeepingTrack("No s'ha pogut continuar llegint el fitxer: és malmès o ja no és accessible.", readerError.Message);
+            }
+            else if (FadingOut && _stream is { FadeOutFinished: true })
+            {
+                // El fade-out ha arribat al final (ja només surt silenci): s'atura com amb Stop.
+                FinishList();
+            }
+            else if (_stream is not null)
+            {
+                // Pistes encadenades que ja han començat a sonar (bucle o avanç automàtic).
+                while (_transitions.TryPeek(out var next) && _stream.FramesPlayed >= next.StartFrame)
+                {
+                    // Amb un fade-out en marxa, la pista no encadena amb la següent (ni en bucle): s'atura aquí.
+                    if (FadingOut)
+                    {
+                        FinishList();
+                        break;
+                    }
+                    _transitions.TryDequeue(out _);
+
+                    // Per precaució, l'avanç automàtic ja fet es desmarca: la pista no tornarà a
+                    // encadenar sola si es torna a fer sonar (D-033). El bucle sí que es manté.
+                    if (CurrentItemId is not null && CurrentItemId != next.Item.Id
+                        && Playlist.Find(CurrentItemId) is { AutoNext: true })
+                        Playlist.SetFlags(CurrentItemId, autoNext: false);
+
+                    LastPlayedId = CurrentItemId;
+                    SetCurrent(next.Item, next.Duration);
+                    NormalizationDb = next.NormalizationDb;
+                    _startOffset = next.StartOffset; // amb el retall, el primer so (temps del fitxer)
+                    _trackStartFrame = next.StartFrame;
+                    Playlist.ClearCueIf(next.Item.Id);
+                    _changed = true;
+                }
+
+                // Canals (D-132): si s'ha premut el botó o l'anàlisi ha arribat mentre sonava, de seguida.
+                UpdateChannelFix();
+
+                // Anivellador (D-135): el guany del tros que sona ara.
+                while (_levelerGains.TryPeek(out var g) && g.Frame <= _stream.FramesPlayed)
+                {
+                    _levelerGains.TryDequeue(out _);
+                    LevelerGainDb = _level ? g.GainDb : null;
+                }
+
+                if (State == PlayerState.Playing && _stream.PlayedOut)
+                    FinishList();
+            }
+        }
+        RaiseStateChanged();
+    }
+
+    public void Dispose()
+    {
+        lock (_sync)
+        {
+            ReleaseTrack();
+            SetState(PlayerState.Empty);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Interns (sempre dins de _sync)
+    // -----------------------------------------------------------------------
+
+    /// <summary>Posició sense bloqueig (qui la crida ja és dins de _sync).</summary>
+    /// <param name="framesPlayed">El comptador de la sortida ja llegit (D-154: la posició i l'alineació han de sortir de la mateixa
+    /// lectura, perquè el fil d'àudio el va avançant). Sense, es llegeix ara.</param>
+    private TimeSpan CurrentPosition(long? framesPlayed = null)
+    {
+        if (_stream is null || _output is null) return _keptPosition;
+        // Canvi de pista amb fos que el fil d'àudio encara no ha fet: la pista nova comença ara.
+        if (_stream.SwitchPending) return _startOffset;
+        var position = _startOffset + TimeSpan.FromSeconds((double)((framesPlayed ?? _stream.FramesPlayed) - _trackStartFrame) / _output.SampleRate);
+        if (position < TimeSpan.Zero) return TimeSpan.Zero;
+        return position > Duration ? Duration : position;
+    }
+
+    /// <summary>Prepara una pista (des de l'inici, si no es diu res) i la fa sonar. Si tenia el cue, s'apaga.</summary>
+    private void StartItem(string itemId, TimeSpan startAt = default)
+    {
+        PrepareItem(itemId, startAt < TimeSpan.Zero ? TimeSpan.Zero : startAt);
+        if (State != PlayerState.Ready) return; // error en obrir-la: ja ho diu l'estat
+        Playlist.ClearCueIf(itemId);
+        StartOutput();
+    }
+
+    private void StartOutput()
+    {
+        try
+        {
+            WaitForPrefill();
+            _output!.Play();
+            SetState(PlayerState.Playing);
+        }
+        catch (Exception ex)
+        {
+            FailKeepingTrack(DeviceLostMessage, ex.Message);
+        }
+    }
+
+    /// <summary>S'ha acabat (o s'ha premut Stop): la pista queda com a última reproduïda.</summary>
+    private void FinishList()
+    {
+        LastPlayedId = CurrentItemId ?? LastPlayedId;
+        ReleaseTrack();
+        CurrentItemId = null;
+        FilePath = null;
+        Duration = TimeSpan.Zero;
+        _keptPosition = TimeSpan.Zero;
+        SetState(PlayerState.Ended);
+    }
+
+    private void SetCurrent(PlaylistItem item, TimeSpan duration)
+    {
+        CurrentItemId = item.Id;
+        FilePath = item.Path;
+        Duration = duration;
+        _format = item.Format;
+    }
+
+    /// <summary>
+    /// Obre la sortida i la pista, a partir de <paramref name="startAt"/>, i comença a omplir la memòria.
+    /// Si alguna cosa falla, el reproductor queda en Error amb la pista i la posició conservades.
+    /// </summary>
+    private void PrepareItem(string itemId, TimeSpan startAt)
+    {
+        ReleaseTrack();
+        ErrorMessage = null;
+        ErrorDetail = null;
+        _keptPosition = startAt;
+        _startOffset = startAt;
+        _trackStartFrame = 0;
+
+        var item = Playlist.Find(itemId);
+        if (item is not null) Mp3Seek.Prepare(item.Path); // perquè saltar-hi (barra, NIV...) sigui exacte i ràpid (D-155)
+        if (item is null)
+        {
+            // La pista s'ha esborrat de la llista (p. ex. en pausa): ja no es pot tornar a obrir.
+            CurrentItemId = null;
+            FilePath = null;
+            SetState(PlayerState.Ended);
+            return;
+        }
+        SetCurrent(item, item.Duration ?? TimeSpan.Zero);
+
+        // Retall de silencis (D-080): on comença i on acaba de sonar (sense retall, tota la pista).
+        var (start, end, exact) = TrimFor(item, startAt);
+        _keptPosition = start;
+        _startOffset = start;
+
+        TrackReader source;
+        try
+        {
+            _output = _openOutput(DeviceId!);
+            source = OpenTrack(item, _output.SampleRate, start, end, exact);
+        }
+        catch (Exception ex) when (ex is AudioDeviceException or AudioFileException)
+        {
+            ReleaseTrack();
+            if (ex is AudioFileException) Playlist.MarkError(item.Id, ex.Message);
+            Fail(ex.Message, ex.InnerException?.Message);
+            return;
+        }
+
+        Duration = source.Duration;
+        var ring = new SampleRingBuffer(_output.SampleRate * 2 * BufferSeconds);
+        _ring = ring;
+        _stream = new PlayerStream(ring, _output.SampleRate, _output.Channels, GainFor(VolumeDb), Dynamics);
+        _stream.ChannelFix = item.ChannelFix; // D-132
+        _channelFixItem = item.Id;
+        _channelFixApplied = item.ChannelFix;
+
+        var output = _output;
+        output.Stopped += error =>
+        {
+            // Fil de la sortida: només s'apunta; Tick() ho tractarà.
+            // Una sortida antiga (ja substituïda) no pot posar en error la nova.
+            if (error is not null && ReferenceEquals(output, _output)) _outputError = error;
+        };
+        output.Init(_stream);
+
+        _stopReader = false;
+        _readerError = null;
+        _outputError = null;
+        var stream = _stream;
+        int sampleRate = _output.SampleRate;
+        string currentId = item.Id;
+        NormalizationDb = NormalizationFor(item);
+        float gain = GainFor(NormalizationDb ?? 0);
+        _readerThread = new Thread(() => ReaderLoop(source, ring, stream, sampleRate, currentId, gain))
+        {
+            IsBackground = true,
+            Name = $"Reproductor {Id}: lectura",
+        };
+        _levelerGains.Clear(); // el fil nou torna a comptar els fotogrames des de zero
+        LevelerGainDb = null;
+        _readerThread.Start();
+
+        SetState(PlayerState.Ready);
+    }
+
+    /// <summary>
+    /// Fa sonar una altra pista a mà amb fos (fase 5; D-078), sense aturar la sortida: la pista que sona baixa
+    /// mentre la nova puja, durant <see cref="CrossfadeMs"/>. Si la pista nova no es pot obrir, la que sona
+    /// continua com si res (i es diu per què). Dins de _sync, amb la pista sonant.
+    /// </summary>
+    /// <param name="alignFrame">El mateix so al mateix punt (D-153): vegeu <see cref="PlayerStream.SwitchTo"/>. −1: no.</param>
+    /// <param name="alignRead">On era la memòria de la pista que sona quan es va llegir <paramref name="alignFrame"/> (D-154).</param>
+    private void CrossfadeTo(PlaylistItem item, TimeSpan startAt, int? fadeMs = null, long alignFrame = -1, long alignRead = -1)
+    {
+        var oldRing = _ring;
+        var output = _output!;
+        var stream = _stream!;
+        int sampleRate = output.SampleRate;
+
+        // 1. La pista nova s'obre abans de tocar res: si no es pot, la que sona no s'interromp.
+        var (start, end, exact) = TrimFor(item, startAt);
+        startAt = start;
+        TrackReader source;
+        try
+        {
+            source = OpenTrack(item, sampleRate, start, end, exact);
+        }
+        catch (AudioFileException ex)
+        {
+            Playlist.MarkError(item.Id, ex.Message);
+            throw new PlayerCommandException(ex.Message);
+        }
+
+        // 2. S'atura el fil de lectura de la que sona. La seva memòria conserva el que ja hi ha (uns segons):
+        //    és el que sonarà, baixant, durant el fos.
+        _stopReader = true;
+        _readerThread?.Join(TimeSpan.FromSeconds(2));
+        _readerThread = null;
+        _transitions.Clear();
+
+        // 3. Memòria i fil de lectura nous per a la pista nova.
+        var ring = new SampleRingBuffer(sampleRate * 2 * BufferSeconds);
+        _ring = ring;
+        stream.PrepareForNewTrack();
+        _stopReader = false;
+        _readerError = null;
+        string currentId = item.Id;
+        NormalizationDb = NormalizationFor(item);
+        float gain = GainFor(NormalizationDb ?? 0);
+        _readerThread = new Thread(() => ReaderLoop(source, ring, stream, sampleRate, currentId, gain))
+        {
+            IsBackground = true,
+            Name = $"Reproductor {Id}: lectura",
+        };
+        _levelerGains.Clear(); // el fil nou torna a comptar els fotogrames des de zero
+        LevelerGainDb = null;
+        _readerThread.Start();
+
+        // 4. Quan hi ha so preparat, el fil d'àudio hi passa amb el fos.
+        WaitForPrefill();
+        // En un MP3, la pista que es torna a obrir pot començar uns mil·lisegons desplaçada (D-080): es busca on cau de debò
+        // comparant-la amb el so de la que sonava, i s'hi alinea (D-154).
+        if (alignFrame >= 0 && alignRead >= 0 && oldRing is not null)
+            alignRead += 2L * FindOffset(oldRing, alignRead, ring, sampleRate);
+        SetCurrent(item, source.Duration);
+        _startOffset = startAt;
+        _keptPosition = startAt;
+        _trackStartFrame = 0;
+        Playlist.ClearCueIf(item.Id);
+        // Amb el NIV (D-153), el mateix so al mateix punt: fos lineal (amb igual potència, pujaria 3 dB durant el fos).
+        stream.SwitchTo(ring, (int)((long)(fadeMs ?? _crossfadeMs) * sampleRate / 1000), item.ChannelFix, linear: _levelerSwitch is not null, alignRead: alignFrame >= 0 ? alignRead : -1);
+        _channelFixItem = item.Id;
+        _channelFixApplied = item.ChannelFix;
+        // L'estat continua sent «sonant», però la pista ha canviat: s'ha d'avisar la interfície.
+        _changed = true;
+    }
+
+    /// <summary>
+    /// Abans de començar a sonar, espera (com a màxim 1 s) que hi hagi mig segon de so preparat,
+    /// o tot el fitxer si és més curt. Així no s'envia silenci a la targeta en prémer Play
+    /// just després de carregar. S'executa al fil de les ordres, mai al d'àudio.
+    /// </summary>
+    private void WaitForPrefill()
+    {
+        int wanted = _output!.SampleRate; // 0,5 s en estèreo = SampleRate mostres
+        var deadline = DateTime.UtcNow.AddSeconds(1);
+        while (_ring!.Count < wanted && !_stream!.SourceFinished && _readerError is null && DateTime.UtcNow < deadline)
+            Thread.Sleep(5);
+    }
+
+    /// <summary>
+    /// Pista que ha de sonar quan s'acabi <paramref name="itemId"/>, sense aturar-se (D-031):
+    /// ella mateixa si té el bucle; la del cue o la següent si té l'avanç automàtic; si no, cap.
+    /// La crida el fil de lectura: només fa servir la llista (que té el seu propi bloqueig).
+    /// </summary>
+    private PlaylistItem? ChooseContinuation(string itemId)
+    {
+        var item = Playlist.Find(itemId);
+        if (item is null) return null; // s'ha esborrat mentre sonava: s'atura
+        if (item.Loop) return item;
+        if (!item.AutoNext) return null;
+        return Playlist.Find(Playlist.CueId ?? Playlist.NextAfter(itemId));
+    }
+
+    /// <summary>
+    /// Fil de lectura: descodifica la pista i manté la memòria plena. Quan s'acaba, espera fins que
+    /// en queda <see cref="DecideBeforeEnd"/> per sonar i, si n'ha de venir una altra, l'obre i hi
+    /// continua escrivint: així no hi ha silenci entre pistes.
+    /// </summary>
+    /// <param name="gain">Guany de normalització de la pista (lineal; 1 = cap). Cada pista encadenada porta el seu.</param>
+    private void ReaderLoop(TrackReader source, SampleRingBuffer ring, PlayerStream stream, int sampleRate, string itemId, float gain)
+    {
+        var chunk = new float[ReadChunkSamples];
+        var overflow = new float[ReadChunkSamples];
+        long framesWritten = 0;
+        long decideBelow = (long)(sampleRate * 2 * DecideBeforeEnd.TotalSeconds);
+
+        // Encadenament amb fos (fase 5; D-077): els últims mil·lisegons de la pista es guarden a la cua
+        // fins que se sap si n'ha de venir una altra sola. Amb 0 ms, tot passa de llarg (com sempre).
+        var tail = new CrossfadeTail();
+        float[] mix = [];   // la cua de la pista que s'acaba (i, després, la barreja)
+        float[] head = [];  // el principi de la pista següent
+        void ResetTail()
+        {
+            int samples = CrossfadeSamples(sampleRate);
+            tail.Reset(samples);
+            if (mix.Length < samples) mix = new float[samples];
+            if (head.Length < samples) head = new float[samples];
+        }
+        ResetTail();
+
+        // Escriu a la memòria (esperant si és plena) i compta els fotogrames.
+        void Write(ReadOnlySpan<float> samples)
+        {
+            int written = 0;
+            while (written < samples.Length && !_stopReader)
+            {
+                written += ring.Write(samples[written..]);
+                if (written < samples.Length) Thread.Sleep(5);
+            }
+            framesWritten += written / 2;
+        }
+
+        try
+        {
+            while (!_stopReader)
+            {
+                if (ring.Free < chunk.Length)
+                {
+                    Thread.Sleep(10); // la memòria és plena: esperem que el fil d'àudio en consumeixi
+                    continue;
+                }
+
+                int read = source.Read(chunk);
+                if (read == 0)
+                {
+                    // Final de la pista: s'espera l'últim segon per decidir què ve després.
+                    while (!_stopReader && ring.Count > decideBelow)
+                        Thread.Sleep(10);
+                    if (_stopReader) return;
+
+                    var next = ChooseContinuation(itemId);
+                    var nextSource = next is null ? null : TryOpen(next, sampleRate);
+                    if (next is null || nextSource is null)
+                    {
+                        // No ve res més: la cua s'escriu tal qual (la pista acaba sencera).
+                        Write(mix.AsSpan(0, tail.Drain(mix)));
+                        stream.MarkSourceFinished();
+                        return;
+                    }
+
+                    // Sense bloqueig: mentre s'atura, el reproductor pot estar esperant aquest fil amb el bloqueig agafat.
+                    // Normalize i l'objectiu són valors simples (es llegeixen sencers).
+                    double? normalization = NormalizationFor(next);
+                    float nextGain = GainFor(normalization ?? 0);
+
+                    // La cua: amb fos si la pista que ve és una altra (avanç automàtic); en un bucle, tal qual.
+                    int held = tail.Drain(mix);
+                    int overlap = 0;
+                    if (held > 0 && next.Id != itemId)
+                    {
+                        // El principi de la pista següent, tan llarg com la cua (o menys, si és més curta).
+                        int got = 0, r;
+                        while (got < held && (r = nextSource.Read(head.AsSpan(got, held - got))) > 0) got += r;
+                        for (int i = 0; i < got; i++) head[i] *= nextGain;
+                        overlap = got & ~1; // mostres estèreo senceres
+                    }
+
+                    // El que no se sobreposa (si la pista següent és més curta que el fos, o en un bucle) va tal qual.
+                    // Si el fos és més curt que la cua, la part que se sobreposa és el final de la cua.
+                    Write(mix.AsSpan(0, held - overlap));
+                    long startFrame = framesWritten; // la pista següent comença a sonar on comença el fos
+                    if (overlap > 0)
+                    {
+                        var ending = mix.AsSpan(held - overlap, overlap);
+                        CrossfadeTail.Mix(ending, head.AsSpan(0, overlap), overlap);
+                        Write(ending);
+                    }
+
+                    source.Dispose();
+                    source = nextSource;
+                    itemId = next.Id;
+                    gain = nextGain;
+                    _transitions.Enqueue(new Transition(startFrame, next, nextSource.Duration, normalization, nextSource.Start));
+                    stream.ScheduleChannelFix(startFrame, next.ChannelFix); // els canals de la següent, just on comença (D-132)
+                    ResetTail(); // la durada del fos es torna a llegir per a cada pista
+                    continue;
+                }
+
+                // Normalització: el guany de la pista, abans que arribi al fil d'àudio.
+                if (gain != 1f)
+                {
+                    for (int i = 0; i < read; i++) chunk[i] *= gain;
+                }
+
+                // Amb fos, només s'escriu el que sobra de la cua (les mostres més antigues).
+                if (tail.Capacity > 0)
+                {
+                    if (overflow.Length < read) overflow = new float[read];
+                    Write(overflow.AsSpan(0, tail.Push(chunk.AsSpan(0, read), overflow)));
+                }
+                else
+                {
+                    Write(chunk.AsSpan(0, read));
+                }
+
+                // Anivellador (D-135): el guany d'aquest tros, per quan soni.
+                if (source.LevelerGainDb is { } levelerGain) _levelerGains.Enqueue((framesWritten, levelerGain));
+            }
+        }
+        catch (Exception ex)
+        {
+            _readerError = ex;
+            stream.MarkSourceFinished();
+        }
+        finally
+        {
+            source.Dispose();
+        }
+    }
+
+    /// <summary>Obre la pista següent; si no es pot, la marca a la llista i retorna null (la llista s'atura).</summary>
+    private TrackReader? TryOpen(PlaylistItem item, int sampleRate)
+    {
+        try
+        {
+            // Una pista encadenada sempre comença des del principi (o del primer so, amb el retall).
+            var (start, end, exact) = TrimFor(item, TimeSpan.Zero);
+            return OpenTrack(item, sampleRate, start, end, exact);
+        }
+        catch (AudioFileException ex)
+        {
+            Playlist.MarkError(item.Id, ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>Atura els fils i allibera la sortida i el fitxer.</summary>
+    private void ReleaseTrack()
+    {
+        _stopReader = true;
+        _readerThread?.Join(TimeSpan.FromSeconds(2));
+        _readerThread = null;
+        _transitions.Clear();
+
+        if (_stream is not null)
+        {
+            _underrunsBefore += _stream.Underruns;
+            _stream = null;
+            _ring = null;
+        }
+
+        if (_output is not null)
+        {
+            try { _output.Stop(); } catch { /* ja aturada o dispositiu perdut */ }
+            try { _output.Dispose(); } catch { /* idem */ }
+            _output = null;
+        }
+    }
+
+    /// <summary>Error: s'atura tot, però es conserva la pista per poder reintentar.</summary>
+    private void FailKeepingTrack(string message, string? detail)
+    {
+        _keptPosition = CurrentPosition();
+        ReleaseTrack();
+        Fail(message, detail);
+    }
+
+    private void Fail(string message, string? detail)
+    {
+        ErrorMessage = message;
+        ErrorDetail = detail;
+        SetState(PlayerState.Error);
+    }
+
+    private void SetState(PlayerState state)
+    {
+        // Si deixa de sonar (pausa, Stop, salt, error...), el fade-out en marxa es treu.
+        if (state != PlayerState.Playing) CancelFadeOut();
+        State = state;
+        _changed = true;
+    }
+
+    /// <summary>Avisa fora del bloqueig, perquè qui escolta pugui consultar el reproductor.</summary>
+    private void RaiseStateChanged()
+    {
+        bool changed;
+        lock (_sync)
+        {
+            changed = _changed;
+            _changed = false;
+        }
+        if (changed) StateChanged?.Invoke(this);
+    }
+}

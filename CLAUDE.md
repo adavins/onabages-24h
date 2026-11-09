@@ -11,7 +11,7 @@ Aplicació d'escriptori per a Windows per a l'**emissió continuada les 24 hores
 ## Fase actual
 
 **Fase 1 — Esquelet i motor 24 h mínim** (vegeu `docs/pla-de-fases.md`). La fase 0 es va tancar a D-020.
-Encara no hi ha codi en aquest repositori. Abans de començar, proposa un pla breu de la fase 1.
+Els passos de la fase 1 són a `docs/pla-de-fases.md`; els fets estan marcats amb ✔.
 Quan una fase s'acabi, actualitza aquesta línia i afegeix una entrada a `docs/decisions.md`.
 
 ## Com treballem

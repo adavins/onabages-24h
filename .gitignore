@@ -21,3 +21,8 @@ docs/radiodj/backup-complet*.sql
 .DS_Store
 Thumbs.db
 .vs/
+
+# Proves
+TestResults/
+test-audio/
+*.rec
