@@ -41,7 +41,7 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 4. ✔ `OnaBages24.Data` (D-040): SQLite (Microsoft.Data.Sqlite), migracions, taules de pistes, classificació, historial i configuració; còpies de seguretat i restauració (D-032).
 5. ✔ Importació de RadioDJ des del fitxer `.sql` del backup, amb canvi d'arrel i informe, i importació senzilla d'una carpeta local amb els punts calculats (D-041). Comparació amb els punts de RadioDJ: menys de 40 ms a la bossa 9.
 6. Procés del motor, WebSocket amb testimoni i `docs/protocol.md`.
-7. Mesclador, sortida WASAPI i cua amb encadenament, solapament i origen de cada element (D-034).
+7. Mesclador, sortida WASAPI i cua amb encadenament, solapament i origen de cada element (D-034). Recàlcul dels punts en segon pla (D-042).
 8. AutoDJ amb una rotació importada; arrencada automàtica.
 9. Historial i `NowPlaying.txt` amb plantilla.
 10. Interfície mínima (Electron), oberta sense contrasenya (D-035).
