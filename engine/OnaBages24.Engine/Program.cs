@@ -5,17 +5,15 @@ using OnaBages24.Data.RadioDj;
 namespace OnaBages24.Engine;
 
 /// <summary>
-/// Punt d'entrada del motor. De moment (fase 1, pas 5) només hi ha ordres per a la línia d'ordres:
-///
-///   OnaBages24.Engine importa-radiodj FITXER.sql [més fitxers .sql] [--bd RUTA] [--arrel DE A]… [--sense-fitxers]
-///
-/// El servidor (WebSocket, àudio, AutoDJ) arriba al pas 6.
+/// Punt d'entrada del motor.
+/// - Sense ordre (o només amb opcions): arrenca el servidor (<see cref="EngineServer"/>).
+///   <c>OnaBages24.Engine [--port 47824] [--token TESTIMONI] [--data-dir CARPETA]</c>
+/// - Amb una ordre (<c>importa-radiodj</c>, <c>importa-carpeta</c>, <c>compara-punts</c>, <c>ajuda</c>): la fa i acaba.
 /// </summary>
 public static class Program
 {
     /// <summary>On es desa la base de dades si no es diu el contrari.</summary>
-    public static string DefaultDatabasePath { get; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "OnaBages24", "onabages24.db");
+    public static string DefaultDatabasePath => Path.Combine(RuntimeFile.DefaultDirectoryPath, "onabages24.db");
 
     public static int Main(string[] args)
     {
@@ -27,7 +25,8 @@ public static class Program
                 "importa-radiodj" => ImportRadioDj(args[1..]),
                 "importa-carpeta" => ImportFolder(args[1..]),
                 "compara-punts" => CompareCues(args[1..]),
-                _ => Help(),
+                "ajuda" or "--help" or "-h" or "/?" => Help(),
+                _ => EngineServer.Run(args),
             };
         }
         catch (Exception ex) when (ex is DatabaseException or IOException or InvalidDataException or ArgumentException)
@@ -41,6 +40,9 @@ public static class Program
     {
         Console.WriteLine("""
             Ona Bages 24h — motor (fase 1)
+
+            Sense cap ordre, arrenca el motor:
+              OnaBages24.Engine [--port 47824] [--token TESTIMONI] [--data-dir CARPETA]
 
             Ordres:
               importa-radiodj FITXER.sql [FITXER.sql…] [opcions]
