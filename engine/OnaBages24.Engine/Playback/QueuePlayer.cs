@@ -5,7 +5,7 @@ namespace OnaBages24.Engine.Playback;
 /// <summary>Ajustos del reproductor de la cua.</summary>
 public sealed record QueueSettings
 {
-    /// <summary>Solapament màxim entre dues pistes (D-024). El valor definitiu es decidirà escoltant-ho.</summary>
+    /// <summary>Solapament màxim entre dues pistes (D-024). 10 s per defecte, confirmat escoltant-ho (D-050).</summary>
     public TimeSpan MaxOverlap { get; init; } = TimeSpan.FromSeconds(10);
 
     /// <summary>Quant abans del punt de mescla es prepara la pista següent (com RadioDJ: 20 s).</summary>
