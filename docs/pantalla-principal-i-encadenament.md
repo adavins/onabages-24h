@@ -20,6 +20,9 @@
 4. **Biblioteca sense pàgines:** ara es mostra en pàgines de 100 sobre 5.056 pistes. Hi haurà desplaçament continu i cerca a mesura que s'escriu.
 5. **Tot en català:** ara hi ha textos en castellà i en anglès.
 6. **Rotació i categoria de sweepers actives** visibles, indicant quin esdeveniment les ha canviat per última vegada.
+7. **Origen de cada element de la cua (D-034):** AutoDJ, manual o esdeveniment (amb el nom). Es mostra amb una icona petita i és la base del botó següent.
+8. **«Regenera la cua» (D-034):** treu només les pistes que ha posat l'AutoDJ i torna a omplir la cua amb les rotacions i bosses actuals (per exemple, després de canviar una bossa o una rotació). No toca la pista que sona, ni les manuals, ni les dels esdeveniments.
+9. **Inici sense contrasenya (D-035):** l'aplicació s'obre sempre a la pantalla principal, amb l'emissió en marxa, en mode de consulta. Per operar-hi cal iniciar sessió (context operatiu, 2.5).
 
 ## 2. Encadenament de pistes (fade i solapament)
 
@@ -46,6 +49,7 @@ La pista sortint fa un fade de sortida entre `xta` i `end`, i la següent comen�
 - **Anàlisi en importar, amb els mateixos llindars que RadioDJ:** inici a **−25 dB** (primer punt on el nivell el supera), mescla a **−15 dB** (últim punt on el nivell és per sobre: hi entra la pista següent) i final a **−30 dB**. Es desen `inici`, `mescla` i `final`. L'anàlisi corre en segon pla, com el `TrackAnalyzer` d'Ona Bages Play. Els llindars són configurables.
 - **Edició visual (secundària):** editor amb la forma d'ona per corregir els punts a mà. L'emissora gairebé no el fa servir perquè el mode automàtic funciona bé; n'hi ha prou amb una versió senzilla (inici, mescla i final).
 - **Reproducció:** el mesclador del motor fa sonar les dues pistes alhora durant el solapament, amb una corba de fade configurable (lineal o logarítmica).
+- **Màxim de solapament (D-024):** configurable. Les cançons que s'apaguen lentament tenen el punt de mescla (−15 dB) molt abans del final: en una mostra de 174 cançons, 15 se solapen més de 5 s, i una fins a 11 s (*Nothing Else Matters*); a tota la biblioteca, el màxim és de 27 s. Si `final − mescla` supera el màxim, la pista següent entra a `final − màxim` i la sortint fa el fos des d'aquell punt fins al final. Els punts desats no es modifiquen: el màxim s'aplica en sonar, i per tant canviar-lo no obliga a tornar a analitzar res. El valor per defecte es decidirà escoltant-ho a l'ordinador de proves.
 - **Regles per tipus:**
   - Els sweepers i les identificacions poden entrar "a sobre" de la intro de la pista següent.
   - Els senyals horaris i els esdeveniments TALLA tenen prioritat de puntualitat (vegeu el document del planificador, secció 7).
@@ -93,8 +97,24 @@ La pista sortint fa un fade de sortida entre `xta` i `end`, i la següent comen�
 
 **Categories:** 12 categories (Music, Sound Effects, Sweepers, Station IDs, Jingles, Promos, Commercials, News, Interviews, Radio Shows, Radio Streams, Capsules), cadascuna amb les seves subcategories. A Music hi ha Dance90, Elektro90, Ona Bages Adult 1–9, Ona Bages Actualitat, Ona Bages Català i Ona Bages nadal. Hi ha 3 gèneres, que es fan servir per distingir els sweepers en català dels generals.
 
+A més, cada pista té un **tipus de pista** (`song_type`), independent de la categoria: 0 = música, 7 = durada variable (programes, promos, locucions de l'hora), 4 = el dels senyals horaris…
+
+**Classificació a Ona Bages 24h (D-023)**
+- **Tipus de pista:** es manté, separat de la categoria. Diu *què és* la pista. Serveix per identificar-la d'un cop d'ull a la cua i a les llistes (color de fons, sempre amb icona i text) i per a les regles que depenen de què és una pista (per exemple, els sweepers poden entrar a sobre de la pista següent; els certificats d'emissió són de falques). La llista és tancada (no la crea l'usuari): **Música, Sweeper, Identificació/Jingle, Promo, Falca, Programa, Informatiu, Locució horària, Senyal horari, Stream i Altres**.
+- **Durada variable:** és una marca a part de la pista (secció 11 del planificador), no un tipus, perquè la poden tenir pistes de tipus diferents (programes, promos, falques, locucions).
+- **Categoria i subcategoria:** serveixen per organitzar la biblioteca i per programar-la a les rotacions. Normalment, una subcategoria correspon a una carpeta, per exemple:
+  - Adult contemporary → Bossa 1, Bossa 2…
+  - Dance 90 → Bossa 1…
+- **Carpeta vigilada (D-026):** una subcategoria pot tenir una carpeta associada (amb subcarpetes o sense) i uns valors per defecte per a les pistes noves (tipus de pista, etiquetes, durada variable). El motor vigila la carpeta:
+  - **Fitxer nou:** s'importa sol a la subcategoria, quan ja s'ha acabat de copiar (la mida no canvia durant uns segons i es pot obrir). Els punts d'inici, mescla i final es calculen en segon pla; mentre no hi són, la pista no la tria l'AutoDJ.
+  - **Fitxer que desapareix:** la pista **no s'esborra**, perquè pot ser dins d'esdeveniments, campanyes o de l'historial (certificats). Es marca com a «fitxer que falta», l'AutoDJ deixa de triar-la i es genera un avís. Des del gestor de pistes es pot esborrar o tornar a apuntar a un altre fitxer.
+  - **Fitxer substituït** (mateix nom): és la mateixa pista; es tornen a llegir la durada i els punts (planificador, secció 11).
+  - **En arrencar el motor,** es revisen totes les carpetes vigilades, perquè els canvis fets amb l'aplicació tancada també es detectin.
+  - Cada importació o desaparició queda anotada i es pot consultar.
+- **Etiquetes en lloc de gèneres (D-027):** etiquetes lliures, i cada pista en pot tenir diverses (per exemple, «català», «nadal», «80s»). Substitueixen el gènere de RadioDJ, que a l'emissora només es fa servir per distingir els sweepers en català dels generals perquè era l'única manera de fer-ho a les rotacions. Un pas de rotació pot demanar una categoria o subcategoria **i** una o diverses etiquetes (per exemple, «Sweepers + català»). **Migració:** cada gènere de RadioDJ passa a ser una etiqueta amb el mateix nom (excepte «Other», que vol dir «sense gènere»), i els passos de rotació que filtren per gènere passen a filtrar per l'etiqueta corresponent.
+
 **Rotacions:** 5 rotacions (OnaBages, OnaBages Nadal, Dance90, Elektro90, OnaBages_backup). Cada rotació és un **cicle ordenat de passos** que l'AutoDJ va repetint. Cada pas té:
-- categoria, subcategoria i gènere;
+- categoria, subcategoria i gènere (a Ona Bages 24h, etiquetes: D-027);
 - **tipus de selecció**: "la menys reproduïda recentment" o "aleatòria";
 - sweeper (sobre la pista);
 - si s'apliquen els **criteris de repetició** (activat per a la música, no per a sweepers i jingles).
@@ -112,3 +132,14 @@ A RadioDJ, una rotació també pot treure pistes de les sol·licituds o d'una co
 **Informes de RadioDJ:** gairebé no es fan servir; només per comprovar si una pista ha sonat i a quina hora. Ona Bages 24h ho resol amb una cerca ràpida a l'historial (pista, artista o data → hores d'emissió). Els informes que compten de veritat són els del Programador: l'**informe de programació** i el **certificat d'emissió** de cada pista, amb logotip. Es descriuen al document del planificador (secció 10).
 
 **Utilitats:** optimitzar la base de dades, verificar les pistes (fitxers que falten), moure pistes de carpeta, sincronitzar etiquetes ID3, actualitzar durades, restablir prioritats i recomptes, i esborrar l'historial. Totes es mantenen. Amb SQLite, la verificació de fitxers pot ser automàtica i periòdica, com ja fa Ona Bages Play.
+
+**Importació en massa de carpetes:** acaba amb un informe de pistes importades, repetides (la mateixa ruta) i fitxers que no s'han pogut llegir.
+
+**Còpies de seguretat pròpies (D-032):**
+- **Automàtiques:** una al dia a una carpeta configurable, amb rotació (p. ex. 14 diàries i 12 mensuals), i un botó per fer-ne una a mà. SQLite permet copiar la base de dades oberta sense aturar res.
+- **Restaurar:** es comprova la versió de l'esquema de la còpia. Si és **més nova** que la de l'aplicació, es rebutja. Si és més antiga, es restaura i s'hi apliquen les migracions que falten. Abans de restaurar, es fa sempre una còpia de l'estat actual.
+- **L'emissió continua:** el motor té la cua i la pista que sona a la memòria; tanca la base de dades, la substitueix, la torna a obrir i recarrega el planificador.
+
+**Exportacions i importacions parcials (D-032):** un fitxer JSON amb les parts que es triïn (esdeveniments, rotacions, campanyes, calendaris desats, configuració). Cada pista referenciada porta la ruta i l'artista i títol. En importar, es busca per ruta, després per nom de fitxer i després per artista i títol. Abans d'aplicar res, es mostra un **informe**: què es crearà, què se substituirà i quines pistes no s'han trobat. Les accions amb pistes que no existeixen es poden ometre o importar desactivades.
+
+**Canvi d'arrel de les rutes (D-025):** utilitat per substituir el principi de les rutes de moltes pistes alhora (per exemple, `D:\EMISSIO` → `\\PC24H\EMISSIO` o `E:\EMISSIO`). Mostra quantes pistes canviarà i quants fitxers es troben a la ruta nova abans d'aplicar-ho. També es pot fer servir en importar la biblioteca de RadioDJ, perquè l'ordinador de proves pugui sonar en paral·lel amb el PC 24h sense tenir els fitxers a les mateixes rutes. Les rutes de RadioDJ que es fan servir avui són `D:\EMISSIO\…`, `D:\continuitat\…` i `C:\RadioDJ\hores\…`.

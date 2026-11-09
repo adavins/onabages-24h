@@ -23,12 +23,14 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 - **Còpia d'`OnaBages.Audio`** i de les peces reaprofitables de Play (D-019), amb el commit d'origen anotat. Tasques T-1, T-2 i T-3 de la revisió de Play.
 - **Notes de disseny** del mesclador intern, de l'inici a l'hora exacta i del solapament (abans d'implementar-los).
 - **Punts de pista** (`TrackCuePoints`: inici, mescla i final) i analitzador amb llindars configurables (−25 / −15 / −30 dB per defecte), amb proves amb àudio sintètic.
-- Base de dades SQLite amb migracions: pistes, categories, subcategories i gèneres.
+- Base de dades SQLite amb migracions: pistes, tipus de pista, categories, subcategories i etiquetes (els gèneres de RadioDJ passen a etiquetes, D-027).
 - **Importació de la biblioteca de RadioDJ**, amb els punts de mescla (`cue_times`) i les dates de cada pista.
 - Mesclador intern amb una sortida i cua amb encadenament i solapament (D-005, D-006).
 - AutoDJ amb una rotació importada de RadioDJ (cicle de passos, «la menys reproduïda» i «aleatòria»).
 - Historial de reproducció i exportació del títol a `NowPlaying.txt` per a BUTT.
-- Interfície mínima: pista que sona, cua i vúmetres.
+- Cada element de la cua guarda d'on ve: AutoDJ, manual o esdeveniment (D-034).
+- **Còpies de seguretat** automàtiques i restauració amb comprovació de la versió de l'esquema (D-032).
+- Interfície mínima: pista que sona, cua i vúmetres. S'obre sense contrasenya i reprèn l'emissió (D-035).
 
 **Criteri de tancament:** 48 hores seguides sonant amb AutoDJ a l'ordinador de proves, sense talls (comprovat amb `OnaBages.ToneCheck` o equivalent) i amb el títol actualitzat per a BUTT.
 
@@ -36,36 +38,39 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 
 - Esdeveniments amb modes, accions i recurrències (`docs/planificador.md`, seccions 2–4 i 12).
 - Preparació anticipada i disparament a l'hora exacta (secció 7).
-- Acció `STREAM` amb durada, connexió anticipada i pista de reserva (D-010).
+- Acció `STREAM` amb durada, connexió anticipada, salt a la pista següent si està caigut i final per silenci opcional (D-010, D-030).
 - **Migració dels esdeveniments de RadioDJ** (secció 6), amb la correcció de l'ordre invers.
 - Graella setmanal (setmanes reals i plantilla) i editor d'esdeveniments, segons la maqueta.
 
-**Criteri de tancament:** una setmana de programació real migrada sonant a l'ordinador de proves, amb els senyals horaris a menys de 50 ms de l'hora (mesurat) i un stream que falla substituït per la pista de reserva.
+**Criteri de tancament:** una setmana de programació real migrada sonant a l'ordinador de proves, amb els senyals horaris a menys de 50 ms de l'hora (mesurat), un stream caigut que se salta sense silenci, un stream en silenci que s'acaba sol i un stream llarg que es talla dues vegades i es recupera sol (amb un servidor de proves local).
 
 ## Fase 3 — Pantalla d'emissió completa
 
 - Pantalla Emissió segons la maqueta: previsió fins al pròxim esdeveniment, franja de pròxims esdeveniments, modes AutoDJ / Assistit / Manual, entrada de línia.
 - Biblioteca amb cerca contínua, cartutxeres, notes i reproductors auxiliars.
 - Processador d'àudio (compressor i volum).
-- Gestor de pistes: importació de carpetes, fitxa de pista, editor senzill de punts.
+- Gestor de pistes: importació de carpetes amb informe, carpetes vigilades per subcategoria (D-026), bosses renovables i assistent «Renova la bossa» (D-033), fitxa de pista, etiquetes, editor senzill de punts i canvi d'arrel de les rutes (D-025).
 - Rotacions: editor, separació real, previsualització i bosses amb nom (D-014).
+- Botó «Regenera la cua» (D-034).
 
 **Criteri de tancament:** un operador pot fer servir l'aplicació un dia sencer sense obrir RadioDJ.
 
 ## Fase 4 — Falques, campanyes i certificats
 
 - Pistes de durada variable amb detecció de canvis (D-012).
-- Calendari per pista i campanyes amb diverses falques (D-011).
-- Informe de programació i certificat d'emissió en PDF, amb logotip.
+- Calendari per pista i campanyes amb diverses falques (D-011), amb l'ordre a la vista, dies propis per acció i recomptes de passis (D-028). Pla de passis de la campanya i blocs de falques cada 5 minuts (D-029).
+- Informe de programació i certificat d'emissió en PDF, amb logotip i comparació entre previst i emès.
 - Cerca a l'historial i informes.
+- Exportacions i importacions parcials (esdeveniments, rotacions, campanyes…) amb informe de comprovació (D-032).
 
 **Criteri de tancament:** una campanya real de diverses falques programada una sola vegada, i el seu certificat d'emissió generat a partir de l'historial.
 
 ## Fase 5 — Supervisió, avisos i integracions
 
 - Vigilant extern del motor, detecció de pista encallada i de silencis, avisos per correu (D-013).
-- Avís de programa no actualitzat; integració opcional amb l'Automatitzador (`scheduler.occurrences`, `library.fileUpdated`).
-- Opcional: edició remota a la xarxa local, amb usuaris; codificador intern cap a Icecast.
+- Avís de programa no actualitzat; avís opcional de l'Automatitzador quan actualitza un fitxer (`library.fileUpdated`).
+- **Usuaris, rols** (administrador, programador, operador), inici de sessió per operar i **registre de canvis** (D-035).
+- Opcional: edició remota a la xarxa local; codificador intern cap a Icecast.
 
 **Criteri de tancament:** cada tipus d'error provocat a propòsit (motor tancat, pista encallada, silenci, stream caigut, fitxer que falta) genera el seu avís per correu i, quan toca, es recupera sol.
 
@@ -76,3 +81,11 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 - Instal·lació al PC 24h, amb RadioDJ preparat per tornar-hi si cal.
 
 **Criteri de tancament:** decisió de l'emissora de deixar RadioDJ.
+
+## Fase 7 — Fonts externes i integracions (després de la posada en marxa, D-036)
+
+- **Entrades de línia** com a font programable, tractades com els streams (context operatiu, 2.10).
+- **Integració amb l'Automatitzador:** identificador de programa compartit i pròximes emissions (estrena i repetició) per programar-ne l'execució (`scheduler.occurrences`; context operatiu, 2.7). Especificacions per detallar.
+- **Directes de YouTube** (el ple de l'Ajuntament): espera del directe, connexió, detecció del final i botons manuals (context operatiu, 2.10).
+
+**Criteri de tancament:** per concretar quan s'hi arribi.

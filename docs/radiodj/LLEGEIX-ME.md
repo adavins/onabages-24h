@@ -11,7 +11,8 @@ Extretes del backup de la base de dades de RadioDJ 1.8.2 del 8 de gener de 2026.
 
 ## Claus per interpretar les dades
 
-- `events.type`: `1` = esdeveniment setmanal de la graella (336, un per franja de 30 minuts; 142 buits); `2` = amb màscara de dies i hores (senyals de les :30); `4` = el que arrenca el servidor d'streaming.
+- `events.type`: `1` = esdeveniment setmanal de la graella (336, un per franja de 30 minuts; 142 buits); `2` = amb màscara de dies i hores (senyals de les :30, **desactivat**); `4` = el que arrenca el servidor d'streaming (desactivat; no es migra). A les hores en punt, cada franja té o bé un tall amb la locució de l'hora (`hores\NN.mp3`, 79) o bé els senyals horaris pel reproductor auxiliar 1 (82).
+- `songs.song_type` (tipus de pista): `0` = música, `7` = durada variable (programes, promos, locucions de l'hora), `4` = el dels senyals horaris (vist a `songs_table_examples.sql`).
 - `events.day`: `&1`…`&6` = dilluns–dissabte, `&0` = diumenge.
 - `events.data`: ordres separades per `\r\n`, en format `Ordre|arguments`. Les pistes es carreguen amb `Load Track By ID|…|Top`, és a dir, al principi de la cua: **l'ordre escrit és l'invers de l'ordre en què sonen**.
 - `songs.cue_times` (a la taula de pistes): `&sta=` inici, `&xta=` punt de mescla, `&end=` final, `&fin=` fade d'entrada, `&fou=` fade de sortida, en segons.

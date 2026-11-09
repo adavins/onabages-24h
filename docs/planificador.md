@@ -17,14 +17,46 @@
 
 | Mode | Què fa a l'hora programada | Equivalent a RadioDJ |
 |---|---|---|
-| **TALLA** | Substitueix la cua pel contingut de l'esdeveniment i comença a sonar de seguida. La pista actual es talla amb el fade configurat. | `Clear Playlist!` + `Load…` + `Play!` |
-| **ENCUA** | Insereix el contingut com a següent a sonar. La pista actual continua. | `Load Track By ID…|Top` sense *Clear* |
+| **TALLA** | Talla la pista actual (amb el fade configurat) i el contingut de l'esdeveniment comença a sonar de seguida: la primera pista, a l'hora exacta (secció 7). | `Load…|Top` + `Play!` |
+| **ENCUA** | Insereix el contingut com a següent a sonar. La pista actual continua. | `Load Track By ID…|Top` sense `Play!` |
 | **SUPERPOSA** | Reprodueix pel reproductor auxiliar per sobre del que sona, amb atenuació (*ducking*) opcional. | `PluginAction|Auxiliary Players…` |
 | **SISTEMA** | Només fa accions sense àudio: canviar la rotació o els sweepers, executar una aplicació, etc. | `Load Rotation`, `Run Application`… |
 
+**Tallar i esborrar la cua són dues coses diferents (D-022).** Cada esdeveniment TALLA o ENCUA té l'opció **«Esborra la cua»** (`neteja_cua`), independent del mode. Si està marcada, les pistes que esperaven a la cua s'esborren abans d'inserir-hi el contingut de l'esdeveniment; si no, el contingut es posa al davant i la resta de la cua continua darrere. Les quatre combinacions són possibles:
+
+| | Esborra la cua | No esborra la cua |
+|---|---|---|
+| **TALLA** | El cas habitual de les hores en punt (avui, tots els talls de RadioDJ) | El contingut sona a l'hora i després continua el que ja hi havia a la cua |
+| **ENCUA** | Quan acaba la pista actual sona el contingut; el que hi havia a la cua es descarta | El cas habitual de les mitges hores |
+
+En crear un esdeveniment, l'editor marca «Esborra la cua» per defecte als TALLA i la deixa desmarcada als ENCUA; es pot canviar sempre. És una opció de l'esdeveniment i no una acció de la llista perquè només té sentit en un moment (abans d'inserir el contingut); així no hi ha combinacions confuses segons on es posi.
+
 Opcions per mode:
-- **TALLA:** `fade_ms`, i `marge_seg` (si a la pista actual li queden menys de N segons, s'espera que acabi).
+- **TALLA:** `fade_ms`, `neteja_cua`, i `marge_seg` (si a la pista actual li queden menys de N segons, s'espera que acabi). `marge_seg` està desactivat per defecte i no es fa servir als esdeveniments de la graella, perquè endarreriria l'hora.
+- **ENCUA:** `neteja_cua`.
 - **SUPERPOSA:** `ducking_db` i el reproductor auxiliar que es fa servir.
+
+**Contingut de l'esdeveniment:** totes les pistes es tracten igual i sonen en l'ordre de la llista d'accions. La locució de l'hora (`hores\NN.mp3`) és una pista més: es pot programar o no, i en qualsevol posició.
+
+### 2.1. Com es fa servir a l'emissora (D-021)
+
+La graella de programació s'ha de complir rigorosament. A les dades de RadioDJ hi ha tres maneres de fer-ho:
+
+- **Hores en punt amb tall (TALLA):** a l'hora, es talla el que soni (encara que sigui el programa anterior) i comença el contingut de l'esdeveniment. Per exemple, el diumenge a les 15:00: locució `15.mp3` → «Sons a cau d'orella»; a les 16:00: `16.mp3` → «El club del country». Només la **primera pista** ha de sonar a l'hora (secció 7). Les que vénen al darrere (locucions, falques, promos) fan que el programa entri uns segons més tard, i ja està previst així. Els programes s'han d'ajustar a la seva franja: si duren més, es tallen pel final.
+- **Hores o mitges hores amb senyals horaris (SUPERPOSA):** quan en aquell moment no ha de sonar res més que els senyals, sonen pel reproductor auxiliar per sobre de la música, sense tallar-la ni afegir res a la cua. El fitxer comença a l'hora en punt (no s'avança perquè l'últim pip hi coincideixi).
+- **Mitges hores amb continguts que s'encuen (ENCUA):** promos o falques que es posen com a pròximes pistes, sense tallar el que sona.
+
+**Regles**
+- **Un esdeveniment que esborra la cua** (normalment, un TALLA) fa que no soni el contingut d'un ENCUA anterior que encara hi esperava. Queda anotat al registre com a no emès (`NO_EMES`), i no compta per als certificats d'emissió, que es fan amb el que ha sonat de veritat. Si el TALLA no esborra la cua, aquest contingut sona després del del TALLA.
+- **Programa més curt que la franja:** l'AutoDJ omple el temps amb música fins al pròxim esdeveniment.
+- **Programa més llarg que la franja:** es talla a l'hora del pròxim TALLA.
+
+**Avisos** (com més, millor: qui programa ha de saber què passarà abans que passi)
+- **A l'editor, en desar:** per a cada esdeveniment, es calcula la durada del seu contingut i es compara amb el pròxim TALLA de cada dia en què sona. S'avisa:
+  - si un ENCUA no arribarà a sonar perquè el contingut d'abans (un programa, un altre ENCUA) dura més que el temps que queda fins al pròxim esdeveniment que esborra la cua;
+  - si el contingut d'un TALLA és més llarg que la seva franja (p. ex. «Sons a cau d'orella dura 61:20 i se'n tallaran 1:20»).
+- **En emissió:** quan es prepara un esdeveniment (uns 30 s abans) i quan un fitxer de durada variable canvia (secció 11), es tornen a fer els mateixos càlculs amb les durades reals. La cua marca les pistes que no arribaran a sonar (`pantalla-principal-i-encadenament.md`, secció 1, millora 1).
+- Els avisos d'emissió van al sistema d'avisos (`context-operatiu.md`, 2.3).
 
 ## 3. Esquema de dades (SQLite)
 
@@ -54,9 +86,11 @@ CREATE TABLE esdeveniment (
   fade_ms         INTEGER,
   marge_seg       INTEGER,
   ducking_db      REAL,
-  durada_visual   INTEGER,                  -- segons; només per dibuixar el bloc a la graella
+  durada_max      INTEGER,                  -- segons; durada màxima prevista del contingut (D-028)
   color           TEXT,
   categoria_id    INTEGER REFERENCES categoria_esdeveniment(id),
+  neteja_cua      INTEGER NOT NULL DEFAULT 0, -- 1 = esborra la cua abans d'inserir el contingut (D-022)
+  bloc_falques    INTEGER NOT NULL DEFAULT 0, -- 1 = bloc de falques: surt com a fila al calendari de falques (D-029)
   es_plantilla    INTEGER NOT NULL DEFAULT 0,
   actiu           INTEGER NOT NULL DEFAULT 1,
   notes           TEXT,
@@ -69,7 +103,8 @@ CREATE TABLE accio (
   esdeveniment_id  INTEGER NOT NULL REFERENCES esdeveniment(id) ON DELETE CASCADE,
   ordre            INTEGER NOT NULL,
   tipus            TEXT NOT NULL,           -- vegeu la secció 4
-  params           TEXT NOT NULL DEFAULT '{}' -- JSON
+  params           TEXT NOT NULL DEFAULT '{}', -- JSON
+  dies_mask        INTEGER                  -- null = tots els dies de l'esdeveniment; si no, només aquests (D-028)
 );
 
 -- Dates soltes (recurrencia = 'DATES') i excepcions (dates en què no s'emet)
@@ -88,22 +123,27 @@ CREATE TABLE registre_execucio (
   esdeveniment_id  INTEGER,
   programat_per    TEXT NOT NULL,           -- data i hora previstes
   executat_a       TEXT,
-  resultat         TEXT NOT NULL,           -- OK | OMES_TARD | OMES_CONFLICTE | ERROR
+  resultat         TEXT NOT NULL,           -- OK | OMES_TARD | OMES_CONFLICTE | NO_EMES | ERROR
+                                            -- NO_EMES: contingut d'un ENCUA esborrat per un TALLA abans de sonar (2.1)
   detall           TEXT
 );
 ```
 
 **Conflictes:** quan dos esdeveniments TALLA o ENCUA coincideixen al mateix instant, s'executa el de prioritat més alta i l'altre queda al registre com a `OMES_CONFLICTE`. Els esdeveniments SUPERPOSA poden coexistir amb qualsevol altre.
 
-**Graella:** cada targeta es dibuixa des de `hora_inici` fins a `durada_visual`. Si no hi ha `durada_visual`, es dibuixa com una marca puntual. Els esdeveniments recurrents (per exemple, cada hora) es poden ocultar o mostrar en una fila pròpia.
+**Graella:** cada targeta es dibuixa des de `hora_inici` fins a `durada_max`. Si no hi ha `durada_max`, es dibuixa com una marca puntual.
+
+**Durada màxima (`durada_max`, D-028):** els programes són de durada variable, i la durada del fitxer d'avui no diu quant durarà el de la setmana que ve. Per això l'esdeveniment guarda quant pot durar com a màxim el seu contingut (p. ex. 55 min). Serveix per dibuixar el bloc, per marcar les franges ocupades al calendari de les falques (secció 10) i per avisar: si el contingut real (amb la durada actual dels fitxers) la supera, surt un avís, i si a més passa del pròxim TALLA, l'avís de D-021. Es posa a mà a l'editor; si està buida, l'editor proposa la durada actual del contingut. A la migració es calcula a partir dels esdeveniments desactivats de RadioDJ que el segueixen (secció 6).
+
+**Pistes només alguns dies (`accio.dies_mask`, D-028):** dins d'un esdeveniment de diversos dies (p. ex. de dilluns a divendres a les 15:00), cada acció pot sonar només alguns d'aquests dies. Així una falca pot anar «només dimarts a les 15:00» sense separar l'esdeveniment. L'editor mostra els dies de l'acció al costat de la pista, i el calendari de la falca els posa sol. Els esdeveniments recurrents (per exemple, cada hora) es poden ocultar o mostrar en una fila pròpia.
 
 ## 4. Tipus d'acció
 
 | `tipus` | `params` | Origen a RadioDJ |
 |---|---|---|
 | `PISTA` | `{songId}` | `Load Track By ID` |
-| `STREAM` | `{url, durada_seg, fade_ms, reserva_songId?}` | `Load Track By ID` d'una URL + `Seconds To Wait`. Connexió anticipada, tall automàtic i pista de reserva si falla (vegeu el document de context operatiu, 2.2) |
-| `CAMPANYA` | `{campanyaId}` | Nou: en el moment d'emetre, el motor tria quina falca de la campanya sona (secció 10) |
+| `STREAM` | `{url, durada_seg, fade_ms, silenci_seg?, reconnecta?, tornada?, reserva_songId?}` | `Load Track By ID` d'una URL + `Seconds To Wait`. Connexió anticipada i tall automàtic. Si està caigut, se salta a la pista següent (la reserva és opcional); amb `silenci_seg`, s'acaba si arriba en silenci (D-030). Amb `reconnecta`, omple amb música i torna al stream quan es recupera, tantes vegades com calgui dins de la durada (D-031). Vegeu el document de context operatiu, 2.2 |
+| `CAMPANYA` | `{campanyaId}` | Nou: sona la falca que indica el pla de passis de la campanya (secció 10, D-029) |
 | `PLANTILLA` | `{plantillaId}` | Esdeveniment arxivat (s'insereixen les seves accions) |
 | `AUXILIAR` | `{songId, player, duckingDb?}` | `PluginAction|Auxiliary Players|Play File From Database` |
 | `ROTACIO` | `{rotacioId}` | `Load Rotation` |
@@ -111,9 +151,9 @@ CREATE TABLE registre_execucio (
 | `AUTODJ` | `{actiu}` | `Assisted Enable!` / `Assisted Disable!` (només quan es vol de veritat, no com a pegat) |
 | `ESPERA` | `{segons}` | `Seconds To Wait` |
 | `ATURA` | `{fadeMs?}` | `Stop!` |
-| `ENTRADA` | `{silencia}` | Silenciar / treure el silenci de l'entrada |
+| `ENTRADA` | `{silencia}` | Silenciar / treure el silenci de l'entrada. Més endavant es reconvertirà en una font programable com els streams (fase 7, D-036; context operatiu, 2.10) |
 | `EXECUTA` | `{ruta, args}` | `Run Application` |
-| `NETEJA`, `REPRODUEIX` | `{}` | `Clear Playlist!`, `Play!`: avançades, per a casos especials. Normalment les implica el mode. |
+| `REPRODUEIX` | `{}` | `Play!`: avançada, per a casos especials. Normalment la implica el mode. (`Clear Playlist!` passa a ser l'opció «Esborra la cua» de l'esdeveniment, D-022.) |
 
 ## 5. API del motor
 
@@ -144,11 +184,11 @@ Les ordres `queue.replace` i `queue.insert` són **atòmiques**: l'AutoDJ no pot
 ## 6. Migració des de RadioDJ
 
 1. Llegir la taula `events`: `type = 1` són els esdeveniments setmanals de la graella (`day` = `&1`…`&6` per a dilluns–dissabte i `&0` per a diumenge; `time` = hora).
-2. Ometre els que tenen `data` buit (142 de 336 al backup del gener del 2026).
-3. Deduir el mode: si hi ha `Clear Playlist!`, **TALLA**; si només hi ha `PluginAction|Auxiliary Players`, **SUPERPOSA**; si només hi ha `Load…|Top`, **ENCUA**.
-4. Treure les parelles `Assisted Enable!` / `Assisted Disable!` que embolcallen el muntatge de la cua, i treure els `Clear`/`Play` implícits en el mode.
+2. Ometre els que tenen `data` buit (142 de 336 al backup del gener del 2026). Abans, però, fer servir els **desactivats** per calcular la `durada_max` del TALLA que tenen al davant: les franges desactivades seguides que vénen darrere d'un TALLA són les que ocupa el programa (D-028). Si no n'hi ha cap, `durada_max` queda buida.
+3. Deduir el mode: si hi ha `Play!`, **TALLA**; si només hi ha `PluginAction|Auxiliary Players`, **SUPERPOSA**; si només hi ha `Load…|Top`, **ENCUA**. Si hi ha `Clear Playlist!`, `neteja_cua = 1` (al backup, els 79 esdeveniments amb `Play!` tenen també `Clear Playlist!`).
+4. Treure les parelles `Assisted Enable!` / `Assisted Disable!` que embolcallen el muntatge de la cua, i treure els `Clear`/`Play` (ja recollits al mode i a `neteja_cua`).
 5. **Invertir l'ordre** dels `Load Track By ID…|Top` consecutius perquè quedin en ordre d'emissió.
-6. Agrupar esdeveniments idèntics en dies diferents en un de sol amb `dies_mask`. Per exemple, les 15:00 de dilluns a divendres passen a ser 1 esdeveniment en lloc de 5, si el contingut coincideix.
+6. Agrupar esdeveniments idèntics en dies diferents en un de sol amb `dies_mask`. Per exemple, les 15:00 de dilluns a divendres passen a ser 1 esdeveniment en lloc de 5, si el contingut coincideix. Si només es diferencien en falques (pistes de tipus Falca) que hi ha uns dies sí i uns altres no, també s'agrupen, i aquestes pistes porten els seus dies a `accio.dies_mask` (D-028). L'informe de migració llista els agrupaments perquè es puguin revisar.
 7. Els esdeveniments `type = 2` (amb màscara de dies i hores) passen a `repeticio = CADA_HORA` amb `hores_mask`.
 
 ## 7. Puntualitat
@@ -159,7 +199,7 @@ Com s'aconsegueix:
 1. **Preparació anticipada:** uns 30 segons abans de l'hora, el motor obre i descodifica el primer element de l'esdeveniment i el deixa a punt en un reproductor de reserva. Així no hi ha retard per llegir el fitxer.
 2. **Punt d'entrada:** es fa servir el *cue-in* de la pista (salt automàtic del silenci inicial), perquè el so comenci justament a l'hora i no uns mil·lisegons més tard. Per començar des d'un punt de la pista es fa servir el salt exacte d'`OnaBages.Audio` (`Mp3Seek`, D-155 d'Ona Bages Play), també amb els MP3 de bitrate variable.
 3. **Rellotge d'alta resolució:** el disparament fa servir `Stopwatch` sobre l'hora del sistema, no un temporitzador de la interfície. Els últims mil·lisegons es compensen amb la latència coneguda de la sortida WASAPI.
-4. **Tall a l'hora exacta:** en el mode TALLA, el fade de sortida de la pista actual comença `fade_ms` abans de l'hora, perquè el nou element entri a l'hora en punt i no després del fade. Per a esdeveniments d'hora exacta, `marge_seg` es deixa desactivat.
+4. **Tall a l'hora exacta (D-021):** en el mode TALLA, la primera pista de l'esdeveniment comença a l'hora en punt i, en aquell mateix moment, la pista que sonava comença el seu fos de sortida (`fade_ms`), de manera que les dues se solapen durant el fos. El fos no s'avança ni s'escurça. `marge_seg` es deixa desactivat.
 5. **Hora del sistema sincronitzada:** cal configurar el servei d'hora de Windows (NTP) amb sincronització freqüent. L'aplicació avisa si detecta una desviació superior a 1 segon.
 
 Els esdeveniments ENCUA no necessiten aquesta precisió: s'apliquen quan toca i sonen quan acaba la pista actual.
@@ -202,13 +242,41 @@ Ona Bages Play ja té l'arquitectura que necessita Ona Bages 24h: **Electron + H
 
 És una funció imprescindible: serveix per justificar davant dels anunciants que les falques han sonat.
 
-**A Ona Bages 24h**
-- **Vista "Calendari de la pista":** la mateixa graella setmanal que el planificador, amb les franges on la pista ja és dins d'un esdeveniment marcades. Marcar o desmarcar una franja afegeix o treu l'acció `PISTA` de l'esdeveniment corresponent. Si en aquella franja encara no hi ha cap esdeveniment, se'n crea un d'ENCUA.
-- **Campanya amb diverses falques:** la campanya és l'element que es programa, no la falca. Es programa una sola vegada, amb la mateixa vista de calendari que una pista i l'acció `CAMPANYA` en lloc de `PISTA`, i el motor tria en cada passi quina de les seves falques ha de sonar.
-  - Cada falca de la campanya pot tenir **dates pròpies** dins de les de la campanya, i **dies de la setmana** propis.
-  - Entre les falques vàlides en aquell moment, el motor **alterna** (la que fa més temps que no ha sonat) o fa servir un **pes** (per exemple, A el doble que B).
-  - Exemple: campanya "Ferreteria" de l'1 al 30 de novembre, de dilluns a divendres a les 8:30, 13:30 i 19:30. Les falques A i B s'alternen tot el mes, i la falca C ("Black Friday") només sona del 24 al 28. Es programa una sola vegada.
+**Limitacions del Programador** (revisió del codi, novembre del 2026):
+- La falca s'insereix just després de `Clear Playlist!` (o al principi). Amb `Load…|Top`, la primera pista que es carrega sona **l'última**: en un tall de programa, la falca sonaria darrere del programa i el tall següent l'esborraria. Des del Programador no es veu l'ordre; cal anar al calendari d'esdeveniments.
+- Les franges ocupades per un programa s'indiquen amb esdeveniments buits i desactivats, mantinguts a mà.
+- Es programen fitxers separats, no campanyes.
+- Els recomptes multipliquen el patró setmanal pels dies del període; no hi ha recurrències ni excepcions.
+- El certificat busca les emissions per **artista i títol** (no per identificador), el «núm. passis» compta tot l'historial i no només el de les dates triades, i RadioDJ només guarda **30 dies** d'historial: les campanyes més llargues perden les primeres emissions.
+
+**A Ona Bages 24h** (D-011, D-028)
+- **Vista "Calendari de la pista o de la campanya":** la mateixa manera de treballar que ara: una graella setmanal on es cliquen les caselles on ha de sonar. Marcar o desmarcar una casella afegeix o treu l'acció `PISTA` (o `CAMPANYA`) de l'esdeveniment corresponent.
+  - **Files = hores on hi ha esdeveniments (D-029):** no hi ha una graella fixa de 30 minuts. Cada fila és una hora de la setmana on hi ha algun esdeveniment que pot portar falques: els talls de les hores en punt, els ENCUA de les mitges hores i els **blocs de falques** (esdeveniments ENCUA amb `bloc_falques = 1`). Si un dia no hi ha esdeveniment a aquella hora, la casella surt desactivada.
+  - **«+ Afegeix una hora»:** crea un bloc de falques nou en **múltiples de 5 minuts** (p. ex. 8:05, 8:35). Així el calendari només té les files que es fan servir (unes 30–40), no 48 ni 288.
+  - Un bloc de falques és un ENCUA: sona quan s'acaba la pista que hi ha en aquell moment, no a l'hora exacta.
+  - A la graella del planificador, els blocs es dibuixen com a marques curtes amb el color del tipus Falca.
+  - Cada casella mostra l'esdeveniment que hi ha, amb el color, la icona i el text del mode.
+  - **Franges ocupades:** es calculen soles amb la `durada_max` dels TALLA (secció 3). Es poden marcar igualment, però amb un avís. No cal mantenir esdeveniments desactivats.
+  - **L'ordre a la vista:** en clicar una casella, un panell lateral mostra el contingut de l'esdeveniment en ordre d'emissió, amb l'hora prevista de cada pista i la falca destacada, i s'hi pot moure.
+  - **Posició per defecte:** just abans de la primera pista de tipus Programa; si no n'hi ha, al final del contingut. Així la falca no queda mai darrere d'un programa.
+  - **Dies propis:** si l'esdeveniment és de diversos dies i la falca només ha de sonar alguns d'aquests dies, l'acció porta el seu `dies_mask` (secció 3). Si la falca s'ha de posar en tots els dies de l'esdeveniment, no en porta.
+  - **Avisos:** si en aquella posició el pròxim TALLA l'esborraria (D-021), o si la franja és ocupada per un programa.
+- **Recomptes de passis** (com ara): per dia de la setmana, setmana natural i dins del període, mes natural i dins del període, i total del període. Es calculen dia a dia amb les dates reals: recurrències (secció 12), excepcions, dies propis de l'acció i dates de la pista, de la campanya i de cada falca. En una campanya, també per falca.
+- **Calendaris desats** (com ara): una distribució de franges amb nom, que es pot aplicar a una altra pista o campanya. Botó «Temporada» amb les dates de la temporada a la configuració.
+- Una pista amb esdeveniments, campanyes o calendaris desats no es pot esborrar (com ara).
+- **Avisos de vigència** (com ara): pista o campanya vençuda, que comença aviat, dates incorrectes o desactivada.
+- **Campanya amb diverses falques:** la campanya és l'element que es programa, no la falca. Es programa una sola vegada, amb la mateixa vista de calendari que una pista i l'acció `CAMPANYA` en lloc de `PISTA`.
+  - Cada falca de la campanya pot tenir **dates pròpies** dins de les de la campanya, i **dies de la setmana** propis. Canviar de falca a mitja campanya es fa amb aquestes dates.
+  - **Repartiment** entre les falques vàlides de cada passi: **Alterna** (a parts iguals), **Pes** (p. ex. A el doble que B) o **Seqüència** (sempre A, B, C, A, B, C…, per a falques que són capítols).
+  - **Pla de passis calculat per endavant (D-029):** en desar la campanya, l'aplicació calcula quina falca sona a cada passi i ho desa a `campanya_passi`. El repartiment també s'equilibra per hora, perquè una falca no surti sempre al matí i l'altra sempre al vespre. Si la campanya o els esdeveniments canvien, només es recalculen els passis futurs. En emetre, el motor fa sonar la falca del pla; si no la pot fer sonar (fitxer que falta), fa sonar una altra falca vàlida de la campanya i ho anota.
+  - **Recomptes en temps real:** mentre es marquen caselles o es canvien dates, la pantalla mostra els passis totals, per dia, per setmana i per falca. Opcionalment es poden indicar els **passis contractats** (totals i per dia) i l'aplicació avisa si el pla en té més o menys.
+  - **Calendari mensual de la campanya:** cada dia mostra quantes vegades sonarà cada falca, amb el color de la falca.
+  - **Avisos:** dies sense cap falca vàlida (el passi quedarà buit), la mateixa campanya dues vegades en el mateix esdeveniment, passis contractats que no quadren.
+  - **Estat:** esborrany, activa o acabada.
+  - Un passi que no s'emet **no es recupera**: queda al certificat com a no emès.
+  - Exemple: campanya "Ferreteria" de l'1 al 30 de novembre, de dilluns a divendres a les 8:30, 13:30 i 19:30. Les falques A i B s'alternen tot el mes, i la falca C ("Black Friday") només sona del 24 al 28 amb pes 2. Es programa una sola vegada.
 - Una campanya d'**una sola falca** és el cas més simple: funciona igual que programar la pista directament.
+- **Per a més endavant:** avís si dues campanyes del mateix sector (p. ex. dues ferreteries) coincideixen en el mateix esdeveniment. Caldria un camp `sector` a la campanya.
 
 ```sql
 CREATE TABLE campanya (
@@ -217,8 +285,20 @@ CREATE TABLE campanya (
   anunciant   TEXT,
   data_inici  TEXT NOT NULL,   -- 'YYYY-MM-DD'
   data_fi     TEXT NOT NULL,
-  seleccio    TEXT NOT NULL DEFAULT 'ALTERNA' CHECK (seleccio IN ('ALTERNA','PES')),
+  seleccio    TEXT NOT NULL DEFAULT 'ALTERNA' CHECK (seleccio IN ('ALTERNA','PES','SEQUENCIA')),
+  estat       TEXT NOT NULL DEFAULT 'ESBORRANY' CHECK (estat IN ('ESBORRANY','ACTIVA','ACABADA')),
+  passis_contractats_total INTEGER,   -- opcional; només per avisar
+  passis_contractats_dia   INTEGER,
   notes       TEXT
+);
+
+-- Pla de passis (D-029): quina falca toca a cada passi previst
+CREATE TABLE campanya_passi (
+  campanya_id     INTEGER NOT NULL REFERENCES campanya(id) ON DELETE CASCADE,
+  esdeveniment_id INTEGER NOT NULL,
+  programat_per   TEXT NOT NULL,       -- data i hora previstes del passi
+  song_id         INTEGER,             -- null = cap falca vàlida aquell dia
+  PRIMARY KEY (campanya_id, esdeveniment_id, programat_per)
 );
 
 CREATE TABLE campanya_falca (
@@ -237,9 +317,10 @@ CREATE TABLE campanya_falca (
 - **Dates de la pista (com ara):** cada pista conserva les seves dates d'inici i de fi, perquè també es fan servir fora de les falques. Al backup del gener del 2026, 42 pistes tenen dates, sobretot programes i promocions de temporada (per exemple, del 15/09/2025 al 30/06/2026). Una pista programada directament (`PISTA`) funciona com ara, només amb les seves dates. Una falca dins d'una campanya ha de complir les dates de la pista **i** les de la campanya (i les seves pròpies, si en té).
 - **Migració:** les dates d'inici i de fi de RadioDJ es copien a la pista. Les falques es continuen programant amb `PISTA`, com ara; agrupar-les en campanyes es fa a mà quan convingui, amb un assistent que proposa ajuntar les falques del mateix anunciant.
 - **Informe de programació:** es calcula a partir dels esdeveniments i les dates de la campanya. Inclou el nombre de passis previstos i la llista de dates i hores, amb la falca prevista per a cada passi.
-- **Certificat d'emissió:** per pista o per campanya (indicant quina falca ha sonat a cada passi). Es fa a partir de l'**historial real del motor**, que registra l'hora exacta en què ha sonat cada pista (i si s'ha reproduït sencera). És més fiable que l'historial de RadioDJ.
+- **Certificat d'emissió:** per pista o per campanya (indicant quina falca ha sonat a cada passi). Es fa a partir de l'**historial real del motor**, que identifica cada pista pel seu identificador i registra l'hora exacta en què ha sonat (i si s'ha reproduït sencera). El nombre de passis i la llista surten de les mateixes dates, i per tant sempre coincideixen.
+- **Previst i emès:** el certificat pot incloure una comparació amb l'informe de programació: passis previstos, passis emesos i la llista dels que falten amb el motiu (`NO_EMES` per un tall, fitxer que faltava, esdeveniment omès o en conflicte…), presos del registre d'execució.
 - **PDF generat per l'aplicació**, amb logotip, nom de l'emissora i freqüència presos de la configuració. En lloc de capturar la pantalla amb `html2canvas`, s'imprimeix l'HTML amb `webContents.printToPDF` d'Electron: el text es pot seleccionar i el fitxer pesa menys.
-- **Historial de les falques:** es conserva com a mínim 2 anys, o el temps que es configuri, independentment dels 30 dies que es guarden per a la resta de pistes. Així es pot emetre un certificat d'una campanya antiga.
+- **Historial:** no hi ha el límit de 30 dies de RadioDJ. L'historial de **totes** les pistes es conserva el temps que es configuri, amb un mínim de 2 anys (D-011, D-028). Ocupa poc (unes 300 files al dia), i així es pot fer un certificat de qualsevol campanya, per llarga o antiga que sigui, sense haver-lo de fer cada mes.
 
 ## 11. Pistes de durada variable (programes, promos i falques)
 
