@@ -5,12 +5,25 @@ namespace OnaBages24.Engine.Playback;
 
 /// <summary>
 /// Fa saber què passa a l'emissió: ho escriu al registre i ho envia a la interfície (docs/protocol.md, 5):
-/// <c>player.trackStarted</c>, <c>player.trackEnded</c>, <c>player.trackFailed</c>, <c>queue.changed</c> i <c>output.changed</c>.
+/// <c>player.trackStarted</c>, <c>player.trackEnded</c>, <c>player.trackFailed</c>, <c>queue.changed</c>, <c>output.changed</c>
+/// i <c>autodj.changed</c>.
 /// </summary>
 public sealed class PlaybackEvents
 {
-    public PlaybackEvents(QueuePlayer queue, OutputManager outputs, ILogger log, Action<JsonObject> broadcast)
+    public PlaybackEvents(QueuePlayer queue, OutputManager outputs, ILogger log, Action<JsonObject> broadcast, AutoDj? autoDj = null)
     {
+        if (autoDj is not null)
+        {
+            autoDj.Changed += () =>
+            {
+                if (autoDj.Problem is { } problem) log.LogWarning("AutoDJ: {Problem}", problem);
+                else log.LogInformation("AutoDJ {State}, rotació {Rotation}", autoDj.Enabled ? "actiu" : "aturat", autoDj.Rotation?.Name ?? "cap");
+                var ev = Messages.Event("autodj.changed");
+                ev["autodj"] = QueueJson.AutoDj(autoDj);
+                broadcast(ev);
+            };
+        }
+
         queue.Started += e =>
         {
             log.LogInformation("Sona: {Track} ({Origin})", e.Item, QueueJson.Origin(e.Item.Origin));

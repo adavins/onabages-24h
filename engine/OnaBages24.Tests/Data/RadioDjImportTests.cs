@@ -100,6 +100,45 @@ public class RadioDjImportTests : IDisposable
     }
 
     [Fact]
+    public void Importa_les_rotacions_en_ordre_i_amb_els_generes_com_a_etiquetes()
+    {
+        string docs = RadioDjDocs();
+        var dump = MySqlDump.Load(Path.Combine(docs, "esquema.sql"), Path.Combine(docs, "dades-referencia.sql"));
+        var rotations = new Rotations(_db);
+
+        var report = RadioDjImporter.ImportLibrary(dump, _library, new RadioDjImportOptions { CheckFiles = false }, rotations);
+
+        var all = rotations.List();
+        Assert.Equal(5, all.Count);
+        Assert.Equal("OnaBages", all[0].Name); // l'id més baix de RadioDJ (4): és la que farà servir l'AutoDJ per defecte
+
+        // La rotació OnaBages del backup de referència: 12 passos, en l'ordre de «ord»
+        var onaBages = all[0];
+        Assert.Equal(12, onaBages.Steps.Count);
+        Assert.Equal("Ona Bages Adult 5", onaBages.Steps[0].SubcategoryName);
+        Assert.Equal(RotationSelection.LeastRecent, onaBages.Steps[0].Selection);
+        Assert.True(onaBages.Steps[0].RepeatRule);
+        Assert.Equal(RotationSelection.Random, onaBages.Steps[1].Selection);
+
+        // Pas 3: sweeper en català (gènere 150 → etiqueta), sense criteris de repetició
+        var sweeper = onaBages.Steps[2];
+        Assert.Equal("Sweepers", sweeper.CategoryName);
+        Assert.Equal("Ona Bages", sweeper.SubcategoryName);
+        Assert.Equal("SW - catala", sweeper.TagName);
+        Assert.False(sweeper.RepeatRule);
+        Assert.Equal("Jingles", onaBages.Steps[11].CategoryName);
+
+        // Dance90 té un pas amb «sweeper» i Elektro90 té selType 2 (desconegut): s'anota a l'informe
+        Assert.Contains(all.Single(r => r.Name == "Dance90").Steps, s => s.Sweeper);
+        Assert.Contains(report.RotationWarnings, w => w.Contains("Elektro90") && w.Contains("selecció 2"));
+
+        // Tornar a importar no duplica: substitueix els passos
+        RadioDjImporter.ImportLibrary(dump, _library, new RadioDjImportOptions { CheckFiles = false }, rotations);
+        Assert.Equal(5, rotations.List().Count);
+        Assert.Equal(12, rotations.List()[0].Steps.Count);
+    }
+
+    [Fact]
     public void Tornar_a_importar_actualitza_sense_duplicar()
     {
         string docs = RadioDjDocs();

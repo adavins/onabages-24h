@@ -46,8 +46,8 @@ public static class Program
 
             Ordres:
               importa-radiodj FITXER.sql [FITXER.sql…] [opcions]
-                  Importa la biblioteca de RadioDJ (categories, subcategories, gèneres i pistes) des d'un backup.
-                  Es pot tornar a executar: les pistes ja importades s'actualitzen.
+                  Importa la biblioteca de RadioDJ (categories, subcategories, gèneres, pistes i rotacions) des d'un backup.
+                  Es pot tornar a executar: les pistes ja importades s'actualitzen i les rotacions se substitueixen.
                   --bd RUTA            base de dades (per defecte, la de la carpeta «dades» de l'aplicació)
                   --arrel DE A         canvi d'arrel de les rutes (es pot repetir; s'aplica el primer que coincideixi)
                   --sense-fitxers      no comprova si els fitxers existeixen
@@ -108,7 +108,7 @@ public static class Program
         {
             RootChanges = rootChanges,
             CheckFiles = checkFiles,
-        });
+        }, new Rotations(database));
 
         Console.WriteLine();
         Console.WriteLine(report);

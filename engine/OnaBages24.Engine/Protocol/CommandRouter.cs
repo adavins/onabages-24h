@@ -15,12 +15,17 @@ public sealed class CommandRouter
     /// <summary>Clau de la configuració on es desa la sortida (JSON: <c>{ "id": …, "name": … }</c>).</summary>
     public const string OutputSettingKey = "sortida";
 
+    /// <summary>Clau de la configuració on es desa l'AutoDJ (JSON: <c>{ "enabled": true, "rotationId": 1 }</c>).</summary>
+    public const string AutoDjSettingKey = "autodj";
+
     private readonly EngineState _state;
     private readonly Action _requestShutdown;
     private readonly Library? _library;
     private readonly Func<IReadOnlyList<AudioDevice>> _listDevices;
     private readonly QueuePlayer? _queue;
     private readonly OutputManager? _outputs;
+    private readonly AutoDj? _autoDj;
+    private readonly Rotations? _rotations;
 
     /// <param name="state">Estat del motor.</param>
     /// <param name="requestShutdown">Atura el motor (s'executa després de respondre).</param>
@@ -28,8 +33,10 @@ public sealed class CommandRouter
     /// <param name="listDevices">Dispositius d'àudio. Per defecte, els reals de Windows; les proves en passen una llista inventada.</param>
     /// <param name="queue">Cua d'emissió (null a les proves que no en necessiten).</param>
     /// <param name="outputs">Sortida d'emissió (igual).</param>
+    /// <param name="autoDj">AutoDJ (igual).</param>
+    /// <param name="rotations">Rotacions (igual).</param>
     public CommandRouter(EngineState state, Action requestShutdown, Library? library = null, Func<IReadOnlyList<AudioDevice>>? listDevices = null,
-        QueuePlayer? queue = null, OutputManager? outputs = null)
+        QueuePlayer? queue = null, OutputManager? outputs = null, AutoDj? autoDj = null, Rotations? rotations = null)
     {
         _state = state;
         _requestShutdown = requestShutdown;
@@ -37,6 +44,8 @@ public sealed class CommandRouter
         _listDevices = listDevices ?? DeviceList.GetAll;
         _queue = queue;
         _outputs = outputs;
+        _autoDj = autoDj;
+        _rotations = rotations;
     }
 
     public JsonObject Handle(string text)
@@ -82,6 +91,9 @@ public sealed class CommandRouter
                 "queue.remove" => QueueRemove(msg),
                 "player.next" => PlayerNext(msg),
                 "library.list" => LibraryList(msg),
+                "autodj.get" => new JsonObject { ["autodj"] = QueueJson.AutoDj(AutoDjOrError()) },
+                "autodj.set" => AutoDjSet(msg),
+                "rotations.list" => RotationsList(),
                 _ => null,
             };
 
@@ -263,6 +275,42 @@ public sealed class CommandRouter
         int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 100, 1, 1000);
         var tracks = library.TracksInFolder(folder).Take(limit);
         return new JsonObject { ["tracks"] = new JsonArray(tracks.Select(t => (JsonNode)QueueJson.Track(t)).ToArray()) };
+    }
+
+    // --- AutoDJ i rotacions ---
+
+    private AutoDj AutoDjOrError() => _autoDj ?? throw new BadParamsException("El motor no té AutoDJ.");
+
+    /// <summary>
+    /// Activa o desactiva l'AutoDJ (<c>enabled</c>) i canvia la rotació (<c>rotationId</c>). Els camps que no s'envien
+    /// es queden com estan. Es desa a la configuració, perquè en tornar a arrencar continuï igual.
+    /// </summary>
+    private JsonObject AutoDjSet(JsonObject msg)
+    {
+        var autoDj = AutoDjOrError();
+        bool enabled = autoDj.Enabled;
+        if (msg["enabled"] is not null)
+        {
+            if (msg["enabled"] is not JsonValue v || !v.TryGetValue(out enabled))
+                throw new BadParamsException("El camp 'enabled' ha de ser true o false.");
+        }
+        long? rotationId = autoDj.Rotation?.Id;
+        if (msg["rotationId"] is not null)
+        {
+            if (msg["rotationId"] is not JsonValue v || !v.TryGetValue(out long id))
+                throw new BadParamsException("El camp 'rotationId' ha de ser un número.");
+            rotationId = id;
+        }
+        if (!autoDj.Configure(enabled, rotationId))
+            throw new BadParamsException($"No existeix la rotació {rotationId}.");
+        _library?.SetSetting(AutoDjSettingKey, JsonSerializer.Serialize(new { enabled = autoDj.Enabled, rotationId = autoDj.Rotation?.Id }));
+        return new JsonObject { ["autodj"] = QueueJson.AutoDj(autoDj) };
+    }
+
+    private JsonObject RotationsList()
+    {
+        var rotations = _rotations ?? throw new BadParamsException("El motor no té rotacions.");
+        return new JsonObject { ["rotations"] = new JsonArray(rotations.List().Select(r => (JsonNode)QueueJson.Rotation(r)).ToArray()) };
     }
 
     private static string RequireString(JsonObject msg, string field)

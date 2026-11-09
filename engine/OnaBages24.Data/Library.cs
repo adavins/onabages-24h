@@ -186,6 +186,43 @@ public sealed class Library(Database database)
         }
     }
 
+    /// <summary>
+    /// Pistes que pot triar un pas de rotació (fase 1, pas 8): de la subcategoria (o, si el pas no en té, de qualsevol
+    /// subcategoria de la categoria), amb l'etiqueta si el pas en demana, activades, amb el fitxer disponible, vigents el
+    /// dia <paramref name="today"/> i que no siguin streams (els streams de les rotacions arriben a la fase 2).
+    /// </summary>
+    public IReadOnlyList<Track> TracksForRotationStep(RotationStep step, DateOnly today)
+    {
+        var where = new List<string> { AvailableCondition };
+        var parameters = new List<(string, object)> { ("$avui", DbTime.ToText(today)) };
+        if (step.SubcategoryId is { } sub)
+        {
+            where.Add("subcategoria_id = $sub");
+            parameters.Add(("$sub", sub));
+        }
+        else if (step.CategoryId is { } cat)
+        {
+            where.Add("subcategoria_id IN (SELECT id FROM subcategoria WHERE categoria_id = $cat)");
+            parameters.Add(("$cat", cat));
+        }
+        else return [];
+        if (step.TagId is { } tag)
+        {
+            where.Add("id IN (SELECT pista_id FROM pista_etiqueta WHERE etiqueta_id = $tag)");
+            parameters.Add(("$tag", tag));
+        }
+        return QueryTracks("WHERE " + string.Join(" AND ", where) + " ORDER BY id", parameters.ToArray());
+    }
+
+    /// <summary>Música disponible de tota la biblioteca: la reserva de l'AutoDJ quan cap pas de la rotació no troba res (mai silenci).</summary>
+    public IReadOnlyList<Track> AvailableMusic(DateOnly today) =>
+        QueryTracks($"WHERE tipus = 'MUSICA' AND {AvailableCondition} ORDER BY id", ("$avui", DbTime.ToText(today)));
+
+    /// <summary>Pista que pot sonar avui: activada, amb el fitxer, vigent (paràmetre <c>$avui</c>) i que no és un stream.</summary>
+    private const string AvailableCondition =
+        "activa = 1 AND estat_fitxer = 'OK' AND tipus <> 'STREAM' " +
+        "AND (data_inici IS NULL OR data_inici <= $avui) AND (data_fi IS NULL OR data_fi >= $avui)";
+
     public long CountTracks()
     {
         lock (database.Sync)
@@ -222,6 +259,22 @@ public sealed class Library(Database database)
         }
     }
 
+    /// <summary>Retorna l'id de l'etiqueta amb aquest nom; si no existeix, la crea.</summary>
+    public long EnsureTag(string name)
+    {
+        lock (database.Sync)
+        {
+            using (var insert = database.Command("INSERT OR IGNORE INTO etiqueta (nom) VALUES ($nom);"))
+            {
+                insert.Parameters.AddWithValue("$nom", name.Trim());
+                insert.ExecuteNonQuery();
+            }
+            using var select = database.Command("SELECT id FROM etiqueta WHERE nom = $nom;");
+            select.Parameters.AddWithValue("$nom", name.Trim());
+            return (long)select.ExecuteScalar()!;
+        }
+    }
+
     public IReadOnlyList<string> GetTags(long trackId)
     {
         lock (database.Sync)
@@ -238,7 +291,10 @@ public sealed class Library(Database database)
 
     // --- Historial ---
 
-    /// <summary>Anota que una pista ha començat a sonar. Retorna l'id de l'entrada (per tancar-la quan s'acabi).</summary>
+    /// <summary>
+    /// Anota que una pista ha començat a sonar i n'actualitza la darrera reproducció. Retorna l'id de l'entrada (per tancar-la
+    /// quan s'acabi). Una pista amb <c>Id</c> 0 (un fitxer que no és a la biblioteca) s'anota sense <c>pista_id</c>.
+    /// </summary>
     public long AddHistory(Track track, DateTimeOffset started, QueueOrigin origin)
     {
         lock (database.Sync)
@@ -247,7 +303,7 @@ public sealed class Library(Database database)
                 "INSERT INTO historial (pista_id, inici, origen, artista, titol, ruta) VALUES ($p, $inici, $origen, $artista, $titol, $ruta); " +
                 "UPDATE pista SET reproduccions = reproduccions + 1, darrera_reproduccio = $inici WHERE id = $p; " +
                 "SELECT last_insert_rowid();");
-            command.Parameters.AddWithValue("$p", track.Id);
+            command.Parameters.AddWithValue("$p", track.Id > 0 ? track.Id : DBNull.Value);
             command.Parameters.AddWithValue("$inici", DbTime.ToText(started));
             command.Parameters.AddWithValue("$origen", ToText(origin));
             command.Parameters.AddWithValue("$artista", track.Artist);
@@ -408,12 +464,14 @@ public sealed class Library(Database database)
         p.AddWithValue("$notes", (object?)t.Notes ?? DBNull.Value);
     }
 
-    private IReadOnlyList<Track> QueryTracks(string where, object value)
+    private IReadOnlyList<Track> QueryTracks(string where, object value) => QueryTracks(where, ("$v", value));
+
+    private IReadOnlyList<Track> QueryTracks(string where, params (string Name, object Value)[] parameters)
     {
         lock (database.Sync)
         {
             using var command = database.Command($"SELECT id, {TrackColumns} FROM pista {where};");
-            command.Parameters.AddWithValue("$v", value);
+            foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value);
             using var r = command.ExecuteReader();
             var list = new List<Track>();
             while (r.Read())

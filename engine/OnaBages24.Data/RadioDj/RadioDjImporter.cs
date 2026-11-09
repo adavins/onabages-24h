@@ -31,6 +31,10 @@ public sealed class RadioDjImportReport
     public List<string> Skipped { get; } = [];
     /// <summary>Fitxers que falten per carpeta (els tres primers nivells de la ruta), per saber quin canvi d'arrel cal.</summary>
     public Dictionary<string, int> MissingByFolder { get; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Rotacions importades: nom i nombre de passos.</summary>
+    public List<string> Rotations { get; } = [];
+    /// <summary>Coses de les rotacions que cal revisar (passos que no s'han pogut importar, tipus de selecció desconeguts…).</summary>
+    public List<string> RotationWarnings { get; } = [];
 
     public override string ToString()
     {
@@ -41,6 +45,8 @@ public sealed class RadioDjImportReport
             $"Fitxers que falten: {FilesMissing} · sense punts d'encadenament: {WithoutCuePoints} · amb dates de vigència: {WithDates}",
             "Per tipus: " + string.Join(", ", ByType.OrderByDescending(t => t.Value).Select(t => $"{t.Key} {t.Value}")),
         };
+        if (Rotations.Count > 0) lines.Add("Rotacions: " + string.Join(", ", Rotations));
+        if (RotationWarnings.Count > 0) lines.Add("A revisar a les rotacions:\n  " + string.Join("\n  ", RotationWarnings));
         if (Skipped.Count > 0) lines.Add("No importades:\n  " + string.Join("\n  ", Skipped));
         if (MissingByFolder.Count > 0)
             lines.Add("Fitxers que falten, per carpeta:\n  " + string.Join("\n  ",
@@ -50,9 +56,9 @@ public sealed class RadioDjImportReport
 }
 
 /// <summary>
-/// Importa la biblioteca de RadioDJ (categories, subcategories, gèneres i pistes) des d'un backup <c>.sql</c>.
-/// Es pot tornar a executar: les pistes ja importades (mateix id de RadioDJ) s'actualitzen en lloc de duplicar-se.
-/// Els fitxers d'àudio no es copien mai: només se'n desa la ruta.
+/// Importa la biblioteca de RadioDJ (categories, subcategories, gèneres, pistes i rotacions) des d'un backup <c>.sql</c>.
+/// Es pot tornar a executar: les pistes ja importades (mateix id de RadioDJ) s'actualitzen en lloc de duplicar-se, i les
+/// rotacions amb el mateix nom se substitueixen. Els fitxers d'àudio no es copien mai: només se'n desa la ruta.
 /// </summary>
 public static class RadioDjImporter
 {
@@ -62,7 +68,8 @@ public static class RadioDjImporter
     /// <summary>Gènere de RadioDJ que no es converteix en etiqueta (D-027).</summary>
     private const string NoGenre = "Other";
 
-    public static RadioDjImportReport ImportLibrary(MySqlDump dump, Library library, RadioDjImportOptions? options = null)
+    /// <param name="rotations">Si no és null, també s'importen les rotacions (taules <c>rotations</c> i <c>rotations_list</c>).</param>
+    public static RadioDjImportReport ImportLibrary(MySqlDump dump, Library library, RadioDjImportOptions? options = null, Rotations? rotations = null)
     {
         options ??= new RadioDjImportOptions();
         var report = new RadioDjImportReport();
@@ -135,7 +142,56 @@ public static class RadioDjImporter
             }
         }
 
+        if (rotations is not null) ImportRotations(dump, library, rotations, subcategories, genres, categoryNames, report);
         return report;
+    }
+
+    /// <summary>
+    /// Rotacions de RadioDJ (D-014, D-027): cada fila de <c>rotations_list</c> és un pas (<c>ord</c> = ordre). El gènere
+    /// passa a ser una etiqueta. <c>selType</c>: 0 = la menys reproduïda recentment, 5 = aleatòria; qualsevol altre valor
+    /// es tracta com 0 i s'anota a l'informe. Es mantenen en l'ordre dels ids de RadioDJ.
+    /// </summary>
+    private static void ImportRotations(MySqlDump dump, Library library, Rotations rotations,
+        Dictionary<long, (long Id, string Category)> subcategories, Dictionary<long, string> genres,
+        Dictionary<long, string> categoryNames, RadioDjImportReport report)
+    {
+        var steps = dump.Rows("rotations_list").GroupBy(r => r.Long("pID")).ToDictionary(g => g.Key, g => g.ToList());
+        foreach (var row in dump.Rows("rotations").OrderBy(r => r.Long("ID")))
+        {
+            long radioDjId = row.Long("ID");
+            string name = row.Text("name");
+            var list = new List<RotationStep>();
+            foreach (var step in steps.GetValueOrDefault(radioDjId, []).OrderBy(s => s.Long("ord")).ThenBy(s => s.Long("ID")))
+            {
+                string where = $"«{name}», pas {step.Long("ord") + 1}";
+                long? categoryId = categoryNames.TryGetValue(step.Long("catID"), out string? category) ? library.EnsureCategory(category) : null;
+                long? subcategoryId = subcategories.TryGetValue(step.Long("subID"), out var sub) ? sub.Id : null;
+                if (categoryId is null && subcategoryId is null)
+                {
+                    report.RotationWarnings.Add($"{where}: la categoria {step.Long("catID")} no existeix; el pas no s'importa");
+                    continue;
+                }
+                long? tagId = null;
+                long genre = step.Long("genID");
+                if (genre != 0 && genres.TryGetValue(genre, out string? tag)) tagId = library.EnsureTag(tag);
+
+                long selType = step.Long("selType");
+                if (selType is not (0 or 5))
+                    report.RotationWarnings.Add($"{where}: tipus de selecció {selType} de RadioDJ desconegut; es fa servir «la menys reproduïda recentment»");
+
+                list.Add(new RotationStep
+                {
+                    CategoryId = categoryId,
+                    SubcategoryId = subcategoryId,
+                    TagId = tagId,
+                    Selection = selType == 5 ? RotationSelection.Random : RotationSelection.LeastRecent,
+                    RepeatRule = step.Text("repeatRule").Equals("True", StringComparison.OrdinalIgnoreCase),
+                    Sweeper = step.Long("sweeper") == 1,
+                });
+            }
+            rotations.Save(name, list, radioDjId);
+            report.Rotations.Add($"{name} ({list.Count} passos)");
+        }
     }
 
     /// <summary>Converteix una fila de la taula <c>songs</c> de RadioDJ en una pista.</summary>

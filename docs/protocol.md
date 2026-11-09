@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 1, pas 7c (motor, dispositius, sortida, cua i biblioteca). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 1, pas 8 (motor, dispositius, sortida, cua, biblioteca i AutoDJ). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -84,6 +84,9 @@ El `message` és en català i es pot mostrar a l'operador.
 | `queue.remove` | `itemId` | `{ queue }`. Només les que encara no han començat; si no, `bad_params` | fase 1, pas 7c |
 | `player.next` | `fadeMs` (de 0 a 10.000; per defecte 1.000) | `{ queue }`. La que sona baixa amb un fos i la següent comença de seguida | fase 1, pas 7c |
 | `library.list` | `folder`, `limit` (per defecte 100, com a molt 1.000) | `{ tracks: [ … ] }` (vegeu 4.4): pistes de la carpeta i subcarpetes. De moment, per a les proves | fase 1, pas 7c |
+| `autodj.get` | — | `{ autodj }` (vegeu 4.5) | fase 1, pas 8 |
+| `autodj.set` | `enabled` (`true`/`false`), `rotationId`. Tots dos opcionals: el que no s'envia es queda com està | `{ autodj }`. Es desa a la configuració i es manté en tornar a arrencar. Si la rotació no existeix, `bad_params` | fase 1, pas 8 |
+| `rotations.list` | — | `{ rotations: [ … ] }` (vegeu 4.5) | fase 1, pas 8 |
 
 ### 4.1. Dispositius
 
@@ -140,6 +143,30 @@ El `message` és en català i es pot mostrar a l'operador.
 - `cueSource`: d'on surten els punts d'encadenament: `radiodj`, `analyzer`, `manual` o `null` (encara no n'hi ha).
 - `fileState`: `ok`, `missing` (el fitxer falta) o `retired` (ha sortit d'una bossa renovable).
 
+### 4.5. AutoDJ i rotacions (D-049)
+
+```json
+{ "enabled": true, "rotation": { "id": 1, "name": "OnaBages" }, "nextStep": 3, "problem": null }
+```
+
+- `enabled`: l'AutoDJ afegeix pistes quan a la cua n'hi ha menys de 2. En arrencar, el motor l'activa sol (amb la configuració desada o, la primera vegada, amb la primera rotació).
+- `rotation`: la rotació activa, o `null` si no n'hi ha cap (llavors sona música de tota la biblioteca, amb avís).
+- `nextStep`: índex del pas que es farà servir la pròxima vegada (0 = el primer).
+- `problem`: avís en català (un pas sense pistes que s'ha saltat, la rotació que no troba res…) o `null`.
+
+Rotació:
+
+```json
+{ "id": 1, "name": "OnaBages",
+  "steps": [ { "category": "Sweepers", "subcategory": "Ona Bages", "tag": "SW - catala",
+               "selection": "leastRecent", "repeatRule": false, "sweeper": false } ] }
+```
+
+- `subcategory`: `null` si el pas tria de tota la categoria. `tag`: `null` si no filtra per etiqueta.
+- `selection`: `leastRecent` (la que fa més temps que no sona) o `random`.
+- `repeatRule`: s'apliquen els criteris de repetició (no repetir pista ni artista de la cua).
+- `sweeper`: sweeper a sobre de la pista (importat de RadioDJ; encara no es fa servir).
+
 ## 5. Esdeveniments
 
 | Esdeveniment | Camps | Freqüència | Des de |
@@ -150,6 +177,7 @@ El `message` és en català i es pot mostrar a l'operador.
 | `player.trackEnded` | `item`, `playedMs`, `complete` (ha arribat al final previst) | quan una pista s'acaba | fase 1, pas 7c |
 | `player.trackFailed` | `item`, `message` | quan una pista no es pot fer sonar (fitxer que falta o il·legible) i se salta | fase 1, pas 7c |
 | `output.changed` | `output` (4.3) | quan canvia la sortida, l'estat d'emergència o el problema | fase 1, pas 7c |
+| `autodj.changed` | `autodj` (4.5) | quan s'activa o es desactiva, canvia la rotació o canvia l'avís (les pistes que afegeix surten a `queue.changed`) | fase 1, pas 8 |
 
 ## 6. Eines
 

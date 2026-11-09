@@ -56,6 +56,31 @@ public static class QueueJson
         ["problem"] = outputs.Problem,
     };
 
+    /// <summary>Estat de l'AutoDJ (docs/protocol.md, 4.5).</summary>
+    public static JsonObject AutoDj(AutoDj autoDj) => new()
+    {
+        ["enabled"] = autoDj.Enabled,
+        ["rotation"] = autoDj.Rotation is { } r ? new JsonObject { ["id"] = r.Id, ["name"] = r.Name } : null,
+        ["nextStep"] = autoDj.NextStep,
+        ["problem"] = autoDj.Problem,
+    };
+
+    /// <summary>Una rotació amb els seus passos (docs/protocol.md, 4.5).</summary>
+    public static JsonObject Rotation(Rotation rotation) => new()
+    {
+        ["id"] = rotation.Id,
+        ["name"] = rotation.Name,
+        ["steps"] = new JsonArray(rotation.Steps.Select(s => (JsonNode)new JsonObject
+        {
+            ["category"] = s.CategoryName,
+            ["subcategory"] = s.SubcategoryName,
+            ["tag"] = s.TagName,
+            ["selection"] = s.Selection == RotationSelection.Random ? "random" : "leastRecent",
+            ["repeatRule"] = s.RepeatRule,
+            ["sweeper"] = s.Sweeper,
+        }).ToArray()),
+    };
+
     /// <summary>Tipus de pista: <c>music</c>, <c>sweeper</c>, <c>stationId</c>, <c>promo</c>, <c>commercial</c>, <c>program</c>, <c>news</c>, <c>timeAnnouncement</c>, <c>timeSignal</c>, <c>stream</c>, <c>other</c>.</summary>
     public static string Type(TrackType type)
     {

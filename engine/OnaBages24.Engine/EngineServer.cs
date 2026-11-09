@@ -101,11 +101,17 @@ public static class EngineServer
         var outputs = new OutputManager(mixer);
         outputs.Configure(ReadConfiguredOutput(library, log));
         var queue = new QueuePlayer(mixer);
-        var playback = new PlaybackEvents(queue, outputs, log, Broadcast);
+
+        // AutoDJ (fase 1, pas 8): arrenca sol amb la rotació desada (o la primera), i l'emissió comença de seguida
+        var rotations = new Rotations(database);
+        var autoDj = new AutoDj(library, rotations, queue);
+        var playback = new PlaybackEvents(queue, outputs, log, Broadcast, autoDj);
+        var history = new PlayHistory(queue, library, log);
+        ConfigureAutoDj(autoDj, library, log);
 
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
-            queue: queue, outputs: outputs);
+            queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations);
 
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15) });
 
@@ -152,7 +158,7 @@ public static class EngineServer
         });
 
         // Fil de control (docs/disseny-motor.md, 3): la cua cada 10 ms i la sortida cada 0,5 s. Mai no fa esperar el fil d'àudio.
-        var control = new ControlLoop(queue, outputs, log);
+        var control = new ControlLoop(queue, outputs, log, autoDj);
         var deviceWatcher = new DeviceWatcher();
         deviceWatcher.Changed += _ => outputs.Poke();
         try { deviceWatcher.Start(); }
@@ -234,6 +240,34 @@ public static class EngineServer
 
         log.LogInformation("Motor aturat");
         return 0;
+    }
+
+    /// <summary>
+    /// L'AutoDJ, tal com es va desar amb <c>autodj.set</c>. Si no hi ha res desat (primera vegada), s'activa amb la primera
+    /// rotació: el motor sempre arrenca sonant (D-035). Si la rotació desada ja no existeix, es fa servir la primera, amb avís.
+    /// </summary>
+    private static void ConfigureAutoDj(AutoDj autoDj, Library library, ILogger log)
+    {
+        bool enabled = true;
+        long? rotationId = null;
+        try
+        {
+            if (library.GetSetting(CommandRouter.AutoDjSettingKey) is { } json)
+            {
+                var node = System.Text.Json.Nodes.JsonNode.Parse(json);
+                enabled = node?["enabled"]?.GetValue<bool>() ?? true;
+                rotationId = node?["rotationId"]?.GetValue<long?>();
+            }
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning("La configuració desada de l'AutoDJ no és vàlida ({Message}): s'activa amb la primera rotació", ex.Message);
+        }
+        if (!autoDj.Configure(enabled, rotationId))
+        {
+            log.LogWarning("La rotació desada ({Id}) ja no existeix: es fa servir la primera", rotationId);
+            autoDj.Configure(enabled, null);
+        }
     }
 
     /// <summary>La sortida desada a la configuració (D-038). Si no n'hi ha cap, s'emet per la d'emergència.</summary>
