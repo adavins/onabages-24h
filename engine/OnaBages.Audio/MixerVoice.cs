@@ -108,7 +108,9 @@ public sealed class MixerVoice
     /// <param name="fadeInFrames">Fos d'entrada (0 = sense).</param>
     public void Start(long atFrame, int fadeInFrames = 0)
     {
-        if (State != VoiceState.Reserved)
+        // També es pot tornar a programar una veu que encara no ha començat (p. ex. per avançar-la). Si mentrestant
+        // ja ha començat a sonar, el canvi no té efecte.
+        if (State is not (VoiceState.Reserved or VoiceState.Scheduled))
             throw new InvalidOperationException($"La veu {Index} no està reservada (estat: {State}).");
         Interlocked.Exchange(ref _startFrame, atFrame);
         Volatile.Write(ref _fadeInFrames, Math.Max(0, fadeInFrames));
@@ -124,6 +126,16 @@ public sealed class MixerVoice
     {
         Volatile.Write(ref _fadeOutFrames, Math.Max(0, fadeFrames));
         Interlocked.Exchange(ref _fadeOutStart, atFrame); // després del nombre de fotogrames: el fil d'àudio llegeix aquest primer
+    }
+
+    /// <summary>
+    /// Desprograma una veu que encara no ha començat a sonar: torna a quedar reservada (i es pot alliberar).
+    /// Retorna false si ja sona (llavors cal aturar-la amb <see cref="Stop"/> i esperar que acabi).
+    /// </summary>
+    public bool Cancel()
+    {
+        int seen = Interlocked.CompareExchange(ref _state, (int)VoiceState.Reserved, (int)VoiceState.Scheduled);
+        return seen is (int)VoiceState.Scheduled or (int)VoiceState.Reserved;
     }
 
     /// <summary>El fil de lectura avisa que ja ha escrit totes les dades: quan s'acabin, la veu ha acabat (no és un tall).</summary>
