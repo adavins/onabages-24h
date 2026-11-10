@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 1, pas 9 (motor, dispositius, sortida, cua, biblioteca, AutoDJ, historial i títol per a BUTT). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 1, pas 10a (motor, dispositius, sortida, cua, biblioteca, AutoDJ, historial, títol per a BUTT i mesuradors). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -208,11 +208,27 @@ Exportació del títol:
 | `player.trackFailed` | `item`, `message` | quan una pista no es pot fer sonar (fitxer que falta o il·legible) i se salta | fase 1, pas 7c |
 | `output.changed` | `output` (4.3) | quan canvia la sortida, l'estat d'emergència o el problema | fase 1, pas 7c |
 | `autodj.changed` | `autodj` (4.5) | quan s'activa o es desactiva, canvia la rotació o canvia l'avís (les pistes que afegeix surten a `queue.changed`) | fase 1, pas 8 |
+| `meters` | `output` (nivells de la sortida), `position` (la pista que sona); vegeu 5.1 | unes 20 vegades per segon, només si hi ha algun client connectat | fase 1, pas 10a |
+
+### 5.1. Mesuradors i posició
+
+```json
+{ "v": 1, "ev": "meters", "output": [-12.3, -11.8],
+  "position": { "itemId": "6f0c…", "elapsedMs": 61500, "remainingMs": 120000, "mixInMs": 110000, "durationMs": 181500 } }
+```
+
+- `output`: `[esquerre, dret]` en **dBFS**, el pic més alt de la sortida des de l'esdeveniment anterior (uns 50 ms). `-90` vol dir silenci. És la mescla del motor, abans d'adaptar-la a la targeta. La interfície fa la caiguda suau, la retenció del pic i l'indicador de saturació.
+- `position`: la pista que sona (`itemId` és el de `queue.current`), o `null` si no sona res.
+  - `elapsedMs`: quant ha sonat des del punt d'inici.
+  - `remainingMs`: quant falta per al final (amb el fos de sortida inclòs).
+  - `mixInMs`: quant falta perquè entri la següent (el punt de mescla); `0` si ja ha entrat.
+  - `durationMs`: de l'inici al final (els punts de la pista, no la durada del fitxer).
+  - Es calcula amb el rellotge del mesclador, el mateix que fa servir l'encadenament. Si es fa saltar la pista, `remainingMs` passa a ser la durada del fos.
 
 ## 6. Eines
 
 - `tools/prova-motor.mjs`: envia ordres al motor des de la línia d'ordres i en mostra les respostes (Node 22 o posterior, sense paquets). Llegeix el port i el testimoni de `engine.json`.
 
 ```text
-node tools/prova-motor.mjs [--dades CARPETA] [--carpeta CARPETA_DE_MÚSICA [--quantes N]] [ordre …]
+node tools/prova-motor.mjs [--dades CARPETA] [--carpeta CARPETA_DE_MÚSICA [--quantes N]] [--escolta SEGONS] [ordre …]
 ```

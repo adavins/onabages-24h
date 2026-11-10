@@ -239,4 +239,40 @@ public class QueuePlayerTests : IDisposable
         Assert.Equal(["A", "C"], _started.Select(s => s.Item.Title));
         Assert.All(_mixer.Voices, v => Assert.Equal(VoiceState.Idle, v.State));
     }
+    [Fact]
+    public void La_posicio_diu_quant_ha_sonat_quant_falta_i_quan_entra_la_mescla()
+    {
+        var player = NewPlayer();
+        Assert.Null(player.Position); // no sona res
+        string a = Wav("a", (0.5, 0f), (4, 0.1f));
+        player.Enqueue(Item(a, startMs: 500, mixMs: 3500, endMs: 4500, title: "A"));
+
+        Run(player, Rate * 1); // 1 s
+
+        var position = player.Position;
+        Assert.NotNull(position);
+        Assert.Equal(player.Current!.Id, position.ItemId);
+        Assert.Equal(4000, position.Duration.TotalMilliseconds, 0.5);   // de l'inici (0,5 s) al final (4,5 s)
+        Assert.InRange(position.Elapsed.TotalMilliseconds, 900, 1000);  // gairebé 1 s (menys el marge d'inici)
+        Assert.Equal(position.Duration.TotalMilliseconds, (position.Elapsed + position.Remaining).TotalMilliseconds, 0.5);
+        Assert.Equal(1000, (position.Remaining - position.UntilMix).TotalMilliseconds, 0.5); // la mescla, 1 s abans del final
+
+        Run(player, Rate * 4);
+        Assert.Null(player.Position); // s'ha acabat
+    }
+
+    [Fact]
+    public void L_esdeveniment_meters_porta_els_nivells_en_dbfs_i_la_posicio()
+    {
+        var position = new QueuePosition(Guid.Empty, TimeSpan.FromSeconds(61.5), TimeSpan.FromSeconds(120), TimeSpan.FromSeconds(110), TimeSpan.FromSeconds(181.5));
+
+        var ev = OnaBages24.Engine.Protocol.QueueJson.Meters((0.5f, 0f), position);
+
+        Assert.Equal("meters", ev["ev"]!.GetValue<string>());
+        Assert.Equal(-6.0, ev["output"]![0]!.GetValue<double>());
+        Assert.Equal(-90.0, ev["output"]![1]!.GetValue<double>()); // silenci
+        Assert.Equal(61500, ev["position"]!["elapsedMs"]!.GetValue<long>());
+        Assert.Equal(110000, ev["position"]!["mixInMs"]!.GetValue<long>());
+        Assert.Null(OnaBages24.Engine.Protocol.QueueJson.Meters((0f, 0f), null)["position"]);
+    }
 }

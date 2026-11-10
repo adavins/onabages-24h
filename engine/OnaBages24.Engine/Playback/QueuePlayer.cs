@@ -24,6 +24,9 @@ public sealed record QueueEnded(QueueItem Item, TimeSpan Played, bool Complete);
 /// <summary>Una pista que no s'ha pogut fer sonar (fitxer que falta o il·legible): se salta.</summary>
 public sealed record QueueFailed(QueueItem Item, string Message);
 
+/// <summary>Posició de la pista que sona: quant ha sonat, quant falta per al final i per al punt de mescla, i quant dura en total.</summary>
+public sealed record QueuePosition(Guid ItemId, TimeSpan Elapsed, TimeSpan Remaining, TimeSpan UntilMix, TimeSpan Duration);
+
 /// <summary>
 /// Reproductor de la cua d'emissió (docs/disseny-motor.md, secció 4). Treballa al fil de control: el motor el crida
 /// sovint (<see cref="Tick"/>) i ell decideix què ha de sonar i quan, programant les veus del <see cref="Mixer"/> en fotogrames:
@@ -76,6 +79,28 @@ public sealed class QueuePlayer : IDisposable
                 if (_next is not null) list.Add(_next.Item);
                 list.AddRange(_upcoming);
                 return list;
+            }
+        }
+    }
+
+    /// <summary>
+    /// On és la pista que sona (per a la interfície, fase 1, pas 10a), o null si no sona res. Es calcula amb el comptador
+    /// de fotogrames del mesclador, el mateix rellotge que fa servir l'encadenament.
+    /// </summary>
+    public QueuePosition? Position
+    {
+        get
+        {
+            lock (_sync)
+            {
+                if (_current is not { Scheduled: true } c) return null;
+                long now = _mixer.FramesRendered;
+                return new QueuePosition(
+                    c.Item.Id,
+                    Elapsed: FramesToTime(Math.Max(0, now - c.StartFrame)),
+                    Remaining: FramesToTime(Math.Max(0, c.EndFrame - now)),
+                    UntilMix: FramesToTime(Math.Max(0, c.MixFrame - now)),
+                    Duration: FramesToTime(Math.Max(0, c.EndFrame - c.StartFrame)));
             }
         }
     }
@@ -313,6 +338,8 @@ public sealed class QueuePlayer : IDisposable
     private int Frames(TimeSpan time) => (int)Math.Round(time.TotalSeconds * _mixer.SampleRate);
 
     private long FramesFromMs(long ms) => (long)Math.Round(ms / 1000.0 * _mixer.SampleRate);
+
+    private TimeSpan FramesToTime(long frames) => TimeSpan.FromSeconds((double)frames / _mixer.SampleRate);
 
     private static TimeSpan Ms(long ms) => TimeSpan.FromMilliseconds(ms);
 

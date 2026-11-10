@@ -208,6 +208,33 @@ public static class EngineServer
             catch (OperationCanceledException) { }
         });
 
+        // Mesuradors i posició de la pista que sona, unes 20 vegades per segon, només si hi ha alguna interfície connectada
+        // (fase 1, pas 10a). Si no n'hi ha cap, es buida el pic igualment perquè el primer valor no sigui d'abans.
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(50));
+            bool warned = false;
+            try
+            {
+                while (await timer.WaitForNextTickAsync(stopping))
+                {
+                    var peak = mixer.Meter.Take();
+                    if (state.Clients == 0) continue;
+                    try
+                    {
+                        await hub.BroadcastAsync(QueueJson.Meters(peak, queue.Position), stopping);
+                        warned = false;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        if (!warned) log.LogWarning("No s'han pogut enviar els mesuradors: {Message}", ex.Message); // es torna a provar al següent
+                        warned = true;
+                    }
+                }
+            }
+            catch (OperationCanceledException) { }
+        });
+
         // Còpia de seguretat diària (D-032): en arrencar i, després, cada hora es mira si avui ja se n'ha fet.
         _ = Task.Run(async () =>
         {

@@ -47,7 +47,11 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
    - 7c. ✔ Sortida WASAPI real (amb la d'emergència, D-038), `/health` segons el mesclador i recàlcul dels punts en segon pla (D-042, D-048). Escolta feta pel desenvolupador (2026-11-09): so net; encadenaments bastant bé. Solapament màxim de 10 s confirmat al pas 8 (D-050).
 8. ✔ AutoDJ amb una rotació importada; arrencada automàtica (D-049). També anota l'historial, que cal per triar «la menys reproduïda». Escolta feta pel desenvolupador (2026-11-09): sona seguit, alterna les bosses (Adult 5, Adult 9, Català), sense repeticions i amb solapaments adequats.
 9. ✔ Consulta de l'historial (`history.list`) i `NowPlaying.txt` amb plantilla (`nowplaying.get` i `nowplaying.set`) (D-051). L'historial ja s'anota des del pas 8. Prova del desenvolupador (2026-11-10): el fitxer canvia a cada cançó i BUTT el llegeix bé, amb els accents i els punts volats. Que el títol no canviï amb les cortines i els indicatius només s'ha comprovat amb les proves automàtiques, perquè en aquest ordinador no hi ha els seus fitxers; s'ha de mirar al PC 24h.
-10. Interfície mínima (Electron), oberta sense contrasenya (D-035).
+10. Interfície mínima (Electron), oberta sense contrasenya (D-035), en tres parts:
+   - 10a. ✔ Motor: esdeveniment `meters` amb els nivells de la sortida i la posició de la pista que sona.
+   - 10b. Esquelet d'Electron: arrencada o connexió amb el motor, pista que sona, vúmetres i rellotge.
+   - 10c. Cua, últimes pistes, AutoDJ (interruptor i rotació), saltar a la següent i barra d'estat.
+   Fora d'abast fins a les fases 2 i 3: esdeveniments, cerca a la biblioteca, cartutxeres, auxiliars, inserir a la cua i hora prevista de cada pista.
 11. Prova de 48 hores: primer a l'ordinador del desenvolupador, després a un altre ordinador de proves.
 
 ## Fase 2 — Planificador i puntualitat

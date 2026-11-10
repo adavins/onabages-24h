@@ -112,6 +112,25 @@ public static class QueueJson
         ["problem"] = nowPlaying.Problem,
     };
 
+    /// <summary>
+    /// Esdeveniment <c>meters</c> (docs/protocol.md, 5.1): el pic de la sortida (dBFS, <c>[esquerre, dret]</c>, −90 = silenci)
+    /// i la posició de la pista que sona.
+    /// </summary>
+    public static JsonObject Meters((float Left, float Right) peak, QueuePosition? position)
+    {
+        var ev = Messages.Event("meters");
+        ev["output"] = new JsonArray(OnaBages.Audio.PeakMeter.ToDb(peak.Left), OnaBages.Audio.PeakMeter.ToDb(peak.Right));
+        ev["position"] = position is null ? null : new JsonObject
+        {
+            ["itemId"] = position.ItemId.ToString(),
+            ["elapsedMs"] = (long)position.Elapsed.TotalMilliseconds,
+            ["remainingMs"] = (long)position.Remaining.TotalMilliseconds,
+            ["mixInMs"] = (long)position.UntilMix.TotalMilliseconds,
+            ["durationMs"] = (long)position.Duration.TotalMilliseconds,
+        };
+        return ev;
+    }
+
     /// <summary>Tipus de pista: <c>music</c>, <c>sweeper</c>, <c>stationId</c>, <c>promo</c>, <c>commercial</c>, <c>program</c>, <c>news</c>, <c>timeAnnouncement</c>, <c>timeSignal</c>, <c>stream</c>, <c>other</c>.</summary>
     public static string Type(TrackType type)
     {

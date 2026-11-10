@@ -1,7 +1,7 @@
 // Prova ràpida del motor des de la línia d'ordres (sense paquets: Node 22 o posterior ja porta WebSocket).
 //
 // Ús:
-//   node tools/prova-motor.mjs [--dades CARPETA] [--carpeta CARPETA_DE_MUSICA [--quantes N]] [ordre ...]
+//   node tools/prova-motor.mjs [--dades CARPETA] [--carpeta CARPETA_DE_MUSICA [--quantes N]] [--escolta SEGONS] [ordre ...]
 //
 // Llegeix el port i el testimoni del fitxer d'execució (engine.json) de la carpeta de dades
 // (per defecte, la carpeta «dades» del repositori), envia les ordres (per defecte: engine.hello, state.get
@@ -10,6 +10,9 @@
 // Una ordre pot ser només el nom o un objecte JSON amb els paràmetres (sense "v" ni "id"):
 //   node tools/prova-motor.mjs engine.hello devices.list
 //   node tools/prova-motor.mjs "{\"cmd\":\"queue.insert\",\"items\":[{\"trackId\":12}]}"
+//
+// Amb --escolta SEGONS, després de les respostes es queda escoltant i mostra tots els esdeveniments (excepte
+// engine.status) durant aquests segons. P. ex., per veure els mesuradors: node tools/prova-motor.mjs --escolta 2 engine.ping
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -18,10 +21,12 @@ const args = process.argv.slice(2);
 // Per defecte, la carpeta «dades» del repositori (D-044): aquest fitxer és a tools\
 let dataDir = join(import.meta.dirname, '..', 'dades');
 const commands = [];
+let listenSeconds = 0;
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--dades') dataDir = args[++i];
   // Drecera: --carpeta "O:\musica\BOSSA 9…" [--quantes 10] → afegeix pistes barrejades d'aquesta carpeta a la cua
   else if (args[i] === '--carpeta') commands.push(JSON.stringify({ cmd: 'queue.insert', folder: args[++i], limit: 10 }));
+  else if (args[i] === '--escolta') listenSeconds = Number(args[++i]);
   else if (args[i] === '--quantes') {
     const last = JSON.parse(commands.pop());
     commands.push(JSON.stringify({ ...last, limit: Number(args[++i]) }));
@@ -42,6 +47,8 @@ const socket = new WebSocket(`ws://127.0.0.1:${runtime.port}/ws?token=${encodeUR
 const pending = new Map();
 let statusSeen = false;
 let opened = false;
+let listening = false;
+let listenTimer = null;
 // Cada ordre: un nom («engine.hello») o un objecte JSON amb els paràmetres
 const messages = commands.map((text, i) => {
   const params = text.trim().startsWith('{') ? JSON.parse(text) : { cmd: text };
@@ -64,12 +71,22 @@ socket.addEventListener('message', (event) => {
     if (msg.ev === 'engine.status' && !statusSeen) {
       statusSeen = true;
       console.log('← esdeveniment', JSON.stringify(msg));
+    } else if (listening && msg.ev !== 'engine.status') {
+      console.log('← esdeveniment', JSON.stringify(msg));
     }
   } else {
     console.log(`← ${pending.get(msg.id)}`, JSON.stringify(msg, null, 2));
     pending.delete(msg.id);
   }
-  if (pending.size === 0 && (statusSeen || !waitForStatus)) socket.close();
+  if (pending.size === 0 && (statusSeen || !waitForStatus) && !listening && !listenTimer) {
+    if (listenSeconds > 0) {
+      // Es queda escoltant els esdeveniments uns segons més
+      listening = true;
+      listenTimer = setTimeout(() => socket.close(), listenSeconds * 1000);
+    } else {
+      socket.close();
+    }
+  }
 });
 
 socket.addEventListener('error', () => {
