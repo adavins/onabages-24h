@@ -19,6 +19,12 @@ public sealed record SchedulerSettings
     /// són dins de la tolerància es disparen tard; les altres s'anoten com a omeses (D-057).
     /// </summary>
     public TimeSpan Lookback { get; init; } = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// Quant abans de l'hora es programa un TALLA (fase 2, pas 4): el tall es programa a la mostra exacta, i així no
+    /// depèn de quan passa el fil de control ni de la memòria de la sortida.
+    /// </summary>
+    public TimeSpan ArmAhead { get; init; } = TimeSpan.FromSeconds(2);
 }
 
 /// <summary>
@@ -26,7 +32,8 @@ public sealed record SchedulerSettings
 /// temporitzadors de la interfície:
 /// - té a memòria les emissions dels pròxims minuts (es tornen a calcular cada minut i quan es desa un esdeveniment);
 /// - uns 30 s abans de l'hora, prepara cada esdeveniment (<see cref="EventExecutor.Prepare"/>);
-/// - a l'hora, el dispara i n'anota el resultat al registre d'execució.
+/// - a l'hora, el dispara i n'anota el resultat al registre d'execució. Un TALLA es programa uns 2 s abans, a la mostra
+///   exacta de l'hora (<see cref="SampleClock"/>), i la línia del registre es completa quan la primera pista comença.
 /// Regles: un esdeveniment que arriba més tard que la seva tolerància s'omet (<c>OMES_TARD</c>); si dos TALLA o ENCUA
 /// coincideixen al mateix instant, només es dispara el de prioritat més alta (<c>OMES_CONFLICTE</c>); una hora que no
 /// existeix pel canvi d'hora no sona (<c>OMES_CANVI_HORA</c>). Els desactivats i les plantilles no es disparen mai.
@@ -47,6 +54,7 @@ public sealed class Scheduler
     private List<Occurrence> _window = [];
     private readonly HashSet<(long EventId, DateTimeOffset At)> _handled = [];
     private readonly Dictionary<(long EventId, DateTimeOffset At), PreparedEvent> _prepared = [];
+    private readonly Dictionary<(long EventId, DateTimeOffset At), ExecutionRecord> _awaitingCut = []; // TALLA programats que encara no han sonat
     private DateTimeOffset _nextRefresh = DateTimeOffset.MinValue;
     private DateTimeOffset? _lastTick;
     private volatile bool _reloadRequested;
@@ -62,6 +70,7 @@ public sealed class Scheduler
         _settings = settings ?? new SchedulerSettings();
         _clock = clock ?? (() => DateTimeOffset.Now);
         _zone = zone ?? TimeZoneInfo.Local;
+        _executor.CutStarted += OnCutStarted;
     }
 
     /// <summary>S'ha disparat (o s'ha omès) una emissió: la línia que s'ha anotat al registre.</summary>
@@ -103,11 +112,21 @@ public sealed class Scheduler
                 var key = Key(occurrence);
                 if (_handled.Contains(key)) continue;
                 if (!occurrence.SkippedClockChange && !_prepared.ContainsKey(key)) _prepared[key] = Prepare(occurrence);
-                if (occurrence.At <= now) due.Add(occurrence);
+                if (DueAt(occurrence) <= now) due.Add(occurrence);
+            }
+
+            // Un TALLA es dispara uns segons abans: els TALLA i ENCUA del mateix instant hi van junts, perquè el conflicte
+            // es decideixi d'una vegada
+            var exclusiveAts = due.Where(o => IsExclusive(o.Event.Mode)).Select(o => o.At).ToHashSet();
+            foreach (var occurrence in _window)
+            {
+                if (exclusiveAts.Contains(occurrence.At) && IsExclusive(occurrence.Event.Mode) && !due.Contains(occurrence)
+                    && !_handled.Contains(Key(occurrence)))
+                    due.Add(occurrence);
             }
 
             foreach (var group in due.GroupBy(o => o.At))
-                Handle(group.ToList(), now);
+                Handle(group.OrderByDescending(o => o.Event.Priority).ThenBy(o => o.Event.Id).ToList(), now);
 
             _lastTick = now;
         }
@@ -116,6 +135,12 @@ public sealed class Scheduler
     /// <summary>Torna a llegir els esdeveniments i calcula les emissions de la finestra.</summary>
     private void Refresh(DateTimeOffset now)
     {
+        // Si s'ha desat algun esdeveniment, el que ja estava preparat es torna a preparar (pot haver canviat el contingut)
+        if (_reloadRequested)
+        {
+            foreach (var prepared in _prepared.Values) Discard(prepared);
+            _prepared.Clear();
+        }
         _reloadRequested = false;
         _nextRefresh = now + _settings.RefreshEvery;
         List<ScheduledEvent> active;
@@ -157,8 +182,24 @@ public sealed class Scheduler
         // Neteja: el que ja no és a la finestra
         _handled.RemoveWhere(k => k.At < from - _settings.Lookback);
         foreach (var key in _prepared.Keys.Where(k => !_window.Any(o => Key(o) == k)).ToList())
+        {
+            Discard(_prepared[key]);
             _prepared.Remove(key);
+        }
+        foreach (var key in _awaitingCut.Keys.Where(k => k.At < now - TimeSpan.FromMinutes(10)).ToList())
+            _awaitingCut.Remove(key); // la primera pista no ha arribat a sonar (p. ex. cua buida): la línia queda sense hora
     }
+
+    /// <summary>Deixa anar el que s'havia preparat (la veu de reserva d'un TALLA).</summary>
+    private void Discard(PreparedEvent prepared)
+    {
+        try { _executor.Discard(prepared); }
+        catch (Exception ex) { _log.LogWarning("Planificador: no s'ha pogut deixar anar «{Name}» ({Message})", prepared.Occurrence.Event.Name, ex.Message); }
+    }
+
+    /// <summary>Quan s'ha de disparar: a l'hora, i un TALLA uns segons abans (es programa a la mostra exacta).</summary>
+    private DateTimeOffset DueAt(Occurrence occurrence) =>
+        occurrence.Event.Mode == EventMode.Cut ? occurrence.At - _settings.ArmAhead : occurrence.At;
 
     private PreparedEvent Prepare(Occurrence occurrence)
     {
@@ -179,14 +220,18 @@ public sealed class Scheduler
         var toRun = new List<Occurrence>();
         foreach (var occurrence in group)
         {
+            if (!occurrence.SkippedClockChange && now - occurrence.At <= TimeSpan.FromSeconds(occurrence.Event.ToleranceSeconds))
+            {
+                toRun.Add(occurrence);
+                continue;
+            }
+            if (_prepared.Remove(Key(occurrence), out var skipped)) Discard(skipped);
             if (occurrence.SkippedClockChange)
                 Record(occurrence, null, ExecutionResult.SkippedClockChange,
                     $"Les {occurrence.LocalTime:HH\\:mm\\:ss} no existeixen el {occurrence.Date:dd/MM/yyyy} pel canvi d'hora.");
-            else if (now - occurrence.At > TimeSpan.FromSeconds(occurrence.Event.ToleranceSeconds))
+            else
                 Record(occurrence, null, ExecutionResult.SkippedLate,
                     $"S'hi ha arribat {FormatLate(now - occurrence.At)} tard (tolerància: {occurrence.Event.ToleranceSeconds} s).");
-            else
-                toRun.Add(occurrence);
         }
 
         // TALLA i ENCUA no poden coincidir: guanya la prioritat més alta (la finestra ja hi va ordenada)
@@ -194,8 +239,11 @@ public sealed class Scheduler
         foreach (var occurrence in toRun)
         {
             if (IsExclusive(occurrence.Event.Mode) && occurrence != winner)
+            {
+                if (_prepared.Remove(Key(occurrence), out var skipped)) Discard(skipped);
                 Record(occurrence, null, ExecutionResult.SkippedConflict,
                     $"Coincideix amb «{winner!.Event.Name}», de prioritat més alta ({winner.Event.Priority}).");
+            }
             else
                 Run(occurrence, now);
         }
@@ -206,24 +254,65 @@ public sealed class Scheduler
         var key = Key(occurrence);
         var prepared = _prepared.TryGetValue(key, out var p) ? p : Prepare(occurrence);
         _prepared.Remove(key);
-        (ExecutionResult result, string detail) outcome;
+        ExecutionOutcome outcome;
         try
         {
             outcome = _executor.Execute(prepared);
         }
         catch (Exception ex)
         {
-            outcome = (ExecutionResult.Error, $"Error en executar-lo: {ex.Message}");
+            outcome = new ExecutionOutcome(ExecutionResult.Error, $"Error en executar-lo: {ex.Message}");
         }
-        Record(occurrence, now, outcome.result, outcome.detail);
-        if (outcome.result == ExecutionResult.Ok)
-            _log.LogInformation("Esdeveniment «{Name}» ({Time:HH:mm:ss}): {Detail}", occurrence.Event.Name, occurrence.LocalTime, outcome.detail);
+
+        // Un TALLA s'ha programat però encara no ha sonat: l'hora real s'hi posa quan comenci la primera pista
+        bool isCut = occurrence.Event.Mode == EventMode.Cut && outcome.Result == ExecutionResult.Ok;
+        var record = Record(occurrence, isCut ? null : now, outcome.Result, outcome.Detail);
+        if (isCut) _awaitingCut[Key(occurrence)] = record;
+        if (outcome.Result == ExecutionResult.Ok)
+            _log.LogInformation("Esdeveniment «{Name}» ({Time:HH:mm:ss}): {Detail}", occurrence.Event.Name, occurrence.LocalTime, outcome.Detail);
+
+        // El contingut d'altres emissions que s'ha esborrat de la cua sense sonar (NO_EMES): no compta als certificats
+        foreach (var lost in outcome.NotPlayed)
+        {
+            Write(new ExecutionRecord
+            {
+                EventId = lost.EventId,
+                Name = lost.Name,
+                ScheduledFor = lost.At,
+                Result = ExecutionResult.NotPlayed,
+                Detail = $"{lost.Count} {(lost.Count == 1 ? "pista esborrada" : "pistes esborrades")} de la cua per «{occurrence.Event.Name}» abans de sonar.",
+            });
+        }
     }
 
-    private void Record(Occurrence occurrence, DateTimeOffset? executedAt, ExecutionResult result, string detail)
+    /// <summary>La primera pista d'un TALLA ha començat: es completa la línia del registre amb l'hora real i la diferència.</summary>
+    private void OnCutStarted(CutStarted started)
+    {
+        lock (_sync)
+        {
+            if (!_awaitingCut.Remove((started.EventId, started.At), out var record)) return;
+            string difference = Math.Abs(started.DelayMs) < 0.5
+                ? "ha començat a la mostra prevista"
+                : $"ha començat amb {started.DelayMs:+0;-0} ms de diferència";
+            record = record with { ExecutedAt = started.HeardAt ?? _clock(), Detail = $"{record.Detail}; {difference}" };
+            _log.LogInformation("TALLA «{Name}»: {Difference}", record.Name, difference);
+            try
+            {
+                if (record.Id > 0) _events.UpdateExecution(record.Id, record.ExecutedAt, record.Detail);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError("Planificador: no s'ha pogut completar «{Name}» al registre ({Message})", record.Name, ex.Message);
+            }
+            try { Fired?.Invoke(record); }
+            catch (Exception ex) { _log.LogWarning("Planificador: error en avisar la interfície ({Message})", ex.Message); }
+        }
+    }
+
+    private ExecutionRecord Record(Occurrence occurrence, DateTimeOffset? executedAt, ExecutionResult result, string detail)
     {
         _handled.Add(Key(occurrence));
-        var record = new ExecutionRecord
+        return Write(new ExecutionRecord
         {
             EventId = occurrence.Event.Id,
             Name = occurrence.Event.Name,
@@ -231,20 +320,26 @@ public sealed class Scheduler
             ExecutedAt = executedAt,
             Result = result,
             Detail = detail,
-        };
-        if (result != ExecutionResult.Ok)
+        });
+    }
+
+    /// <summary>Anota una línia al registre i avisa la interfície. Retorna la línia amb l'id.</summary>
+    private ExecutionRecord Write(ExecutionRecord record)
+    {
+        if (record.Result != ExecutionResult.Ok)
             _log.LogWarning("Esdeveniment «{Name}» ({Time:HH:mm:ss}): {Result}. {Detail}",
-                occurrence.Event.Name, occurrence.LocalTime, Events.ResultText(result), detail);
+                record.Name, TimeZoneInfo.ConvertTime(record.ScheduledFor, _zone), Events.ResultText(record.Result), record.Detail);
         try
         {
             record = record with { Id = _events.AddExecution(record) };
         }
         catch (Exception ex)
         {
-            _log.LogError("Planificador: no s'ha pogut anotar «{Name}» al registre ({Message})", occurrence.Event.Name, ex.Message);
+            _log.LogError("Planificador: no s'ha pogut anotar «{Name}» al registre ({Message})", record.Name, ex.Message);
         }
         try { Fired?.Invoke(record); }
         catch (Exception ex) { _log.LogWarning("Planificador: error en avisar la interfície ({Message})", ex.Message); }
+        return record;
     }
 
     private static bool IsExclusive(EventMode mode) => mode is EventMode.Cut or EventMode.Queue;

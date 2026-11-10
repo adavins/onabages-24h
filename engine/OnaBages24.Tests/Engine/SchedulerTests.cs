@@ -287,15 +287,46 @@ public sealed class SchedulerTests : IDisposable
     }
 
     [Fact]
-    public void El_mode_TALLA_encara_no_esta_disponible_i_ho_diu()
+    public void Un_TALLA_es_programa_2_s_abans_i_esborra_el_contingut_d_un_ENCUA_que_no_ha_sonat()
+    {
+        long encua = Save("Promos", 9, 59, actions: [Pista(Track("Promo 1")), Pista(Track("Promo 2"))]);
+        long talla = Save("Programa", 10, 0, EventMode.Cut, change: e => e with { ClearQueue = true }, actions: [Pista(Track("Programa"))]);
+        var scheduler = NewScheduler();
+
+        RunUntil(scheduler, At(9, 59, 57));
+        Assert.Equal(["Promo 1", "Promo 2"], _queue.Upcoming.Select(i => i.Title)); // el TALLA encara no
+        Assert.Single(Log());
+
+        RunUntil(scheduler, At(9, 59, 58)); // 2 s abans: es programa el tall
+
+        Assert.Equal(["Programa"], _queue.Upcoming.Select(i => i.Title));
+        var log = Log();
+        var cut = log.Single(r => r.EventId == talla);
+        Assert.Equal(ExecutionResult.Ok, cut.Result);
+        Assert.Null(cut.ExecutedAt); // s'hi posarà quan comenci la primera pista
+        Assert.Contains("tall", cut.Detail);
+        Assert.Contains("2 pistes tretes", cut.Detail);
+        // El contingut de l'ENCUA no ha sonat: NO_EMES (no compta per als certificats)
+        var lost = log.Single(r => r.EventId == encua && r.Result == ExecutionResult.NotPlayed);
+        Assert.Equal(At(9, 59), lost.ScheduledFor);
+        Assert.Contains("2 pistes esborrades", lost.Detail);
+        Assert.Contains("«Programa»", lost.Detail);
+    }
+
+    [Fact]
+    public void Un_TALLA_que_perd_un_conflicte_deixa_anar_la_veu_que_tenia_reservada()
     {
         Save("Programa", 10, 0, EventMode.Cut, actions: [Pista(Track("Programa"))]);
+        Save("Urgent", 10, 0, change: e => e with { Priority = 90 }, actions: [Pista(Track("Avís"))]);
         var scheduler = NewScheduler();
+
+        RunUntil(scheduler, At(9, 59, 40)); // preparat: la primera pista del TALLA ja té una veu
+        Assert.Contains(_mixer.Voices, v => v.State != VoiceState.Idle);
 
         RunUntil(scheduler, At(10, 0));
 
-        Assert.Empty(_queue.Upcoming);
-        Assert.Equal(ExecutionResult.Error, Log()[0].Result);
-        Assert.Contains("TALLA", Log()[0].Detail);
+        Assert.Equal(["Avís"], _queue.Upcoming.Select(i => i.Title));
+        Assert.Equal(ExecutionResult.SkippedConflict, Log().Single(r => r.Name == "Programa").Result);
+        Assert.All(_mixer.Voices, v => Assert.Equal(VoiceState.Idle, v.State));
     }
 }

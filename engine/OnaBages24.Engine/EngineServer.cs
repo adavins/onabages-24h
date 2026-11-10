@@ -117,8 +117,10 @@ public static class EngineServer
         // Planificador (fase 2, pas 3; D-008): al fil de control, amb el rellotge del motor. Si un esdeveniment canvia la
         // rotació, es desa com amb autodj.set, perquè es mantingui si el motor es reinicia (D-053).
         var events = new Events(database);
+        // TALLA a la mostra exacta (fase 2, pas 4): l'hora es converteix en el fotograma que sonarà, comptant la memòria de la sortida
+        var sampleClock = new SampleClock(mixer, TimeSpan.FromMilliseconds(WasapiAudioOutput.LatencyMs));
         var executor = new Scheduling.EventExecutor(library, queue, autoDj, rotationId =>
-            library.SetSetting(CommandRouter.AutoDjSettingKey, System.Text.Json.JsonSerializer.Serialize(new { rotationId })));
+            library.SetSetting(CommandRouter.AutoDjSettingKey, System.Text.Json.JsonSerializer.Serialize(new { rotationId })), sampleClock);
         var scheduler = new Scheduling.Scheduler(events, executor, log);
         scheduler.Fired += record =>
         {

@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 2, pas 3 (motor, dispositius, sortida, cua, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 2, pas 4 (motor, dispositius, sortida, cua, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -228,7 +228,8 @@ Exportació del títol:
 - `daysMask`: bit 0 = dilluns (1) … bit 6 = diumenge (64); `127` = tots. `hoursMask`: bit 0 = 00 h … bit 23 = 23 h; `null` = totes.
 - `ordinals`: 1 = primer … 5 = cinquè, `-1` = l'últim. `monthDays`: 1–31, `-1` = l'últim dia del mes.
 - `params` de les accions disponibles ara: `PISTA` `{ songId }` (id de la pista a la biblioteca, el `trackId` de la cua), `ROTACIO` `{ rotacioId }`, `AUTODJ` `{ actiu }`. Les altres es poden desar, però encara no fan res (el registre ho diu).
-- Modes disponibles ara: `ENCUA` (el contingut va al davant de la cua; amb `clearQueue`, abans s'esborra la cua) i `SISTEMA`. Un `TALLA` o un `SUPERPOSA` s'anota com a `ERROR` fins als passos 4 i 5.
+- Modes disponibles ara: `ENCUA` (el contingut va al davant de la cua; amb `clearQueue`, abans s'esborra la cua), `TALLA` i `SISTEMA`. Un `SUPERPOSA` s'anota com a `ERROR` fins al pas 5.
+- `TALLA` (pas 4, D-061): es programa uns 2 s abans, a la mostra exacta de l'hora. La pista que sona comença el fos (`fadeMs`; si és `null`, 1.000 ms) en aquell instant i la primera pista de l'esdeveniment comença alhora; la resta va darrere. Amb `clearQueue`, abans s'esborra la cua.
 
 Ocurrència (`scheduler.occurrences`):
 
@@ -246,7 +247,9 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
   "executedAt": "2026-11-20T09:30:00.0120000+00:00", "result": "OK", "detail": "2 pistes a la cua" }
 ```
 
-- `result`: `OK`, `OMES_TARD` (s'hi ha arribat més tard que la tolerància, p. ex. amb el motor aturat), `OMES_CONFLICTE` (coincidia amb un TALLA o ENCUA de més prioritat), `OMES_CANVI_HORA`, `NO_EMES` (pas 4) o `ERROR`. `executedAt` és `null` si no s'ha executat. `name` és el nom en aquell moment.
+- `result`: `OK`, `OMES_TARD` (s'hi ha arribat més tard que la tolerància, p. ex. amb el motor aturat), `OMES_CONFLICTE` (coincidia amb un TALLA o ENCUA de més prioritat), `OMES_CANVI_HORA`, `NO_EMES` o `ERROR`. `executedAt` és `null` si no s'ha executat. `name` és el nom en aquell moment.
+- `NO_EMES`: el contingut d'una emissió (normalment un ENCUA) s'ha esborrat de la cua abans de sonar, perquè un esdeveniment posterior amb `clearQueue` l'ha tret. És una línia nova amb el `scheduledFor` d'aquella emissió; la línia `OK` d'aquella emissió es manté. No compta per als certificats.
+- Un `TALLA` s'anota en programar-lo, amb `executedAt: null`. Quan la primera pista comença, la mateixa línia (mateix `id`) es completa: `executedAt` és l'hora en què sona i `detail` acaba amb «ha començat a la mostra prevista» o «ha començat amb +N ms de diferència». Per això `scheduler.fired` arriba dues vegades amb el mateix `id`.
 
 ## 5. Esdeveniments
 
@@ -260,7 +263,7 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 | `output.changed` | `output` (4.3) | quan canvia la sortida, l'estat d'emergència o el problema | fase 1, pas 7c |
 | `autodj.changed` | `autodj` (4.5) | quan s'activa o es desactiva, canvia la rotació o canvia l'avís (les pistes que afegeix surten a `queue.changed`) | fase 1, pas 8 |
 | `meters` | `output` (nivells de la sortida), `position` (la pista que sona); vegeu 5.1 | unes 20 vegades per segon, només si hi ha algun client connectat | fase 1, pas 10a |
-| `scheduler.fired` | `entry` (línia del registre, 4.7) | quan el planificador executa o omet una emissió | fase 2, pas 3 |
+| `scheduler.fired` | `entry` (línia del registre, 4.7) | quan el planificador executa o omet una emissió, i quan comença la primera pista d'un TALLA (la mateixa línia, completada) | fase 2, passos 3 i 4 |
 | `scheduler.changed` | — | quan es desa o s'esborra un esdeveniment (la interfície torna a demanar el que mostra) | fase 2, pas 3 |
 
 ### 5.1. Mesuradors i posició
@@ -284,8 +287,8 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 
 ```text
 node tools/prova-motor.mjs [--dades CARPETA] [--carpeta CARPETA_DE_MÚSICA [--quantes N]] [--escolta SEGONS [--mesuradors]]
-                           [--encua SEGONS ID[,ID…]] [--rotacio SEGONS ROTACIO_ID] [ordre …]
+                           [--encua SEGONS ID[,ID…]] [--talla SEGONS ID[,ID…] [--fos MS]] [--rotacio SEGONS ROTACIO_ID] [ordre …]
 ```
 
 - `--escolta` mostra els esdeveniments que arriben (sense `engine.status` i, si no es posa `--mesuradors`, sense `meters`).
-- `--encua` i `--rotacio` creen un esdeveniment de prova per a avui d'aquí a uns segons, que sona una sola vegada (recurrència `DATES`).
+- `--encua`, `--talla` i `--rotacio` creen un esdeveniment de prova per a avui d'aquí a uns segons, que sona una sola vegada (recurrència `DATES`). El de `--talla` esborra la cua; `--fos` en canvia el fos (per defecte, 1.000 ms).

@@ -15,8 +15,11 @@ public sealed record QueueSettings
     public TimeSpan StartMargin { get; init; } = TimeSpan.FromMilliseconds(50);
 }
 
-/// <summary>Una pista que ha començat a sonar.</summary>
-public sealed record QueueStarted(QueueItem Item, long StartFrame);
+/// <summary>
+/// Una pista que ha començat a sonar. Si és la primera d'un tall (TALLA), <paramref name="CutFrame"/> és el fotograma
+/// on havia de començar: la diferència amb <paramref name="StartFrame"/> és el retard del tall.
+/// </summary>
+public sealed record QueueStarted(QueueItem Item, long StartFrame, long? CutFrame = null);
 
 /// <summary>Una pista que s'ha acabat: quant ha sonat i si ha arribat al final previst.</summary>
 public sealed record QueueEnded(QueueItem Item, TimeSpan Played, bool Complete);
@@ -36,6 +39,10 @@ public sealed record QueuePosition(Guid ItemId, TimeSpan Elapsed, TimeSpan Remai
 /// - si B no es pot obrir, se salta i es prepara la següent, amb un avís.
 ///
 /// Totes les operacions sobre la cua són atòmiques (un sol bloqueig): mentre es canvia, no es prepara res a mitges.
+///
+/// Talls (TALLA, fase 2, pas 4): <see cref="Reserve"/> obre la primera pista uns 30 s abans en una veu de reserva, i
+/// <see cref="CutAt"/>, uns segons abans de l'hora, ho programa tot alhora: la que sona comença el fos al fotograma de
+/// l'hora i la nova comença en aquell mateix fotograma (D-021).
 /// </summary>
 public sealed class QueuePlayer : IDisposable
 {
@@ -45,8 +52,14 @@ public sealed class QueuePlayer : IDisposable
     private readonly List<QueueItem> _upcoming = [];
     private readonly List<Playing> _ending = [];
     private readonly List<MixerVoice> _toRelease = []; // veus aturades que s'alliberaran quan el fil d'àudio les doni per acabades
+    private readonly Dictionary<Guid, Playing> _reserved = []; // primeres pistes de talls, obertes per endavant
     private Playing? _current;
     private Playing? _next;
+    private PendingCut? _cut;  // tall programat que encara no s'ha pogut aplicar (la següent ja començava abans)
+    private long _cutFrame;    // si no és 0: la pròxima pista no pot començar abans d'aquest fotograma (és la del tall)
+
+    /// <summary>Quantes veus es poden reservar per a talls alhora (n'hi ha 8: cal deixar lloc per a la cua).</summary>
+    private const int MaxReserved = 2;
 
     public QueuePlayer(Mixer mixer, QueueSettings? settings = null)
     {
@@ -62,6 +75,12 @@ public sealed class QueuePlayer : IDisposable
 
     public QueueSettings Settings => _settings;
 
+    /// <summary>Fotogrames per segon del mesclador.</summary>
+    public int SampleRate => _mixer.SampleRate;
+
+    /// <summary>El fotograma que el mesclador mescla ara (per tallar «de seguida» quan no se sap l'hora de la sortida).</summary>
+    public long CurrentFrame => _mixer.FramesRendered;
+
     /// <summary>La pista que sona ara (la que ha començat més tard), o null.</summary>
     public QueueItem? Current
     {
@@ -75,8 +94,9 @@ public sealed class QueuePlayer : IDisposable
         {
             lock (_sync)
             {
-                var list = new List<QueueItem>(_upcoming.Count + 1);
+                var list = new List<QueueItem>(_upcoming.Count + 2);
                 if (_next is not null) list.Add(_next.Item);
+                if (_cut?.First is { } first) list.Add(first.Item);
                 list.AddRange(_upcoming);
                 return list;
             }
@@ -129,7 +149,9 @@ public sealed class QueuePlayer : IDisposable
         var events = new List<Action>();
         lock (_sync)
         {
-            if (index == 0) UnprepareNext(events);
+            // La primera pista d'un tall programat no es treu: el que s'insereix al davant va just darrere seu
+            bool cutPending = _cutFrame > 0 || _next?.CutFrame is not null;
+            if (index == 0 && !cutPending) UnprepareNext(events);
             index = Math.Clamp(index - (_next is null ? 0 : 1), 0, _upcoming.Count);
             _upcoming.InsertRange(index, items);
         }
@@ -176,6 +198,119 @@ public sealed class QueuePlayer : IDisposable
     }
 
     /// <summary>
+    /// Esborra la cua: treu totes les pistes que encara no han començat i les retorna (per anotar les d'esdeveniments
+    /// que no sonaran, NO_EMES). La del tall programat no, perquè ja és com si sonés.
+    /// </summary>
+    public IReadOnlyList<QueueItem> Clear()
+    {
+        var events = new List<Action>();
+        List<QueueItem> removed;
+        lock (_sync)
+        {
+            UnprepareNext(events);
+            removed = [.. _upcoming];
+            _upcoming.Clear();
+        }
+        Raise(events);
+        if (removed.Count > 0) Changed?.Invoke();
+        return removed;
+    }
+
+    // --- Talls (TALLA) ---
+
+    /// <summary>
+    /// Obre per endavant la primera pista d'un tall (uns 30 s abans), en una veu de reserva. Retorna la reserva, o null
+    /// si no hi ha veus lliures (llavors el tall l'obrirà en el moment, uns segons abans de l'hora).
+    /// </summary>
+    public Guid? Reserve(QueueItem item)
+    {
+        lock (_sync)
+        {
+            if (_reserved.Count >= MaxReserved) return null;
+            var playing = Open(item);
+            if (playing is null) return null;
+            var id = Guid.NewGuid();
+            _reserved[id] = playing;
+            return id;
+        }
+    }
+
+    /// <summary>Deixa anar una reserva que ja no es farà servir (esdeveniment omès o esborrat).</summary>
+    public void Release(Guid reservation)
+    {
+        lock (_sync)
+        {
+            if (_reserved.Remove(reservation, out var playing)) Retire(playing);
+        }
+    }
+
+    /// <summary>
+    /// Programa un tall (TALLA, D-021) al fotograma <paramref name="frame"/>, tot alhora:
+    /// - si <paramref name="clearQueue"/>, s'esborra la cua (es retorna el que s'ha tret);
+    /// - el contingut (<paramref name="items"/>) va al davant de la cua; el primer, amb la <paramref name="reservation"/> si n'hi ha;
+    /// - la que sona comença el fos (<paramref name="fade"/>) al fotograma, i el primer element comença en aquell mateix fotograma.
+    /// Si el fotograma ja ha passat (s'hi arriba tard), es talla de seguida. Si la pista següent ja estava programada per
+    /// començar abans del tall, se la deixa començar i és ella la que es talla.
+    /// </summary>
+    public IReadOnlyList<QueueItem> CutAt(long frame, TimeSpan fade, IReadOnlyList<QueueItem> items, bool clearQueue, Guid? reservation = null)
+    {
+        var events = new List<Action>();
+        var removed = new List<QueueItem>();
+        lock (_sync)
+        {
+            Playing? reserved = null;
+            if (reservation is { } r && _reserved.Remove(r, out var res)) reserved = res;
+            if (_cut?.First is { } previous) Retire(previous); // dos talls seguits en pocs segons: mana el darrer
+
+            // La següent: si encara no sona i havia de començar després del tall, torna a la cua
+            if (_next is { HasStarted: false } n && (!n.Scheduled || n.StartFrame >= frame)) UnprepareNext(events);
+            if (clearQueue)
+            {
+                removed.AddRange(_upcoming);
+                _upcoming.Clear();
+            }
+
+            Playing? first = null;
+            if (items.Count > 0)
+            {
+                _upcoming.InsertRange(0, items.Skip(1));
+                if (reserved is not null && reserved.Item == items[0] && reserved.Reader.State != ReaderState.Failed)
+                {
+                    first = reserved;
+                    reserved = null;
+                }
+                else
+                {
+                    first = Open(items[0]);
+                    if (first is null) _upcoming.Insert(0, items[0]); // sense veu lliure (no hauria de passar): sonarà en quant n'hi hagi
+                }
+            }
+            if (reserved is not null) Retire(reserved);
+
+            _cut = new PendingCut(frame, Frames(fade), first);
+            ApplyCut();
+        }
+        Raise(events);
+        Changed?.Invoke();
+        return removed;
+    }
+
+    /// <summary>Aplica el tall programat quan ja no hi ha cap pista següent pel mig.</summary>
+    private void ApplyCut()
+    {
+        if (_cut is not { } cut || _next is not null) return;
+        if (_current is { } c && cut.Frame < c.MixFrame)
+        {
+            c.Voice.Stop(cut.Frame, cut.FadeFrames);
+            c.MixFrame = cut.Frame;
+            c.EndFrame = cut.Frame + cut.FadeFrames;
+        }
+        _cutFrame = cut.Frame;
+        _next = cut.First; // si és null, la pròxima de la cua començarà al fotograma del tall
+        _cut = null;
+    }
+
+    /// <summary>
     /// Passa a la pista següent ara: la que sona baixa amb un fos de <paramref name="fade"/> i la següent comença de seguida
     /// (en quant estigui a punt). Si no n'hi ha cap, la que sona simplement s'acaba amb el fos.
     /// </summary>
@@ -189,9 +324,11 @@ public sealed class QueuePlayer : IDisposable
             _current.Voice.Stop(now, fadeFrames);
             _current.MixFrame = now;
             _current.EndFrame = now + fadeFrames;
+            _cutFrame = 0; // qui passa a la següent a mà mana més que el tall
             if (_next is { Scheduled: true, HasStarted: false })
             {
                 _next.StartFrame = now + Frames(_settings.StartMargin);
+                _next.CutFrame = null;
                 _next.Voice.Start(_next.StartFrame);
             }
         }
@@ -229,7 +366,8 @@ public sealed class QueuePlayer : IDisposable
                 _next = null;
                 var item = started.Item;
                 long frame = started.Voice.ActualStartFrame;
-                events.Add(() => Started?.Invoke(new QueueStarted(item, frame)));
+                long? cutFrame = started.CutFrame;
+                events.Add(() => Started?.Invoke(new QueueStarted(item, frame, cutFrame)));
                 events.Add(() => Changed?.Invoke());
             }
 
@@ -253,13 +391,17 @@ public sealed class QueuePlayer : IDisposable
 
             _toRelease.RemoveAll(v => _mixer.ReleaseVoice(v));
 
+            // Un tall que esperava que comencés la pista següent: ara ja es pot aplicar
+            ApplyCut();
+
             // 4. Preparar la següent: si no sona res, de seguida; si no, uns segons abans del punt de mescla
             if (_next is null && _upcoming.Count > 0
                 && (_current is null || now >= _current.MixFrame - Frames(_settings.PrepareAhead)))
             {
                 var item = _upcoming[0];
                 _upcoming.RemoveAt(0);
-                _next = Prepare(item, events);
+                _next = Open(item);
+                if (_next is null) _upcoming.Insert(0, item); // cap veu lliure: es torna a provar al pròxim Tick
             }
 
             // 5. Programar-la quan el fitxer ja és obert
@@ -267,21 +409,24 @@ public sealed class QueuePlayer : IDisposable
             {
                 long margin = now + Frames(_settings.StartMargin);
                 long start = _current is null ? margin : Math.Max(_current.MixFrame, margin);
+                if (_cutFrame > 0)
+                {
+                    // És la del tall: comença al fotograma del tall (o de seguida, si ja ha passat)
+                    start = Math.Max(_cutFrame, margin);
+                    ready.CutFrame = _cutFrame;
+                    _cutFrame = 0;
+                }
                 Schedule(ready, start);
             }
         }
         Raise(events);
     }
 
-    /// <summary>Reserva una veu i comença a llegir el fitxer. Si no hi ha cap veu lliure (no hauria de passar), es torna a provar al següent Tick.</summary>
-    private Playing? Prepare(QueueItem item, List<Action> events)
+    /// <summary>Reserva una veu i comença a llegir el fitxer. Retorna null si no hi ha cap veu lliure (no hauria de passar).</summary>
+    private Playing? Open(QueueItem item)
     {
         var voice = _mixer.AcquireVoice();
-        if (voice is null)
-        {
-            _upcoming.Insert(0, item);
-            return null;
-        }
+        if (voice is null) return null;
         var reader = new VoiceReader(voice, item.Path, _mixer.SampleRate, Ms(item.StartMs ?? 0), item.EndMs is { } end ? Ms(end) : null);
         return new Playing(item, voice, reader);
     }
@@ -349,6 +494,10 @@ public sealed class QueuePlayer : IDisposable
         {
             if (_next is not null) Retire(_next);
             if (_current is not null) Retire(_current);
+            if (_cut?.First is { } cutFirst) Retire(cutFirst);
+            foreach (var r in _reserved.Values) Retire(r);
+            _reserved.Clear();
+            _cut = null;
             foreach (var e in _ending) Retire(e);
             _next = _current = null;
             _ending.Clear();
@@ -368,5 +517,10 @@ public sealed class QueuePlayer : IDisposable
         /// <summary>El final previst en programar-la (no canvia si se salta): per saber si ha sonat sencera.</summary>
         public long PlannedEndFrame { get; set; } = long.MaxValue;
         public bool HasStarted => Voice.ActualStartFrame >= 0;
+        /// <summary>Si és la primera d'un tall, el fotograma on havia de començar.</summary>
+        public long? CutFrame { get; set; }
     }
+
+    /// <summary>Un tall programat: on, amb quin fos i quina pista comença (null si l'esdeveniment no en té cap o no s'ha pogut obrir).</summary>
+    private sealed record PendingCut(long Frame, int FadeFrames, Playing? First);
 }

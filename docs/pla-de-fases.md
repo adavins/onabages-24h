@@ -66,7 +66,9 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 1. ✔ Esdeveniments a la base de dades: taules `esdeveniment`, `accio`, `esdeveniment_data`, `categoria_esdeveniment` i `registre_execucio` (`planificador.md`, secció 3) i mòdul per llegir-los i desar-los.
 2. ✔ Recurrències: quan sona cada esdeveniment entre dues dates (secció 12; cada hora i cada N minuts), amb `DateOnly` i els canvis d'hora de D-057.
 3. ✔ Planificador bàsic al fil de control: pròxim esdeveniment, preparació 30 s abans i disparament; modes ENCUA i SISTEMA, accions `PISTA`, `ROTACIO` i `AUTODJ`; tolerància, conflictes per prioritat, registre d'execució i canvis atòmics; ordres `scheduler.*`.
-4. TALLA a l'hora exacta: rellotge de mostres (hora ↔ fotograma, amb la latència de la sortida), fos de la pista que sonava al mateix fotograma, «Esborra la cua» i `NO_EMES`. Eina de mesura del retard real (objectiu: menys de 50 ms).
+4. TALLA a l'hora exacta: rellotge de mostres (hora ↔ fotograma, amb la latència de la sortida), fos de la pista que sonava al mateix fotograma, «Esborra la cua» i `NO_EMES`. Eina de mesura del retard real (objectiu: menys de 50 ms). En dues parts:
+   - 4a. ✔ Tall a la mostra, rellotge de mostres, reserva de la primera pista 30 s abans, `NO_EMES` i diferència anotada al registre (D-061). Provat a l'ordinador real el 10-11-2026: fos de 3 s, tall sec i `NO_EMES`, els tres a la mostra prevista.
+   - 4b. Mesura del retard real a la sortida (part de la targeta de so) i ajust de la latència.
 5. SUPERPOSA i senyals horaris: una veu a sobre de la música, amb atenuació opcional; acció `AUXILIAR`.
 6. Migració dels esdeveniments de RadioDJ a `importa-radiodj` (secció 6), amb informe.
 7. Acció `STREAM` (D-010, D-030, D-031), amb un servidor de proves local.

@@ -25,6 +25,9 @@ public sealed record QueueItem
     public QueueOrigin Origin { get; init; } = QueueOrigin.Manual;
     /// <summary>Nom de l'esdeveniment que l'ha posat a la cua, si n'és el cas.</summary>
     public string? EventName { get; init; }
+    /// <summary>L'esdeveniment i l'emissió que l'han posat a la cua: si s'esborra abans de sonar, queda com a NO_EMES.</summary>
+    public long? EventId { get; init; }
+    public DateTimeOffset? EventAt { get; init; }
 
     public static QueueItem FromTrack(Track track, QueueOrigin origin, string? eventName = null) => new()
     {

@@ -373,6 +373,22 @@ public sealed class Events(Database database)
     }
 
     /// <summary>
+    /// Completa una línia del registre: quan ha sonat de veritat i el detall (p. ex. un TALLA, que s'anota en programar-lo
+    /// i es completa quan la primera pista comença, amb el retard mesurat).
+    /// </summary>
+    public void UpdateExecution(long id, DateTimeOffset? executedAt, string? detail)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command("UPDATE registre_execucio SET executat_a = $exec, detall = $detall WHERE id = $id;");
+            command.Parameters.AddWithValue("$id", id);
+            command.Parameters.AddWithValue("$exec", executedAt is { } x ? DbTime.ToText(x) : DBNull.Value);
+            command.Parameters.AddWithValue("$detall", (object?)detail ?? DBNull.Value);
+            command.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>
     /// Línies del registre previstes entre <paramref name="from"/> (inclòs) i <paramref name="to"/> (exclòs), per hora prevista.
     /// Amb <paramref name="eventId"/>, només les d'aquest esdeveniment.
     /// </summary>

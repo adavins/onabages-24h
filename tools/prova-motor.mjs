@@ -15,10 +15,13 @@
 // els mesuradors) durant aquests segons. Amb --mesuradors, també els mesuradors (meters, 20 per segon):
 //   node tools/prova-motor.mjs --escolta 2 --mesuradors engine.ping
 //
-// Esdeveniments de prova (fase 2, pas 3): es creen per a avui, d'aquí a SEGONS segons, i només sonen una vegada.
+// Esdeveniments de prova (fase 2, passos 3 i 4): es creen per a avui, d'aquí a SEGONS segons, i només sonen una vegada.
 //   --encua SEGONS ID[,ID…]      ENCUA amb aquestes pistes (els id són els trackId de queue.get o history.list)
+//   --talla SEGONS ID[,ID…]      TALLA amb aquestes pistes: talla el que soni a l'hora exacta i esborra la cua
+//   --fos MS                     (després de --talla) fos de la pista tallada; per defecte, 1000 ms
 //   --rotacio SEGONS ROTACIO_ID  SISTEMA que canvia la rotació de l'AutoDJ (els id, a rotations.list)
 //   p. ex.: node tools/prova-motor.mjs --escolta 90 --encua 60 1234,5678
+//           node tools/prova-motor.mjs --escolta 60 --talla 30 1234 --fos 3000
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -41,12 +44,12 @@ function inSeconds(seconds) {
 }
 
 /** Un esdeveniment de prova que sona una sola vegada (recurrència DATES amb la data d'avui). */
-function testEvent(name, mode, seconds, actions) {
+function testEvent(name, mode, seconds, actions, extra = {}) {
   const { time, date } = inSeconds(seconds);
   console.log(`Esdeveniment de prova «${name}» a les ${time}`);
   return JSON.stringify({
     cmd: 'scheduler.save',
-    event: { name, mode, startTime: time, recurrence: 'DATES', daysMask: 0, includedDates: [date], actions },
+    event: { name, mode, startTime: time, recurrence: 'DATES', daysMask: 0, includedDates: [date], actions, ...extra },
   });
 }
 for (let i = 0; i < args.length; i++) {
@@ -59,6 +62,17 @@ for (let i = 0; i < args.length; i++) {
     const seconds = Number(args[++i]);
     const ids = String(args[++i]).split(',').map(Number);
     commands.push(testEvent('Prova ENCUA', 'ENCUA', seconds, ids.map((songId) => ({ type: 'PISTA', params: { songId } }))));
+  }
+  else if (args[i] === '--talla') {
+    const seconds = Number(args[++i]);
+    const ids = String(args[++i]).split(',').map(Number);
+    commands.push(testEvent('Prova TALLA', 'TALLA', seconds, ids.map((songId) => ({ type: 'PISTA', params: { songId } })),
+      { clearQueue: true }));
+  }
+  else if (args[i] === '--fos') {
+    const last = JSON.parse(commands.pop());
+    last.event.fadeMs = Number(args[++i]);
+    commands.push(JSON.stringify(last));
   }
   else if (args[i] === '--rotacio') {
     const seconds = Number(args[++i]);
