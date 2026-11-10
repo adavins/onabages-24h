@@ -338,20 +338,53 @@ public sealed class Library(Database database)
             command.Parameters.AddWithValue("$to", DbTime.ToText(to));
             using var reader = command.ExecuteReader();
             var list = new List<HistoryEntry>();
-            while (reader.Read())
-            {
-                list.Add(new HistoryEntry(
-                    reader.GetInt64(0),
-                    reader.IsDBNull(1) ? null : reader.GetInt64(1),
-                    DbTime.ParseInstant(reader.GetString(2)),
-                    reader.IsDBNull(3) ? null : reader.GetInt64(3),
-                    reader.IsDBNull(4) ? null : reader.GetInt64(4) == 1,
-                    ParseOrigin(reader.GetString(5)),
-                    reader.GetString(6), reader.GetString(7), reader.GetString(8)));
-            }
+            while (reader.Read()) list.Add(ReadHistoryEntry(reader));
             return list;
         }
     }
+
+    /// <summary>
+    /// Cerca a l'historial (fase 1, pas 9): les entrades més recents primer, com a molt <paramref name="limit"/>.
+    /// <paramref name="from"/> (inclosa) i <paramref name="to"/> (exclosa) són opcionals; <paramref name="text"/>, si n'hi ha,
+    /// ha de ser a l'artista o al títol (sense distingir majúscules; els accents sí que compten).
+    /// </summary>
+    public IReadOnlyList<HistoryEntry> SearchHistory(DateTimeOffset? from, DateTimeOffset? to, string? text, int limit)
+    {
+        var where = new List<string>();
+        var parameters = new List<(string, object)>();
+        if (from is { } f) { where.Add("inici >= $from"); parameters.Add(("$from", DbTime.ToText(f))); }
+        if (to is { } t) { where.Add("inici < $to"); parameters.Add(("$to", DbTime.ToText(t))); }
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            // Els caràcters especials de LIKE (%, _ i \) es busquen tal qual
+            string pattern = "%" + text.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+            where.Add("(artista LIKE $text ESCAPE '\\' OR titol LIKE $text ESCAPE '\\')");
+            parameters.Add(("$text", pattern));
+        }
+
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT id, pista_id, inici, durada_ms, sencera, origen, artista, titol, ruta FROM historial " +
+                (where.Count > 0 ? "WHERE " + string.Join(" AND ", where) + " " : "") +
+                "ORDER BY inici DESC, id DESC LIMIT $limit;");
+            foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value);
+            command.Parameters.AddWithValue("$limit", limit);
+            using var reader = command.ExecuteReader();
+            var list = new List<HistoryEntry>();
+            while (reader.Read()) list.Add(ReadHistoryEntry(reader));
+            return list;
+        }
+    }
+
+    private static HistoryEntry ReadHistoryEntry(Microsoft.Data.Sqlite.SqliteDataReader reader) => new(
+        reader.GetInt64(0),
+        reader.IsDBNull(1) ? null : reader.GetInt64(1),
+        DbTime.ParseInstant(reader.GetString(2)),
+        reader.IsDBNull(3) ? null : reader.GetInt64(3),
+        reader.IsDBNull(4) ? null : reader.GetInt64(4) == 1,
+        ParseOrigin(reader.GetString(5)),
+        reader.GetString(6), reader.GetString(7), reader.GetString(8));
 
     // --- Configuració ---
 

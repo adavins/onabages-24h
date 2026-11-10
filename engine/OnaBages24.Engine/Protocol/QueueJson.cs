@@ -86,6 +86,32 @@ public static class QueueJson
         }).ToArray()),
     };
 
+    /// <summary>Una entrada de l'historial (docs/protocol.md, 4.6).</summary>
+    public static JsonObject History(HistoryEntry entry) => new()
+    {
+        ["id"] = entry.Id,
+        ["trackId"] = entry.TrackId,
+        ["startedAt"] = entry.Started.ToUniversalTime().ToString("O"),
+        ["playedMs"] = entry.PlayedMs,
+        ["complete"] = entry.Complete,
+        ["origin"] = Origin(entry.Origin),
+        ["artist"] = entry.Artist,
+        ["title"] = entry.Title,
+        ["path"] = entry.Path,
+    };
+
+    /// <summary>Exportació del títol per a BUTT (docs/protocol.md, 4.6).</summary>
+    public static JsonObject NowPlaying(NowPlaying nowPlaying) => new()
+    {
+        ["enabled"] = nowPlaying.Settings.Enabled,
+        ["path"] = nowPlaying.FilePath,
+        ["customPath"] = !string.IsNullOrWhiteSpace(nowPlaying.Settings.Path),
+        ["template"] = nowPlaying.Settings.Template,
+        ["types"] = new JsonArray(nowPlaying.Settings.Types.Select(t => (JsonNode)Type(t)).ToArray()),
+        ["text"] = nowPlaying.Text,
+        ["problem"] = nowPlaying.Problem,
+    };
+
     /// <summary>Tipus de pista: <c>music</c>, <c>sweeper</c>, <c>stationId</c>, <c>promo</c>, <c>commercial</c>, <c>program</c>, <c>news</c>, <c>timeAnnouncement</c>, <c>timeSignal</c>, <c>stream</c>, <c>other</c>.</summary>
     public static string Type(TrackType type)
     {

@@ -18,6 +18,9 @@ public sealed class CommandRouter
     /// <summary>Clau de la configuració on es desa l'AutoDJ (JSON: <c>{ "enabled": true, "rotationId": 1 }</c>).</summary>
     public const string AutoDjSettingKey = "autodj";
 
+    /// <summary>Clau de la configuració on es desa l'exportació del títol (vegeu <see cref="NowPlayingSettings.ToJson"/>).</summary>
+    public const string NowPlayingSettingKey = "nowplaying";
+
     private readonly EngineState _state;
     private readonly Action _requestShutdown;
     private readonly Library? _library;
@@ -26,6 +29,7 @@ public sealed class CommandRouter
     private readonly OutputManager? _outputs;
     private readonly AutoDj? _autoDj;
     private readonly Rotations? _rotations;
+    private readonly NowPlaying? _nowPlaying;
 
     /// <param name="state">Estat del motor.</param>
     /// <param name="requestShutdown">Atura el motor (s'executa després de respondre).</param>
@@ -35,8 +39,10 @@ public sealed class CommandRouter
     /// <param name="outputs">Sortida d'emissió (igual).</param>
     /// <param name="autoDj">AutoDJ (igual).</param>
     /// <param name="rotations">Rotacions (igual).</param>
+    /// <param name="nowPlaying">Exportació del títol per a BUTT (igual).</param>
     public CommandRouter(EngineState state, Action requestShutdown, Library? library = null, Func<IReadOnlyList<AudioDevice>>? listDevices = null,
-        QueuePlayer? queue = null, OutputManager? outputs = null, AutoDj? autoDj = null, Rotations? rotations = null)
+        QueuePlayer? queue = null, OutputManager? outputs = null, AutoDj? autoDj = null, Rotations? rotations = null,
+        NowPlaying? nowPlaying = null)
     {
         _state = state;
         _requestShutdown = requestShutdown;
@@ -46,6 +52,7 @@ public sealed class CommandRouter
         _outputs = outputs;
         _autoDj = autoDj;
         _rotations = rotations;
+        _nowPlaying = nowPlaying;
     }
 
     public JsonObject Handle(string text)
@@ -94,6 +101,9 @@ public sealed class CommandRouter
                 "autodj.get" => new JsonObject { ["autodj"] = QueueJson.AutoDj(AutoDjOrError()) },
                 "autodj.set" => AutoDjSet(msg),
                 "rotations.list" => RotationsList(),
+                "history.list" => HistoryList(msg),
+                "nowplaying.get" => new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(NowPlayingOrError()) },
+                "nowplaying.set" => NowPlayingSet(msg),
                 _ => null,
             };
 
@@ -311,6 +321,103 @@ public sealed class CommandRouter
     {
         var rotations = _rotations ?? throw new BadParamsException("El motor no té rotacions.");
         return new JsonObject { ["rotations"] = new JsonArray(rotations.List().Select(r => (JsonNode)QueueJson.Rotation(r)).ToArray()) };
+    }
+
+    // --- Historial i títol per a BUTT (fase 1, pas 9) ---
+
+    /// <summary>
+    /// Cerca a l'historial, les més recents primer. <c>from</c> i <c>to</c>: una hora ISO 8601 amb zona
+    /// (<c>2026-11-10T12:00:00Z</c>) o un dia (<c>2026-11-10</c>, hora local; <c>to</c> inclou tot el dia).
+    /// <c>search</c>: text de l'artista o del títol. <c>limit</c>: per defecte 100, com a molt 2.000.
+    /// </summary>
+    private JsonObject HistoryList(JsonObject msg)
+    {
+        var library = _library ?? throw new BadParamsException("El motor no té biblioteca.");
+        var from = ReadTime(msg, "from", endOfDay: false);
+        var to = ReadTime(msg, "to", endOfDay: true);
+        if (from is not null && to is not null && from >= to)
+            throw new BadParamsException("El camp 'from' ha de ser anterior a 'to'.");
+        int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 100, 1, 2000);
+        // Se'n demana una de més per saber si n'hi ha més que les que es retornen
+        var entries = library.SearchHistory(from, to, ReadString(msg["search"]), limit + 1);
+        return new JsonObject
+        {
+            ["entries"] = new JsonArray(entries.Take(limit).Select(e => (JsonNode)QueueJson.History(e)).ToArray()),
+            ["more"] = entries.Count > limit,
+        };
+    }
+
+    /// <summary>
+    /// Llegeix una hora o un dia. Un dia és l'hora local de les 00:00; si <paramref name="endOfDay"/>, la del dia següent
+    /// (perquè «fins al dia 10» inclogui tot el dia 10). Les dates es compten en dies de calendari (canvis d'horari).
+    /// </summary>
+    private static DateTimeOffset? ReadTime(JsonObject msg, string field, bool endOfDay)
+    {
+        if (msg[field] is null) return null;
+        string text = ReadString(msg[field]) ?? throw new BadParamsException($"El camp '{field}' ha de ser un text.");
+        if (DateOnly.TryParseExact(text, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var day))
+        {
+            if (endOfDay) day = day.AddDays(1);
+            var local = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Local);
+            return new DateTimeOffset(local);
+        }
+        if (text.Contains('T') && DateTimeOffset.TryParse(text, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var instant)
+            && (text.EndsWith('Z') || text.LastIndexOfAny(['+', '-']) > text.IndexOf('T')))
+            return instant;
+        throw new BadParamsException($"El camp '{field}' ha de ser un dia (2026-11-10) o una hora amb zona (2026-11-10T12:00:00Z).");
+    }
+
+    private NowPlaying NowPlayingOrError() => _nowPlaying ?? throw new BadParamsException("El motor no exporta el títol.");
+
+    /// <summary>
+    /// Canvia l'exportació del títol: <c>enabled</c>, <c>path</c> (ruta completa; <c>null</c> o <c>""</c> = la per defecte),
+    /// <c>template</c> (amb <c>$artist$</c> i <c>$title$</c>) i <c>types</c> (tipus de pista que canvien el títol).
+    /// Els camps que no s'envien es queden com estan. Es desa a la configuració.
+    /// </summary>
+    private JsonObject NowPlayingSet(JsonObject msg)
+    {
+        var nowPlaying = NowPlayingOrError();
+        var settings = nowPlaying.Settings;
+
+        if (msg["enabled"] is not null)
+        {
+            if (msg["enabled"] is not JsonValue v || !v.TryGetValue(out bool enabled))
+                throw new BadParamsException("El camp 'enabled' ha de ser true o false.");
+            settings = settings with { Enabled = enabled };
+        }
+        if (msg.ContainsKey("path"))
+        {
+            string? path = msg["path"] is null ? null : ReadString(msg["path"]) ?? throw new BadParamsException("El camp 'path' ha de ser un text.");
+            if (string.IsNullOrWhiteSpace(path)) path = null;
+            else if (!System.IO.Path.IsPathFullyQualified(path) || path.EndsWith('\\') || path.EndsWith('/'))
+                throw new BadParamsException("El camp 'path' ha de ser la ruta completa d'un fitxer (p. ex. C:\\RadioDJ\\butt\\NowPlaying.txt).");
+            settings = settings with { Path = path };
+        }
+        if (msg["template"] is not null)
+        {
+            string template = ReadString(msg["template"]) ?? "";
+            if (!template.Contains("$artist$", StringComparison.OrdinalIgnoreCase) && !template.Contains("$title$", StringComparison.OrdinalIgnoreCase))
+                throw new BadParamsException("La plantilla ha de tenir $artist$ o $title$.");
+            settings = settings with { Template = template };
+        }
+        if (msg["types"] is not null)
+        {
+            if (msg["types"] is not JsonArray list) throw new BadParamsException("El camp 'types' ha de ser una llista.");
+            try
+            {
+                settings = settings with { Types = list.Select(t => NowPlayingSettings.ParseType(ReadString(t))).Distinct().ToArray() };
+            }
+            catch (FormatException ex)
+            {
+                throw new BadParamsException(ex.Message);
+            }
+        }
+
+        nowPlaying.Configure(settings);
+        _library?.SetSetting(NowPlayingSettingKey, settings.ToJson());
+        return new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(nowPlaying) };
     }
 
     private static string RequireString(JsonObject msg, string field)

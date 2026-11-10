@@ -109,9 +109,14 @@ public static class EngineServer
         var history = new PlayHistory(queue, library, log);
         ConfigureAutoDj(autoDj, library, log);
 
+        // Títol per a BUTT (fase 1, pas 9; D-009): per defecte, <dades>\NowPlaying.txt
+        using var nowPlaying = new NowPlaying(queue, Path.Combine(RuntimeFile.DirectoryPath, "NowPlaying.txt"),
+            ReadNowPlayingSettings(library, log), log);
+        log.LogInformation("Títol per a BUTT: {State} {Path}", nowPlaying.Settings.Enabled ? "s'escriu a" : "desactivat;", nowPlaying.FilePath);
+
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
-            queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations);
+            queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying);
 
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15) });
 
@@ -267,6 +272,20 @@ public static class EngineServer
         {
             log.LogWarning("La rotació desada ({Id}) ja no existeix: es fa servir la primera", rotationId);
             autoDj.Configure(enabled, null);
+        }
+    }
+
+    /// <summary>L'exportació del títol, tal com es va desar amb <c>nowplaying.set</c>; si no n'hi ha o no és vàlida, la per defecte.</summary>
+    private static NowPlayingSettings ReadNowPlayingSettings(Library library, ILogger log)
+    {
+        try
+        {
+            return library.GetSetting(CommandRouter.NowPlayingSettingKey) is { } json ? NowPlayingSettings.FromJson(json) : new NowPlayingSettings();
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning("La configuració desada del títol per a BUTT no és vàlida ({Message}): es fa servir la per defecte", ex.Message);
+            return new NowPlayingSettings();
         }
     }
 

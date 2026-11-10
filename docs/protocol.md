@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 1, pas 8 (motor, dispositius, sortida, cua, biblioteca i AutoDJ). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 1, pas 9 (motor, dispositius, sortida, cua, biblioteca, AutoDJ, historial i títol per a BUTT). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -87,6 +87,9 @@ El `message` és en català i es pot mostrar a l'operador.
 | `autodj.get` | — | `{ autodj }` (vegeu 4.5) | fase 1, pas 8 |
 | `autodj.set` | `enabled` (`true`/`false`), `rotationId`. Tots dos opcionals: el que no s'envia es queda com està | `{ autodj }`. Es desa a la configuració i es manté en tornar a arrencar. Si la rotació no existeix, `bad_params` | fase 1, pas 8 |
 | `rotations.list` | — | `{ rotations: [ … ] }` (vegeu 4.5) | fase 1, pas 8 |
+| `history.list` | `from`, `to`: una hora ISO 8601 amb zona (`"2026-11-10T12:00:00Z"`) o un dia (`"2026-11-10"`, en hora local; a `to`, el dia hi és inclòs). `search`: text de l'artista o del títol. `limit`: per defecte 100, com a molt 2.000. Tots opcionals | `{ entries: [ … ], more }` (vegeu 4.6): les més recents primer. `more`: n'hi ha més que les retornades | fase 1, pas 9 |
+| `nowplaying.get` | — | `{ nowPlaying }` (vegeu 4.6) | fase 1, pas 9 |
+| `nowplaying.set` | `enabled`, `path` (ruta completa del fitxer; `null` o `""` = el per defecte), `template` (ha de tenir `$artist$` o `$title$`), `types` (llista de tipus de pista, 4.2). Tots opcionals: el que no s'envia es queda com està | `{ nowPlaying }`. Es desa a la configuració i es torna a escriure el títol de seguida | fase 1, pas 9 |
 
 ### 4.1. Dispositius
 
@@ -166,6 +169,33 @@ Rotació:
 - `selection`: `leastRecent` (la que fa més temps que no sona), `leastPlayed` (la que ha sonat menys vegades) o `random`.
 - `repeatRule`: s'apliquen els criteris de repetició (no repetir pista ni artista de la cua).
 - `sweeper`: trepitjador (sweeper) a l'inici de la pista (importat de RadioDJ; encara no es fa servir).
+
+### 4.6. Historial i títol per a BUTT (D-051)
+
+Entrada de l'historial:
+
+```json
+{ "id": 812, "trackId": 23977, "startedAt": "2026-11-10T11:51:44.0000000+00:00", "playedMs": 214350, "complete": true,
+  "origin": "autodj", "artist": "Macy Gray", "title": "Still", "path": "O:\musica\…" }
+```
+
+- `startedAt`: hora real en què ha començat a sonar, en UTC.
+- `playedMs` i `complete`: quant ha sonat i si ha arribat al final previst; `null` mentre encara sona.
+- `trackId`: `null` si era un fitxer que no és a la biblioteca o si la pista s'ha esborrat. L'artista, el títol i la ruta són els del moment en què va sonar.
+
+Exportació del títol:
+
+```json
+{ "enabled": true, "path": "D:\apps\onabages-24h\dades\NowPlaying.txt", "customPath": false,
+  "template": "$artist$ - $title$", "types": ["music", "program"], "text": "Macy Gray - Still", "problem": null }
+```
+
+- `path`: el fitxer on s'escriu; `customPath` és `false` si és el per defecte (`<dades>\NowPlaying.txt`).
+- `template`: `$artist$` i `$title$` es substitueixen (sense distingir majúscules). Si falta l'artista o el títol, es treu el separador que quedaria sol.
+- `types`: tipus de pista que canvien el títol. Amb els altres, el fitxer es queda com estava.
+- `text`: l'últim títol exportat; `null` si encara no n'hi ha cap.
+- `problem`: per què no s'ha pogut escriure el fitxer (es torna a provar cada 5 s), o `null`.
+- El fitxer és una sola línia en UTF-8 sense BOM, sense salt de línia final.
 
 ## 5. Esdeveniments
 
