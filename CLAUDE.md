@@ -10,8 +10,9 @@ Aplicació d'escriptori per a Windows per a l'**emissió continuada les 24 hores
 
 ## Fase actual
 
-**Fase 1 — Esquelet i motor 24 h mínim** (vegeu `docs/pla-de-fases.md`). La fase 0 es va tancar a D-020.
-Els passos de la fase 1 són a `docs/pla-de-fases.md`; els fets estan marcats amb ✔.
+**Fase 2 — Planificador i puntualitat** (vegeu `docs/pla-de-fases.md`). La fase 0 es va tancar a D-020.
+La fase 1 està feta excepte el pas 11 (prova de 48 hores), posposat; la fase 1 no es tanca fins que es faci (D-056).
+Els passos de cada fase són a `docs/pla-de-fases.md`; els fets estan marcats amb ✔.
 Quan una fase s'acabi, actualitza aquesta línia i afegeix una entrada a `docs/decisions.md`.
 
 ## Com treballem

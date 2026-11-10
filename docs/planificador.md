@@ -115,15 +115,17 @@ CREATE TABLE esdeveniment_data (
   PRIMARY KEY (esdeveniment_id, data)
 );
 
-CREATE TABLE categoria_esdeveniment (id INTEGER PRIMARY KEY, nom TEXT NOT NULL, color TEXT);
+CREATE TABLE categoria_esdeveniment (id INTEGER PRIMARY KEY, nom TEXT NOT NULL UNIQUE COLLATE NOCASE, color TEXT);
 
 -- Registre d'execució (auditoria i informe)
 CREATE TABLE registre_execucio (
   id               INTEGER PRIMARY KEY,
-  esdeveniment_id  INTEGER,
+  esdeveniment_id  INTEGER,                 -- sense clau forana: el registre es conserva si l'esdeveniment s'esborra
+  nom              TEXT NOT NULL,           -- nom de l'esdeveniment en aquell moment
   programat_per    TEXT NOT NULL,           -- data i hora previstes
   executat_a       TEXT,
-  resultat         TEXT NOT NULL,           -- OK | OMES_TARD | OMES_CONFLICTE | NO_EMES | ERROR
+  resultat         TEXT NOT NULL,           -- OK | OMES_TARD | OMES_CONFLICTE | OMES_CANVI_HORA | NO_EMES | ERROR
+                                            -- OMES_CANVI_HORA: l'hora no existeix aquell dia (pas a l'hora d'estiu, D-057)
                                             -- NO_EMES: contingut d'un ENCUA esborrat per un TALLA abans de sonar (2.1)
   detall           TEXT
 );
@@ -356,6 +358,7 @@ Avui l'**Automatitzador** ho resol per la seva banda: té patrons de dates (setm
 - **Graella per setmanes reals:** la vista setmanal mostra una setmana concreta del calendari (amb fletxes per anar a la setmana següent o anterior). Un esdeveniment de cada 15 dies surt en una setmana sí i en l'altra no. A més, hi ha una vista de "plantilla" que mostra tots els esdeveniments setmanals sense data, per editar la graella habitual com ara.
 - **Càlcul de dates:** es fa amb dates de calendari, no sumant hores, perquè els canvis d'horari d'estiu i d'hivern no facin saltar un dia. L'Automatitzador ja ho fa així (`schedule-generator.mjs`); al motor en C# es farà amb `DateOnly`.
 - **Migració:** tots els esdeveniments de RadioDJ passen com a `SETMANAL`.
+- **Detalls del càlcul** (D-059): «cada N setmanes» compta setmanes senceres des de la de l'àncora (pot sonar diversos dies d'aquelles setmanes); un dia del mes que no existeix no sona (per a l'últim dia, «last»); les dates afegides sonen amb qualsevol recurrència i les excepcions manen sobre tot; «cada N minuts» va fins a mitjanit. Canvis d'hora: una hora que no existeix no sona (`OMES_CANVI_HORA`) i una hora repetida sona només la primera vegada (D-057).
 
 **Coordinació amb l'Automatitzador**
 - Quan l'esdeveniment ja només sona els dies que toca, la finestra de disponibilitat amb fitxer alternatiu deixa de ser imprescindible. L'Automatitzador només ha de tenir el fitxer a punt abans de l'emissió.

@@ -52,7 +52,7 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
    - 10b. ✔ Esquelet d'Electron (D-052): arrencada o connexió amb el motor, pista que sona, vúmetres i rellotge. Prova del desenvolupador (2026-11-10): mostra la pista, el temps i els vúmetres; en tancar la finestra la música continua; amb el motor aturat avisa, i «Arrenca el motor» el torna a engegar. Falta provar-ho per escriptori remot.
    - 10c. ✔ Cua (amb la durada de cada pista, `durationMs`), últimes pistes, AutoDJ (interruptor i rotació), saltar a la següent i barra d'estat. Les accions que interrompen la música (saltar, treure de la cua, aturar l'AutoDJ) demanen confirmació. Provat pel desenvolupador: la cua s'actualitza sola, saltar, treure, canviar de rotació, aturar i activar l'AutoDJ i la barra d'estat funcionen (Dance90 no té pistes en aquest ordinador; s'ha provat amb la bossa de Nadal). En arrencar el motor, l'AutoDJ sempre s'activa (D-053).
    Fora d'abast fins a les fases 2 i 3: esdeveniments, cerca a la biblioteca, cartutxeres, auxiliars, inserir a la cua i hora prevista de cada pista.
-11. Prova de 48 hores: primer a l'ordinador del desenvolupador, després a un altre ordinador de proves.
+11. Prova de 48 hores: primer a l'ordinador del desenvolupador, després a un altre ordinador de proves. **Posposada** pel desenvolupador (2026-11-10); la fase 1 no es tanca fins que es faci.
 
 ## Fase 2 — Planificador i puntualitat
 
@@ -61,6 +61,19 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 - Acció `STREAM` amb durada, connexió anticipada, salt a la pista següent si està caigut i final per silenci opcional (D-010, D-030).
 - **Migració dels esdeveniments de RadioDJ** (secció 6), amb la correcció de l'ordre invers.
 - Graella setmanal (setmanes reals i plantilla) i editor d'esdeveniments, segons la maqueta.
+
+**Passos**
+1. ✔ Esdeveniments a la base de dades: taules `esdeveniment`, `accio`, `esdeveniment_data`, `categoria_esdeveniment` i `registre_execucio` (`planificador.md`, secció 3) i mòdul per llegir-los i desar-los.
+2. ✔ Recurrències: quan sona cada esdeveniment entre dues dates (secció 12; cada hora i cada N minuts), amb `DateOnly` i els canvis d'hora de D-057.
+3. Planificador bàsic al fil de control: pròxim esdeveniment, preparació 30 s abans i disparament; modes ENCUA i SISTEMA, accions `PISTA`, `ROTACIO` i `AUTODJ`; tolerància, conflictes per prioritat, registre d'execució i canvis atòmics; ordres `scheduler.*`.
+4. TALLA a l'hora exacta: rellotge de mostres (hora ↔ fotograma, amb la latència de la sortida), fos de la pista que sonava al mateix fotograma, «Esborra la cua» i `NO_EMES`. Eina de mesura del retard real (objectiu: menys de 50 ms).
+5. SUPERPOSA i senyals horaris: una veu a sobre de la música, amb atenuació opcional; acció `AUXILIAR`.
+6. Migració dels esdeveniments de RadioDJ a `importa-radiodj` (secció 6), amb informe.
+7. Acció `STREAM` (D-010, D-030, D-031), amb un servidor de proves local.
+8. Interfície: 8a graella per setmanes reals i plantilla (lectura); 8b editor d'esdeveniments amb les 10 pròximes emissions; 8c avisos en desar (franja massa llarga, ENCUA que no sonarà, emissions perdudes pel canvi d'hora).
+9. Prova de tancament (criteri de sota).
+
+Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al 6, segons el que demani la migració. Fora d'aquesta fase: `CAMPANYA` i detecció de canvis als fitxers (fase 4), `SWEEPERS` (fase 3, amb el trepitjador) i `ENTRADA` (encara no hi ha entrada).
 
 **Criteri de tancament:** una setmana de programació real migrada sonant a l'ordinador de proves, amb els senyals horaris a menys de 50 ms de l'hora (mesurat), un stream caigut que se salta sense silenci, un stream en silenci que s'acaba sol i un stream llarg que es talla dues vegades i es recupera sol (amb un servidor de proves local).
 
