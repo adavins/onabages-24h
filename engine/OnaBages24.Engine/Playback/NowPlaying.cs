@@ -67,7 +67,7 @@ public sealed class NowPlaying : IDisposable
     private readonly object _sync = new();
     private readonly SemaphoreSlim _wake = new(0);
     private readonly CancellationTokenSource _stop = new();
-    private readonly Task _worker;
+    private readonly Thread _worker;
     private QueueItem? _lastItem;
     private bool _dirty;
     private long _writes;
@@ -80,7 +80,9 @@ public sealed class NowPlaying : IDisposable
         _log = log;
         Settings = settings;
         if (queue is not null) queue.Started += e => Show(e.Item);
-        _worker = Task.Run(RunAsync);
+        // Fil propi, no del grup de fils de .NET: si el grup va carregat, el títol no s'ha d'esperar
+        _worker = new Thread(Run) { IsBackground = true, Name = "Títol per a BUTT" };
+        _worker.Start();
     }
 
     public NowPlayingSettings Settings { get; private set; }
@@ -145,7 +147,7 @@ public sealed class NowPlaying : IDisposable
     }
 
     /// <summary>Fil d'escriptura: espera que hi hagi un text nou i l'escriu; si falla, ho torna a provar al cap d'una estona.</summary>
-    private async Task RunAsync()
+    private void Run()
     {
         while (!_stop.IsCancellationRequested)
         {
@@ -153,7 +155,7 @@ public sealed class NowPlaying : IDisposable
             lock (_sync) retrying = _dirty && Problem is not null;
             try
             {
-                await _wake.WaitAsync(retrying ? RetryDelay : Timeout.InfiniteTimeSpan, _stop.Token);
+                _wake.Wait(retrying ? RetryDelay : Timeout.InfiniteTimeSpan, _stop.Token);
             }
             catch (OperationCanceledException)
             {
@@ -194,7 +196,7 @@ public sealed class NowPlaying : IDisposable
     public void Dispose()
     {
         _stop.Cancel();
-        try { _worker.Wait(TimeSpan.FromSeconds(2)); } catch (AggregateException) { }
+        _worker.Join(TimeSpan.FromSeconds(2));
         _stop.Dispose();
         _wake.Dispose();
     }

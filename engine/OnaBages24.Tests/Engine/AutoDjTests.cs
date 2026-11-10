@@ -412,10 +412,23 @@ public class AutoDjCommandsTests : IDisposable
         Assert.True(response["ok"]!.GetValue<bool>());
         Assert.Equal("Dance90", _autoDj.Rotation!.Name);
         Assert.True(_autoDj.Enabled); // no s'ha enviat «enabled»: es queda com estava
-        Assert.Equal($$"""{"enabled":true,"rotationId":{{_second}}}""", _library.GetSetting(CommandRouter.AutoDjSettingKey));
+        Assert.Equal($$"""{"rotationId":{{_second}}}""", _library.GetSetting(CommandRouter.AutoDjSettingKey));
 
         Send("""{ "v": 1, "id": 2, "cmd": "autodj.set", "enabled": false }""");
         Assert.False(_autoDj.Enabled);
+        Assert.Equal("Dance90", _autoDj.Rotation!.Name);
+    }
+
+    [Fact]
+    public void En_arrencar_el_motor_l_AutoDJ_sempre_s_activa_amb_la_rotacio_desada()
+    {
+        // Configuració antiga que el deixava aturat: ara només se'n fa servir la rotació (D-053)
+        _library.SetSetting(CommandRouter.AutoDjSettingKey, $$"""{"enabled":false,"rotationId":{{_second}}}""");
+        _autoDj.Configure(false, _first);
+
+        EngineServer.ConfigureAutoDj(_autoDj, _library, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+
+        Assert.True(_autoDj.Enabled);
         Assert.Equal("Dance90", _autoDj.Rotation!.Name);
     }
 

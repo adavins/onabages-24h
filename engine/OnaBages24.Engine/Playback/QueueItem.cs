@@ -17,6 +17,11 @@ public sealed record QueueItem
     public long? StartMs { get; init; }
     public long? MixMs { get; init; }
     public long? EndMs { get; init; }
+    /// <summary>Durada del fitxer (de la biblioteca), si se sap.</summary>
+    public long? FileDurationMs { get; init; }
+
+    /// <summary>Quant sonarà, de l'inici al final (sense comptar el solapament amb la següent), o null si no se sap.</summary>
+    public long? PlannedMs => (EndMs ?? FileDurationMs) is { } end ? Math.Max(0, end - (StartMs ?? 0)) : null;
     public QueueOrigin Origin { get; init; } = QueueOrigin.Manual;
     /// <summary>Nom de l'esdeveniment que l'ha posat a la cua, si n'és el cas.</summary>
     public string? EventName { get; init; }
@@ -31,6 +36,7 @@ public sealed record QueueItem
         StartMs = track.StartMs,
         MixMs = track.MixMs,
         EndMs = track.EndMs,
+        FileDurationMs = track.DurationMs,
         Origin = origin,
         EventName = eventName,
     };

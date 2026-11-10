@@ -275,21 +275,18 @@ public static class EngineServer
     }
 
     /// <summary>
-    /// L'AutoDJ, tal com es va desar amb <c>autodj.set</c>. Si no hi ha res desat (primera vegada), s'activa amb la primera
-    /// rotació: el motor sempre arrenca sonant (D-035). Si la rotació desada ja no existeix, es fa servir la primera, amb avís.
+    /// L'AutoDJ en arrencar el motor: sempre actiu (D-053), amb la rotació desada amb <c>autodj.set</c>. Si no n'hi ha cap
+    /// de desada (primera vegada) o ja no existeix, es fa servir la primera, amb avís. Si s'havia aturat abans de tancar el
+    /// motor, no es recorda: el motor sempre arrenca sonant (D-035).
     /// </summary>
-    private static void ConfigureAutoDj(AutoDj autoDj, Library library, ILogger log)
+    internal static void ConfigureAutoDj(AutoDj autoDj, Library library, ILogger log)
     {
-        bool enabled = true;
+        const bool enabled = true;
         long? rotationId = null;
         try
         {
             if (library.GetSetting(CommandRouter.AutoDjSettingKey) is { } json)
-            {
-                var node = System.Text.Json.Nodes.JsonNode.Parse(json);
-                enabled = node?["enabled"]?.GetValue<bool>() ?? true;
-                rotationId = node?["rotationId"]?.GetValue<long?>();
-            }
+                rotationId = System.Text.Json.Nodes.JsonNode.Parse(json)?["rotationId"]?.GetValue<long?>();
         }
         catch (Exception ex)
         {

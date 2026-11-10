@@ -1,19 +1,26 @@
 // @ts-check
-// Pantalla d'emissió (fase 1, pas 10b). Només mostra l'estat del motor i, més endavant, hi envia ordres:
-// l'àudio, la cua i l'AutoDJ són al motor, que continua sonant encara que aquesta finestra es tanqui.
+// Pantalla d'emissió (fase 1, passos 10b i 10c). Només mostra l'estat del motor i hi envia ordres: l'àudio,
+// la cua i l'AutoDJ són al motor, que continua sonant encara que aquesta finestra es tanqui.
 
 import { EngineClient } from './engine-client.js';
 import { formatClock, formatLongDate } from './format.js';
+import { $ } from './ui/dom.js';
+import { confirmAction } from './ui/confirm.js';
 import { OutputMeters } from './ui/meters.js';
 import { NowPlaying } from './ui/now-playing.js';
+import { QueueView, HistoryView } from './ui/queue.js';
+import { AutoDjView } from './ui/autodj.js';
+import { renderOutput, renderNowPlaying, renderWarnings } from './ui/statusbar.js';
 
-/** @typedef {{ startEngine: () => Promise<{ port: number, token: string }>, findEngine: () => Promise<{ port: number, token: string } | null> }} Bridge */
+/**
+ * @typedef {{
+ *   startEngine: () => Promise<{ port: number, token: string }>,
+ *   findEngine: () => Promise<{ port: number, token: string } | null>,
+ *   onCloseRequested: (callback: () => void) => void,
+ *   closeWindow: () => Promise<void>,
+ * }} Bridge
+ */
 const bridge = /** @type {Bridge} */ (/** @type {any} */ (window).onabages);
-
-/** @param {string} id */
-function $(id) {
-  return /** @type {HTMLElement} */ (document.getElementById(id));
-}
 
 // --- Rellotge (només per mostrar l'hora: la puntualitat és cosa del motor, D-008) ---
 
@@ -61,12 +68,106 @@ function showBanner(title, detail = '') {
 
 // --- Pantalla ---
 
-const meters = new OutputMeters($('meter-left'), $('meter-right'));
-const nowPlaying = new NowPlaying();
-
 /** @type {EngineClient | null} */
 let client = null;
 let failedAttempts = 0;
+
+/** Envia una ordre al motor. @param {string} cmd  @param {object} [params] */
+function send(cmd, params = {}) {
+  if (!client) return Promise.reject(new Error('El motor no està connectat'));
+  return client.request(cmd, params);
+}
+
+const meters = new OutputMeters($('meter-left'), $('meter-right'));
+const nowPlaying = new NowPlaying();
+const queueView = new QueueView(send);
+const historyView = new HistoryView(send);
+const autoDjView = new AutoDjView(send);
+const problems = { autodj: /** @type {string | null} */ (null), output: /** @type {string | null} */ (null) };
+renderWarnings(problems);
+
+/** @param {any} queue  docs/protocol.md, 4.2 */
+function showQueue(queue) {
+  nowPlaying.setCurrent(queue.current);
+  queueView.render(queue.upcoming);
+  /** @type {HTMLButtonElement} */ ($('btn-skip')).disabled = !queue.current;
+}
+
+/** @param {any} state */
+function showAutoDj(state) {
+  autoDjView.render(state);
+  problems.autodj = state.problem;
+  renderWarnings(problems);
+}
+
+/** @param {any} output */
+function showOutput(output) {
+  renderOutput(output);
+  problems.output = output.problem;
+  renderWarnings(problems);
+}
+
+async function refreshNowPlayingStatus() {
+  try {
+    renderNowPlaying((await send('nowplaying.get')).nowPlaying);
+  } catch { /* sense connexió: ja ho diu la capçalera */ }
+}
+
+// Saltar a la següent: interromp la cançó, per tant demana confirmació
+$('btn-skip').addEventListener('click', async () => {
+  const title = $('np-title').textContent;
+  const ok = await confirmAction({
+    title: 'Saltar a la següent',
+    message: `«${title}» baixarà amb un fos d'1 segon i començarà la pista següent de la cua.`,
+    confirm: 'Salta a la següent',
+  });
+  if (!ok) return;
+  try {
+    await send('player.next', { fadeMs: 1000 });
+  } catch (err) {
+    await confirmAction({ title: 'No s\'ha pogut saltar', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+  }
+});
+
+// Els avisos, sencers, en clicar el comptador de la barra de sota
+$('status-warnings').addEventListener('click', () => {
+  const list = [problems.output, problems.autodj].filter(Boolean);
+  if (list.length === 0) return;
+  confirmAction({ title: 'Avisos', message: list.join('\n\n'), confirm: 'D\'acord', info: true });
+});
+
+// En clicar la X (D-054): per defecte només es tanca la finestra i l'emissió continua.
+// «Atura l'emissió i tanca» atura el motor; si no hi ha connexió amb el motor, aquesta opció no hi és.
+bridge.onCloseRequested(async () => {
+  const dialog = /** @type {HTMLDialogElement} */ ($('close-dialog'));
+  if (dialog.open) return;
+  const connected = client?.connected ?? false;
+  /** @type {HTMLButtonElement} */ ($('close-stop')).disabled = !connected;
+  $('close-offline').classList.toggle('d-none', connected);
+
+  const choice = await new Promise((resolve) => {
+    dialog.addEventListener('close', () => resolve(dialog.returnValue), { once: true });
+    dialog.returnValue = '';
+    dialog.showModal();
+    $('close-window').focus(); // per defecte, l'opció que no atura res
+  });
+
+  if (choice === 'window') {
+    await bridge.closeWindow();
+  } else if (choice === 'stop') {
+    try {
+      await send('engine.shutdown');
+      await bridge.closeWindow();
+    } catch (err) {
+      await confirmAction({
+        title: 'No s\'ha pogut aturar l\'emissió',
+        message: `${/** @type {Error} */ (err).message}\n\nLa finestra no s'ha tancat.`,
+        confirm: 'D\'acord',
+        info: true,
+      });
+    }
+  }
+});
 
 /** Es connecta al motor amb aquest port i testimoni (o hi torna a apuntar el client, si ja n'hi ha). */
 function connect(/** @type {{ port: number, token: string }} */ info) {
@@ -90,16 +191,28 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
       showStatus('disconnected');
       showBanner('No hi ha connexió amb el motor.',
         'Si el motor funciona, l\'emissió continua. Es torna a provar cada pocs segons.');
-      nowPlaying.setCurrent(null);
+      showQueue({ current: null, upcoming: [] });
       // Potser el motor ha tornat a arrencar amb un altre testimoni: se'n llegeix el fitxer d'execució
       const found = await bridge.findEngine().catch(() => null);
       if (found) client?.setEngine(found.port, found.token);
     }
   });
 
-  client.addEventListener('ev:queue.changed', (e) => nowPlaying.setCurrent(/** @type {CustomEvent} */ (e).detail.queue.current));
+  const detail = (/** @type {Event} */ e) => /** @type {CustomEvent} */ (e).detail;
+  client.addEventListener('ev:queue.changed', (e) => {
+    showQueue(detail(e).queue);
+    // autodj.changed no s'envia cada vegada que l'AutoDJ afegeix una pista: el proper pas es demana aquí
+    send('autodj.get').then((r) => showAutoDj(r.autodj)).catch(() => {});
+  });
+  client.addEventListener('ev:autodj.changed', (e) => showAutoDj(detail(e).autodj));
+  client.addEventListener('ev:output.changed', (e) => showOutput(detail(e).output));
+  client.addEventListener('ev:player.trackStarted', () => {
+    historyView.refresh();
+    setTimeout(refreshNowPlayingStatus, 500); // el fitxer s'escriu en un fil a part
+  });
+  client.addEventListener('ev:player.trackEnded', () => historyView.refresh());
   client.addEventListener('ev:meters', (e) => {
-    const ev = /** @type {CustomEvent} */ (e).detail;
+    const ev = detail(e);
     meters.set(ev.output);
     nowPlaying.setPosition(ev.position);
   });
@@ -107,15 +220,26 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   client.connect();
 }
 
-/** En connectar-se (o tornar-s'hi a connectar): l'estat actual. */
+/** En connectar-se (o tornar-s'hi a connectar): tot l'estat actual. */
 async function loadState() {
   try {
-    const { queue } = await /** @type {EngineClient} */ (client).request('queue.get');
-    nowPlaying.setCurrent(queue.current);
+    const [queue, autodj, rotations, output] = await Promise.all([
+      send('queue.get'), send('autodj.get'), send('rotations.list'), send('output.get'),
+    ]);
+    showQueue(queue.queue);
+    autoDjView.setRotations(rotations.rotations);
+    showAutoDj(autodj.autodj);
+    showOutput(output.output);
+    await Promise.all([historyView.refresh(), refreshNowPlayingStatus()]);
   } catch (err) {
-    console.error('No s\'ha pogut llegir la cua:', err);
+    console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }
 }
+
+// El títol per a BUTT no té esdeveniment propi: es mira de tant en tant si s'ha pogut escriure
+setInterval(() => {
+  if (client?.connected) refreshNowPlayingStatus();
+}, 10_000);
 
 /** Arrenca el motor (si no n'hi ha cap) i s'hi connecta. */
 async function start() {

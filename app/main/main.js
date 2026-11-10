@@ -3,7 +3,7 @@
 // Procés principal d'Electron (fase 1, pas 10b).
 // Responsabilitats: obrir la finestra, trobar el motor (o arrencar-lo si no n'hi ha cap) i passar-ne
 // el port i el testimoni a la interfície. Aquí NO hi ha àudio ni base de dades: tot és al motor.
-// Tancar la finestra no atura el motor: l'emissió continua (D-035).
+// Tancar la finestra no atura el motor si l'operador no ho tria al diàleg de tancar (D-035, D-054).
 
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('node:path');
@@ -28,6 +28,9 @@ app.disableHardwareAcceleration();
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
+/** La interfície ja ha dit que es pot tancar (després del diàleg de tancar). */
+let allowClose = false;
+let rendererUnresponsive = false;
 
 // Només una finestra de l'aplicació alhora.
 if (!app.requestSingleInstanceLock()) {
@@ -75,6 +78,16 @@ function createWindow() {
       event.preventDefault();
     }
   });
+
+  // En clicar la X, la interfície pregunta si es tanca només la finestra o també s'atura l'emissió (D-054).
+  // Si la interfície està penjada o s'ha tancat, no pot preguntar: es tanca només la finestra.
+  mainWindow.on('close', (event) => {
+    if (allowClose || rendererUnresponsive || mainWindow?.webContents.isCrashed()) return;
+    event.preventDefault();
+    mainWindow?.webContents.send('app:close-requested');
+  });
+  mainWindow.on('unresponsive', () => { rendererUnresponsive = true; });
+  mainWindow.on('responsive', () => { rendererUnresponsive = false; });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -180,3 +193,9 @@ ipcMain.handle('engine:start', () => startEngine());
 // Després de perdre la connexió: només es busca (el motor pot haver tornat a arrencar amb un altre testimoni).
 // No se n'arrenca cap sense que l'operador ho demani.
 ipcMain.handle('engine:find', () => findEngine());
+
+// La interfície ja ha preguntat a l'operador (i, si calia, ha aturat el motor): es tanca la finestra.
+ipcMain.handle('app:close', () => {
+  allowClose = true;
+  mainWindow?.close();
+});

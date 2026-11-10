@@ -2,7 +2,7 @@
 
 Aplicació d'escriptori per a Windows per a l'emissió continuada les 24 hores d'una ràdio local. Substituirà RadioDJ i el Programador del RadioDJ a l'ordinador de continuïtat.
 
-**Estat:** fase 1 (esquelet i motor 24 h mínim), encara sense codi. És un projecte independent d'Ona Bages Play, del qual es copia el codi d'àudio (D-019).
+**Estat:** fase 1 (esquelet i motor 24 h mínim): motor amb AutoDJ i rotacions, i interfície d'emissió mínima. És un projecte independent d'Ona Bages Play, del qual es copia el codi d'àudio (D-019).
 
 ## Què hi ha en aquest repositori
 
@@ -17,6 +17,19 @@ Aplicació d'escriptori per a Windows per a l'emissió continuada les 24 hores d
 | `docs/maquetes/` | Maquetes de les pantalles Emissió i Planificador (obre els `.dc.html` al navegador) |
 | `docs/radiodj/` | Esquema i dades de referència de RadioDJ per a la migració |
 | `docs/referencia/` | Encàrrec de la fase 0, ja tancada (només com a història) |
+
+## Scripts (a l'arrel, amb doble clic o des d'una consola)
+
+Cal tenir instal·lats el SDK de .NET 10 i Node.js.
+
+| Script | Què fa |
+|---|---|
+| `arrencar.cmd` | Compila el motor i obre la interfície, que arrenca el motor si no n'hi ha cap en marxa |
+| `arrencar-motor.cmd` | Compila el motor i l'arrenca sol en aquella finestra, on es veu el registre (Ctrl+C l'atura) |
+| `aturar-motor.cmd` | Atura el motor (`engine.shutdown`): l'emissió s'atura |
+| `empaquetar.cmd` | Genera la versió portable a `build\OnaBages24\` i `build\OnaBages24-<versió>.zip`, amb el .NET inclòs i la carpeta `dades` buida (D-044) |
+
+Si el motor ja funciona, no es pot recompilar (els seus fitxers estan en ús): primer `aturar-motor.cmd`.
 
 ## Com començar amb Claude Code
 

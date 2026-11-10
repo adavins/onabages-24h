@@ -17,6 +17,7 @@ public static class QueueJson
         ["type"] = Type(item.Type),
         ["origin"] = Origin(item.Origin),
         ["eventName"] = item.EventName,
+        ["durationMs"] = item.PlannedMs,
     };
 
     public static JsonObject Queue(QueuePlayer player) => new()

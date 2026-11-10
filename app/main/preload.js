@@ -11,4 +11,10 @@ contextBridge.exposeInMainWorld('onabages', {
 
   /** Port i testimoni del motor que funciona ara (segons engine.json), o null. No n'arrenca cap. */
   findEngine: () => ipcRenderer.invoke('engine:find'),
+
+  /** Avisa quan l'operador vol tancar la finestra (la interfície pregunta què vol fer). */
+  onCloseRequested: (callback) => ipcRenderer.on('app:close-requested', () => callback()),
+
+  /** Tanca la finestra (el motor no s'atura si no se li ha demanat abans). */
+  closeWindow: () => ipcRenderer.invoke('app:close'),
 });

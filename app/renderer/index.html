@@ -36,6 +36,10 @@
 
   <!-- Pista que sona, comptadors, vúmetres i rellotge -->
   <section class="onair" aria-label="En antena">
+    <button id="btn-skip" class="btn btn-outline-light transport-button" type="button" title="Salta a la següent pista (amb un fos d'1 s)" disabled>
+      <i class="bi bi-skip-end-fill" aria-hidden="true"></i>
+      <span>Següent</span>
+    </button>
     <div class="now">
       <div class="now-heading">
         <span id="np-title" class="now-title">Res no sona</span>
@@ -78,11 +82,81 @@
   </section>
 
   <main class="workspace">
-    <div class="placeholder">
-      <i class="bi bi-list-ol"></i>
-      La cua, les últimes pistes i l'AutoDJ arriben al pas 10c.
+    <div class="column-main">
+      <!-- Cua d'emissió -->
+      <section class="card ob-card">
+        <div class="card-header ob-card-header">
+          <strong>Cua</strong>
+          <span id="queue-rotation" class="text-body-secondary"></span>
+          <span id="queue-summary" class="ms-auto text-body-secondary"></span>
+        </div>
+        <ul id="queue-list" class="list-group list-group-flush"></ul>
+        <div id="queue-empty" class="empty-note d-none">
+          <i class="bi bi-inbox" aria-hidden="true"></i> La cua és buida.
+        </div>
+      </section>
+
+      <!-- Últimes pistes -->
+      <section class="card ob-card">
+        <div class="card-header ob-card-header"><strong>Últimes pistes</strong></div>
+        <ul id="history-list" class="list-group list-group-flush"></ul>
+        <div id="history-empty" class="empty-note d-none">Encara no ha sonat res.</div>
+      </section>
+    </div>
+
+    <div class="column-side">
+      <!-- AutoDJ -->
+      <section class="card ob-card">
+        <div class="card-header ob-card-header"><strong>AutoDJ</strong></div>
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <span id="autodj-state"></span>
+            <button id="btn-autodj-toggle" class="btn btn-sm btn-outline-warning ms-auto" type="button">Atura l'AutoDJ</button>
+          </div>
+          <label for="autodj-rotation" class="form-label">Rotació</label>
+          <select id="autodj-rotation" class="form-select"></select>
+          <div id="autodj-next" class="form-text"></div>
+          <div id="autodj-problem" class="alert alert-warning d-flex gap-2 mt-3 mb-0 d-none" role="status">
+            <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+            <span id="autodj-problem-text"></span>
+          </div>
+        </div>
+      </section>
     </div>
   </main>
+
+  <footer class="statusbar">
+    <span id="status-output"></span>
+    <span id="status-butt"></span>
+    <button id="status-warnings" class="btn btn-link statusbar-button" type="button"></button>
+  </footer>
+
+  <!-- Confirmació de les accions que interrompen l'emissió -->
+  <dialog id="confirm-dialog" class="ob-dialog">
+    <form method="dialog">
+      <h2 id="confirm-title" class="h5"></h2>
+      <p id="confirm-message" class="ob-dialog-message"></p>
+      <div class="d-flex justify-content-end gap-2">
+        <button id="confirm-cancel" class="btn btn-secondary" value="cancel">Cancel·la</button>
+        <button id="confirm-ok" class="btn btn-danger" value="ok"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- En tancar la finestra (D-054): per defecte, només es tanca la finestra i l'emissió continua -->
+  <dialog id="close-dialog" class="ob-dialog">
+    <form method="dialog">
+      <h2 class="h5">Tancar Ona Bages 24h</h2>
+      <p class="ob-dialog-message">Si només tanques la finestra, l'emissió continua: el motor segueix sonant i la pots tornar a obrir quan vulguis.
+Si atures l'emissió, la ràdio es quedarà en silenci.</p>
+      <p id="close-offline" class="text-warning d-none"><i class="bi bi-exclamation-triangle-fill"></i> No hi ha connexió amb el motor: des d'aquí no es pot aturar l'emissió.</p>
+      <div class="d-flex justify-content-end gap-2 flex-wrap">
+        <button class="btn btn-secondary" value="cancel">Cancel·la</button>
+        <button id="close-stop" class="btn btn-danger" value="stop"><i class="bi bi-stop-circle-fill"></i> Atura l'emissió i tanca</button>
+        <button id="close-window" class="btn btn-primary" value="window"><i class="bi bi-box-arrow-right"></i> Tanca només la finestra</button>
+      </div>
+    </form>
+  </dialog>
 
   <script type="module" src="js/app.js"></script>
 </body>

@@ -313,7 +313,8 @@ public sealed class CommandRouter
         }
         if (!autoDj.Configure(enabled, rotationId))
             throw new BadParamsException($"No existeix la rotació {rotationId}.");
-        _library?.SetSetting(AutoDjSettingKey, JsonSerializer.Serialize(new { enabled = autoDj.Enabled, rotationId = autoDj.Rotation?.Id }));
+        // Només es desa la rotació: en arrencar, el motor sempre activa l'AutoDJ (D-053)
+        _library?.SetSetting(AutoDjSettingKey, JsonSerializer.Serialize(new { rotationId = autoDj.Rotation?.Id }));
         return new JsonObject { ["autodj"] = QueueJson.AutoDj(autoDj) };
     }
 

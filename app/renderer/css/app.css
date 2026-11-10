@@ -301,26 +301,6 @@ body {
   color: var(--ob-muted);
 }
 
-/* --- Zona de treball --- */
-
-.workspace {
-  flex-grow: 1;
-  overflow: auto;
-  padding: 1rem;
-}
-
-.placeholder {
-  border: 1px dashed var(--ob-border);
-  border-radius: 0.5rem;
-  padding: 2rem;
-  text-align: center;
-  color: var(--ob-muted);
-}
-
-.placeholder .bi {
-  margin-right: 0.4rem;
-}
-
 /* Pantalles estretes: el rellotge i els vúmetres passen a sota */
 @media (max-width: 1200px) {
   .onair {
@@ -330,5 +310,221 @@ body {
 
   .now {
     flex-basis: 100%;
+  }
+}
+
+/* --- Botó de saltar --- */
+
+.transport-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  width: 4.8rem;
+  height: 4.8rem;
+  flex: 0 0 auto;
+}
+
+.transport-button .bi {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.transport-button span {
+  font-size: 0.8rem;
+}
+
+/* --- Zona de treball: cua i historial a l'esquerra, AutoDJ a la dreta --- */
+
+.workspace {
+  flex-grow: 1;
+  overflow: auto;
+  padding: 1rem;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.column-main,
+.column-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.ob-card {
+  background: var(--ob-panel);
+  border-color: var(--ob-border);
+}
+
+.ob-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  background: transparent;
+  border-color: var(--ob-border);
+}
+
+.ob-card .list-group-item {
+  background: transparent;
+  border-color: var(--ob-border);
+}
+
+.empty-note {
+  padding: 1rem;
+  color: var(--ob-muted);
+}
+
+.status-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Cua */
+.queue-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.queue-number {
+  width: 1.5rem;
+  text-align: right;
+  color: var(--ob-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-text {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.queue-title,
+.queue-artist {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue-title {
+  font-weight: 600;
+}
+
+.queue-artist,
+.queue-origin {
+  color: var(--ob-muted);
+  font-size: 0.9rem;
+}
+
+.queue-origin {
+  white-space: nowrap;
+  width: 8rem;
+}
+
+.queue-duration {
+  font-family: var(--ob-mono);
+  width: 3.5rem;
+  text-align: right;
+}
+
+.queue-remove {
+  white-space: nowrap;
+}
+
+/* Tipus de pista que no tenen color propi a Bootstrap (sempre amb el nom escrit) */
+.type-jingle {
+  background: #1f5f4a;
+  color: #d8f5ea;
+}
+
+.type-time {
+  background: #4b3f8f;
+  color: #e6e1ff;
+}
+
+/* Últimes pistes */
+.history-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+.history-time,
+.history-duration {
+  font-family: var(--ob-mono);
+  color: var(--ob-muted);
+  white-space: nowrap;
+}
+
+.history-text {
+  flex-grow: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-artist {
+  color: var(--ob-muted);
+}
+
+.history-cut {
+  font-family: var(--bs-body-font-family);
+  font-size: 0.85rem;
+}
+
+/* --- Barra d'estat --- */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 0.35rem 1rem;
+  border-top: 1px solid var(--ob-border);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.statusbar > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusbar-button {
+  margin-left: auto;
+  padding: 0;
+  font-size: inherit;
+  text-decoration: none;
+}
+
+/* --- Diàleg de confirmació --- */
+
+.ob-dialog {
+  background: var(--ob-panel);
+  color: var(--bs-body-color);
+  border: 1px solid var(--ob-border);
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  width: min(32rem, 90vw);
+}
+
+.ob-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.ob-dialog-message {
+  white-space: pre-line;
+}
+
+@media (max-width: 1000px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

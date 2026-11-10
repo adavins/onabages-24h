@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 1, pas 10a (motor, dispositius, sortida, cua, biblioteca, AutoDJ, historial, títol per a BUTT i mesuradors). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 1, pas 10c (motor, dispositius, sortida, cua, biblioteca, AutoDJ, historial, títol per a BUTT i mesuradors). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -85,7 +85,7 @@ El `message` és en català i es pot mostrar a l'operador.
 | `player.next` | `fadeMs` (de 0 a 10.000; per defecte 1.000) | `{ queue }`. La que sona baixa amb un fos i la següent comença de seguida | fase 1, pas 7c |
 | `library.list` | `folder`, `limit` (per defecte 100, com a molt 1.000) | `{ tracks: [ … ] }` (vegeu 4.4): pistes de la carpeta i subcarpetes. De moment, per a les proves | fase 1, pas 7c |
 | `autodj.get` | — | `{ autodj }` (vegeu 4.5) | fase 1, pas 8 |
-| `autodj.set` | `enabled` (`true`/`false`), `rotationId`. Tots dos opcionals: el que no s'envia es queda com està | `{ autodj }`. Es desa a la configuració i es manté en tornar a arrencar. Si la rotació no existeix, `bad_params` | fase 1, pas 8 |
+| `autodj.set` | `enabled` (`true`/`false`), `rotationId`. Tots dos opcionals: el que no s'envia es queda com està | `{ autodj }`. La rotació es desa i es manté en tornar a arrencar; `enabled` no: el motor sempre arrenca amb l'AutoDJ actiu (D-053). Si la rotació no existeix, `bad_params` | fase 1, pas 8 |
 | `rotations.list` | — | `{ rotations: [ … ] }` (vegeu 4.5) | fase 1, pas 8 |
 | `history.list` | `from`, `to`: una hora ISO 8601 amb zona (`"2026-11-10T12:00:00Z"`) o un dia (`"2026-11-10"`, en hora local; a `to`, el dia hi és inclòs). `search`: text de l'artista o del títol. `limit`: per defecte 100, com a molt 2.000. Tots opcionals | `{ entries: [ … ], more }` (vegeu 4.6): les més recents primer. `more`: n'hi ha més que les retornades | fase 1, pas 9 |
 | `nowplaying.get` | — | `{ nowPlaying }` (vegeu 4.6) | fase 1, pas 9 |
@@ -112,7 +112,8 @@ El `message` és en català i es pot mostrar a l'operador.
 
 ```json
 { "current": { "id": "6f0c…", "trackId": 23977, "path": "O:\\musica\\…\\The Kooks - Bad Habit.mp3",
-               "artist": "The Kooks", "title": "Bad Habit", "type": "music", "origin": "manual", "eventName": null },
+               "artist": "The Kooks", "title": "Bad Habit", "type": "music", "origin": "manual", "eventName": null,
+               "durationMs": 193500 },
   "upcoming": [ { … }, { … } ] }
 ```
 
@@ -121,6 +122,7 @@ El `message` és en català i es pot mostrar a l'operador.
 - `id`: identificador de l'element a la cua (no és el de la pista); `trackId`: el de la pista a la biblioteca (`null` si s'ha afegit per ruta i no hi és).
 - `type`: `music`, `sweeper`, `stationId`, `promo`, `commercial`, `program`, `news`, `timeAnnouncement`, `timeSignal`, `stream` o `other`.
 - `origin` (D-034): `autodj`, `manual` o `event`.
+- `durationMs`: quant sonarà, del punt d'inici al final (sense restar el solapament amb la següent), o `null` si no se sap (p. ex. un fitxer que no és a la biblioteca). Des del pas 10c.
 
 ### 4.3. Sortida (D-038)
 

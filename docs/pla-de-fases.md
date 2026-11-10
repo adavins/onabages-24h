@@ -49,8 +49,8 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 9. ✔ Consulta de l'historial (`history.list`) i `NowPlaying.txt` amb plantilla (`nowplaying.get` i `nowplaying.set`) (D-051). L'historial ja s'anota des del pas 8. Prova del desenvolupador (2026-11-10): el fitxer canvia a cada cançó i BUTT el llegeix bé, amb els accents i els punts volats. Que el títol no canviï amb les cortines i els indicatius només s'ha comprovat amb les proves automàtiques, perquè en aquest ordinador no hi ha els seus fitxers; s'ha de mirar al PC 24h.
 10. Interfície mínima (Electron), oberta sense contrasenya (D-035), en tres parts:
    - 10a. ✔ Motor: esdeveniment `meters` amb els nivells de la sortida i la posició de la pista que sona. Comprovat amb `prova-motor.mjs --escolta`.
-   - 10b. ✔ Esquelet d'Electron (D-052): arrencada o connexió amb el motor, pista que sona, vúmetres i rellotge.
-   - 10c. Cua, últimes pistes, AutoDJ (interruptor i rotació), saltar a la següent i barra d'estat.
+   - 10b. ✔ Esquelet d'Electron (D-052): arrencada o connexió amb el motor, pista que sona, vúmetres i rellotge. Prova del desenvolupador (2026-11-10): mostra la pista, el temps i els vúmetres; en tancar la finestra la música continua; amb el motor aturat avisa, i «Arrenca el motor» el torna a engegar. Falta provar-ho per escriptori remot.
+   - 10c. ✔ Cua (amb la durada de cada pista, `durationMs`), últimes pistes, AutoDJ (interruptor i rotació), saltar a la següent i barra d'estat. Les accions que interrompen la música (saltar, treure de la cua, aturar l'AutoDJ) demanen confirmació. Provat pel desenvolupador: la cua s'actualitza sola, saltar, treure, canviar de rotació, aturar i activar l'AutoDJ i la barra d'estat funcionen (Dance90 no té pistes en aquest ordinador; s'ha provat amb la bossa de Nadal). En arrencar el motor, l'AutoDJ sempre s'activa (D-053).
    Fora d'abast fins a les fases 2 i 3: esdeveniments, cerca a la biblioteca, cartutxeres, auxiliars, inserir a la cua i hora prevista de cada pista.
 11. Prova de 48 hores: primer a l'ordinador del desenvolupador, després a un altre ordinador de proves.
 
@@ -71,6 +71,7 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 - Processador d'àudio (compressor i volum).
 - Gestor de pistes: importació de carpetes amb informe, carpetes vigilades per subcategoria (D-026), bosses renovables i assistent «Renova la bossa» (D-033), fitxa de pista, etiquetes, editor senzill de punts i canvi d'arrel de les rutes (D-025).
 - Rotacions: editor, separació real, previsualització i bosses amb nom (D-014).
+- **Rotació de reserva** (a decidir): ara, si cap pas de la rotació té pistes, l'AutoDJ agafa música de tota la biblioteca, la que fa més temps que no sona; a la prova de la 10c, amb Dance90 buida, van sortir cançons de Nadal (no havien sonat mai). Proposta: una rotació de reserva configurable (rotació triada → reserva → tota la biblioteca, sense les categories marcades com a «no de reserva»), sempre amb avís.
 - Botó «Regenera la cua» (D-034).
 
 **Criteri de tancament:** un operador pot fer servir l'aplicació un dia sencer sense obrir RadioDJ.
@@ -88,7 +89,7 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 ## Fase 5 — Supervisió, avisos i integracions
 
 - Detecció de pista encallada i de silencis, i avisos per correu enviats pel mateix motor (D-013, D-045). `/health` només respon «ok» si el mesclador funciona.
-- Vigilant extern: de moment, l'Inicialitzador arrenca el motor i el torna a obrir si es tanca. Els canvis a l'Inicialitzador (o reescriure'l) es decideixen quan Ona Bages 24h estigui acabat (D-045).
+- Vigilant extern: de moment, l'Inicialitzador arrenca el motor i el torna a obrir si es tanca. Els canvis a l'Inicialitzador (o reescriure'l) es decideixen quan Ona Bages 24h estigui acabat (D-045). L'Inicialitzador només arrenca i vigila un executable, amb arguments; segurament caldrà reescriure'l. Cal tenir-ho en compte amb D-054: si vigila la interfície i l'operador tria «Atura l'emissió i tanca», l'Inicialitzador la tornaria a obrir i tornaria a arrencar el motor. El vigilant ha de distingir una aturada voluntària d'una caiguda. Ara, amb l'Inicialitzador, per aturar-ho de debò cal tancar-lo o fer servir «Pausa monitorització» (10 minuts per a totes les aplicacions).
 - Avís de programa no actualitzat; avís opcional de l'Automatitzador quan actualitza un fitxer (`library.fileUpdated`).
 - **Usuaris, rols** (administrador, programador, operador), inici de sessió per operar i **registre de canvis** (D-035).
 - Arrencada sense silenci: la primera vegada que el motor va obrir un fitxer d'una unitat de xarxa (`O:\musica`) va trigar 10 s a sonar; en tornar-lo a engegar, va ser immediat (prova del pas 8). Si la primera pista no s'obre en uns segons, fer sonar una pista de reserva de disc local i avisar.

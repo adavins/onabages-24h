@@ -1,0 +1,40 @@
+ONA BAGES 24H - VERSIÓ PORTABLE
+===============================
+
+COM FER-LA SERVIR
+1. Descomprimeix el zip en una carpeta on es pugui escriure, per exemple D:\OnaBages24.
+   No la posis a "Program Files": Windows no hi deixa escriure.
+   Si el zip ve d'internet o d'un correu, abans de descomprimir-lo: botó dret > Propietats >
+   marca "Desbloquejar" > D'acord.
+2. Obre OnaBages24.exe. Arrenca el motor i comença a sonar.
+   Si Windows avisa que l'aplicació no és coneguda: "Més informació" > "Executa igualment".
+
+PRIMERA VEGADA: LA BIBLIOTECA
+La carpeta "dades" ve buida. Per importar el backup de RadioDJ, amb l'aplicació tancada,
+des d'una consola a la carpeta de l'aplicació:
+   resources\engine\OnaBages24.Engine.exe importa-radiodj <backup.sql>
+(El motor troba sol la carpeta "dades" de l'aplicació.)
+(resources\engine\OnaBages24.Engine.exe ajuda mostra totes les opcions.)
+
+TANCAR
+En tancar la finestra, l'aplicació pregunta:
+- "Tanca només la finestra": l'emissió continua (el motor segueix funcionant).
+- "Atura l'emissió i tanca": la ràdio es queda en silenci.
+Si l'Inicialitzador vigila l'aplicació, la tornarà a obrir: per aturar-la de debò, tanca
+l'Inicialitzador o fes servir "Pausa monitorització".
+
+ON ES GUARDA TOT
+A la carpeta "dades": base de dades (biblioteca, rotacions, historial, configuració), còpies de
+seguretat, registres del motor i NowPlaying.txt (títol per a BUTT). Els fitxers d'àudio no s'hi
+copien mai: només se'n desen les rutes.
+
+ACTUALITZAR
+1. Tanca l'aplicació amb "Atura l'emissió i tanca".
+2. Descomprimeix la versió nova en una carpeta a part.
+3. Copia-hi la carpeta "dades" de la versió antiga (substituint la que porta).
+4. Quan comprovis que funciona, esborra la carpeta antiga.
+
+NO OBRIS DUES CÒPIES ALHORA: farien servir el mateix port (47824).
+
+Windows "N": cal instal·lar el Media Feature Pack perquè sonin els MP3.
+LAME (libmp3lame.dll) és LGPL: vegeu resources\engine\LAME-COPYING-LGPL-2.0.txt.

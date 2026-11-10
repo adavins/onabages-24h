@@ -275,4 +275,15 @@ public class QueuePlayerTests : IDisposable
         Assert.Equal(110000, ev["position"]!["mixInMs"]!.GetValue<long>());
         Assert.Null(OnaBages24.Engine.Protocol.QueueJson.Meters((0f, 0f), null)["position"]);
     }
+    [Fact]
+    public void La_durada_prevista_va_de_l_inici_al_final_o_fins_al_final_del_fitxer()
+    {
+        var track = new Track { Id = 5, Path = @"O:\a.mp3", Title = "A", DurationMs = 200_000, StartMs = 1_500, MixMs = 190_000, EndMs = 195_000 };
+        Assert.Equal(193_500, QueueItem.FromTrack(track, QueueOrigin.AutoDj).PlannedMs);
+        Assert.Equal(198_500, QueueItem.FromTrack(track with { EndMs = null }, QueueOrigin.AutoDj).PlannedMs);
+        Assert.Null(new QueueItem { Path = @"O:\b.mp3" }.PlannedMs); // un fitxer que no és a la biblioteca
+
+        var json = OnaBages24.Engine.Protocol.QueueJson.Item(QueueItem.FromTrack(track, QueueOrigin.AutoDj));
+        Assert.Equal(193_500, json["durationMs"]!.GetValue<long>());
+    }
 }
