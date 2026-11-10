@@ -148,8 +148,9 @@ public static class RadioDjImporter
 
     /// <summary>
     /// Rotacions de RadioDJ (D-014, D-027): cada fila de <c>rotations_list</c> és un pas (<c>ord</c> = ordre). El gènere
-    /// passa a ser una etiqueta. <c>selType</c>: 0 = la menys reproduïda recentment, 5 = aleatòria; qualsevol altre valor
-    /// es tracta com 0 i s'anota a l'informe. Es mantenen en l'ordre dels ids de RadioDJ.
+    /// passa a ser una etiqueta. <c>selType</c>: 0 = la menys reproduïda recentment, 2 = la menys reproduïda (menys vegades),
+    /// 5 = aleatòria; qualsevol altre valor es tracta com 0 i s'anota a l'informe. <c>sweeper</c> = 1: trepitjador a l'inici.
+    /// Es mantenen en l'ordre dels ids de RadioDJ.
     /// </summary>
     private static void ImportRotations(MySqlDump dump, Library library, Rotations rotations,
         Dictionary<long, (long Id, string Category)> subcategories, Dictionary<long, string> genres,
@@ -176,7 +177,7 @@ public static class RadioDjImporter
                 if (genre != 0 && genres.TryGetValue(genre, out string? tag)) tagId = library.EnsureTag(tag);
 
                 long selType = step.Long("selType");
-                if (selType is not (0 or 5))
+                if (selType is not (0 or 2 or 5))
                     report.RotationWarnings.Add($"{where}: tipus de selecció {selType} de RadioDJ desconegut; es fa servir «la menys reproduïda recentment»");
 
                 list.Add(new RotationStep
@@ -184,7 +185,12 @@ public static class RadioDjImporter
                     CategoryId = categoryId,
                     SubcategoryId = subcategoryId,
                     TagId = tagId,
-                    Selection = selType == 5 ? RotationSelection.Random : RotationSelection.LeastRecent,
+                    Selection = selType switch
+                    {
+                        5 => RotationSelection.Random,
+                        2 => RotationSelection.LeastPlayed,
+                        _ => RotationSelection.LeastRecent,
+                    },
                     RepeatRule = step.Text("repeatRule").Equals("True", StringComparison.OrdinalIgnoreCase),
                     Sweeper = step.Long("sweeper") == 1,
                 });

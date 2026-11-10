@@ -16,6 +16,7 @@ Extretes del backup de la base de dades de RadioDJ 1.8.2 del 8 de gener de 2026.
 - `events.day`: `&1`…`&6` = dilluns–dissabte, `&0` = diumenge.
 - `events.data`: ordres separades per `\r\n`, en format `Ordre|arguments`. Les pistes es carreguen amb `Load Track By ID|…|Top`, és a dir, al principi de la cua: **l'ordre escrit és l'invers de l'ordre en què sonen**.
 - `songs.cue_times` (a la taula de pistes): `&sta=` inici, `&xta=` punt de mescla, `&end=` final, `&fin=` fade d'entrada, `&fou=` fade de sortida, en segons.
-- `rotations_list.selType`: `0` = la menys reproduïda recentment, `5` = aleatòria.
+- `rotations_list.selType`: `0` = la menys reproduïda recentment, `2` = la menys reproduïda (la que ha sonat menys vegades), `5` = aleatòria.
+- `rotations_list.sweeper`: `1` = trepitjador (sweeper) «A l'inici» de la pista; `0` = sense.
 
 La interpretació completa i els passos de migració són a `docs/planificador.md` (secció 6) i a `docs/pantalla-principal-i-encadenament.md`.

@@ -5,6 +5,8 @@ public enum RotationSelection
 {
     /// <summary>La que fa més temps que no sona (les que no han sonat mai, primer).</summary>
     LeastRecent,
+    /// <summary>La que ha sonat menys vegades (selType 2 de RadioDJ, «La menys reproduïda»).</summary>
+    LeastPlayed,
     /// <summary>Una qualsevol, a l'atzar.</summary>
     Random,
 }
@@ -23,7 +25,7 @@ public sealed record RotationStep
     public RotationSelection Selection { get; init; } = RotationSelection.LeastRecent;
     /// <summary>S'apliquen els criteris de repetició (no repetir pista ni artista). A RadioDJ, activat per a la música.</summary>
     public bool RepeatRule { get; init; } = true;
-    /// <summary>Sweeper a sobre de la pista (com a RadioDJ). Es desa, però encara no es fa servir (fase 3).</summary>
+    /// <summary>Trepitjador: sweeper a l'inici de la pista (com a RadioDJ). Es desa, però encara no es fa servir (fase 3).</summary>
     public bool Sweeper { get; init; }
 
     public string? CategoryName { get; init; }
@@ -92,7 +94,12 @@ public sealed class Rotations(Database database)
                 insert.Parameters.AddWithValue("$cat", (object?)step.CategoryId ?? DBNull.Value);
                 insert.Parameters.AddWithValue("$sub", (object?)step.SubcategoryId ?? DBNull.Value);
                 insert.Parameters.AddWithValue("$tag", (object?)step.TagId ?? DBNull.Value);
-                insert.Parameters.AddWithValue("$sel", step.Selection == RotationSelection.Random ? "ALEATORIA" : "MENYS_RECENT");
+                insert.Parameters.AddWithValue("$sel", step.Selection switch
+                {
+                    RotationSelection.Random => "ALEATORIA",
+                    RotationSelection.LeastPlayed => "MENYS_SONADA",
+                    _ => "MENYS_RECENT",
+                });
                 insert.Parameters.AddWithValue("$rep", step.RepeatRule ? 1 : 0);
                 insert.Parameters.AddWithValue("$sw", step.Sweeper ? 1 : 0);
                 insert.ExecuteNonQuery();
@@ -125,7 +132,12 @@ public sealed class Rotations(Database database)
                 CategoryId = r.IsDBNull(2) ? null : r.GetInt64(2),
                 SubcategoryId = r.IsDBNull(3) ? null : r.GetInt64(3),
                 TagId = r.IsDBNull(4) ? null : r.GetInt64(4),
-                Selection = r.GetString(5) == "ALEATORIA" ? RotationSelection.Random : RotationSelection.LeastRecent,
+                Selection = r.GetString(5) switch
+                {
+                    "ALEATORIA" => RotationSelection.Random,
+                    "MENYS_SONADA" => RotationSelection.LeastPlayed,
+                    _ => RotationSelection.LeastRecent,
+                },
                 RepeatRule = r.GetInt64(6) == 1,
                 Sweeper = r.GetInt64(7) == 1,
                 CategoryName = r.IsDBNull(8) ? null : r.GetString(8),

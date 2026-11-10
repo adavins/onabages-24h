@@ -163,9 +163,9 @@ Rotació:
 ```
 
 - `subcategory`: `null` si el pas tria de tota la categoria. `tag`: `null` si no filtra per etiqueta.
-- `selection`: `leastRecent` (la que fa més temps que no sona) o `random`.
+- `selection`: `leastRecent` (la que fa més temps que no sona), `leastPlayed` (la que ha sonat menys vegades) o `random`.
 - `repeatRule`: s'apliquen els criteris de repetició (no repetir pista ni artista de la cua).
-- `sweeper`: sweeper a sobre de la pista (importat de RadioDJ; encara no es fa servir).
+- `sweeper`: trepitjador (sweeper) a l'inici de la pista (importat de RadioDJ; encara no es fa servir).
 
 ## 5. Esdeveniments
 

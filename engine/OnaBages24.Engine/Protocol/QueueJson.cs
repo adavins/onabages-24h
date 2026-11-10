@@ -75,7 +75,12 @@ public static class QueueJson
             ["category"] = s.CategoryName,
             ["subcategory"] = s.SubcategoryName,
             ["tag"] = s.TagName,
-            ["selection"] = s.Selection == RotationSelection.Random ? "random" : "leastRecent",
+            ["selection"] = s.Selection switch
+            {
+                RotationSelection.Random => "random",
+                RotationSelection.LeastPlayed => "leastPlayed",
+                _ => "leastRecent",
+            },
             ["repeatRule"] = s.RepeatRule,
             ["sweeper"] = s.Sweeper,
         }).ToArray()),

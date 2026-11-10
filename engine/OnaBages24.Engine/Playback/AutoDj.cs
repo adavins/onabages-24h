@@ -16,6 +16,7 @@ public sealed record AutoDjSettings
 /// AutoDJ (fase 1, pas 8; D-014): quan a la cua hi ha menys de <see cref="AutoDjSettings.MinUpcoming"/> pistes, hi afegeix
 /// la del pas següent de la rotació. Cada pas tria una pista de la seva subcategoria (o categoria), amb l'etiqueta si en té:
 /// - «la menys reproduïda recentment»: la que fa més temps que no sona (si n'hi ha diverses que no han sonat mai, a l'atzar);
+/// - «la menys reproduïda»: la que ha sonat menys vegades (si n'hi ha diverses, a l'atzar);
 /// - «aleatòria»: qualsevol.
 /// Criteris de repetició (de moment, els de RadioDJ a l'emissora; la separació en minuts arriba a la fase 3):
 /// mai una pista que ja és a la cua o sona; si el pas ho demana, tampoc un artista que ja hi és. Si així no en queda cap,
@@ -163,6 +164,11 @@ public sealed class AutoDj
         {
             var oldest = pool.Min(t => t.LastPlayed ?? DateTimeOffset.MinValue);
             pool = pool.Where(t => (t.LastPlayed ?? DateTimeOffset.MinValue) == oldest).ToList();
+        }
+        else if (selection == RotationSelection.LeastPlayed)
+        {
+            long fewest = pool.Min(t => t.PlayCount);
+            pool = pool.Where(t => t.PlayCount == fewest).ToList();
         }
         return pool[_random.Next(pool.Count)];
     }

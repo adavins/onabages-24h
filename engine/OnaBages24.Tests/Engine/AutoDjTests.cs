@@ -132,6 +132,22 @@ public class AutoDjTests : IDisposable
     }
 
     [Fact]
+    public void La_menys_reproduida_tria_la_que_ha_sonat_menys_vegades()
+    {
+        long a = Sub("Dance90");
+        long many = AddTrack(a, "Molt", change: t => t with { PlayCount = 30 });
+        long few = AddTrack(a, "Poc", change: t => t with { PlayCount = 2, LastPlayed = DateTimeOffset.UtcNow });
+        long some = AddTrack(a, "Força", change: t => t with { PlayCount = 10, LastPlayed = DateTimeOffset.UtcNow.AddDays(-30) });
+        var autoDj = NewAutoDj(minUpcoming: 3);
+        autoDj.Configure(true, _rotations.Save("R", [Step(a, RotationSelection.LeastPlayed)]));
+
+        for (int i = 0; i < 3; i++) autoDj.Tick();
+
+        // Per nombre de reproduccions, encara que «Poc» acabi de sonar
+        Assert.Equal([few, some, many], _queue.Upcoming.Select(i => i.TrackId!.Value));
+    }
+
+    [Fact]
     public void No_repeteix_pista_ni_artista_de_la_cua_si_pot()
     {
         long a = Sub("Adult 5");

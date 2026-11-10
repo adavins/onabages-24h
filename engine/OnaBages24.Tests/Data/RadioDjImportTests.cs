@@ -128,9 +128,14 @@ public class RadioDjImportTests : IDisposable
         Assert.False(sweeper.RepeatRule);
         Assert.Equal("Jingles", onaBages.Steps[11].CategoryName);
 
-        // Dance90 té un pas amb «sweeper» i Elektro90 té selType 2 (desconegut): s'anota a l'informe
-        Assert.Contains(all.Single(r => r.Name == "Dance90").Steps, s => s.Sweeper);
-        Assert.Contains(report.RotationWarnings, w => w.Contains("Elektro90") && w.Contains("selecció 2"));
+        // Dance90, com a la pantalla de RadioDJ: pas 1 aleatori amb trepitjador a l'inici; pas 3 «la menys reproduïda» (selType 2)
+        var dance = all.Single(r => r.Name == "Dance90").Steps;
+        Assert.Equal(RotationSelection.Random, dance[0].Selection);
+        Assert.True(dance[0].Sweeper);
+        Assert.Equal("Jingles", dance[1].CategoryName);
+        Assert.Equal(RotationSelection.LeastPlayed, dance[2].Selection);
+        Assert.False(dance[2].Sweeper);
+        Assert.Empty(report.RotationWarnings);
 
         // Tornar a importar no duplica: substitueix els passos
         RadioDjImporter.ImportLibrary(dump, _library, new RadioDjImportOptions { CheckFiles = false }, rotations);

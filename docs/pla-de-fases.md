@@ -87,6 +87,7 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 - Vigilant extern: de moment, l'Inicialitzador arrenca el motor i el torna a obrir si es tanca. Els canvis a l'Inicialitzador (o reescriure'l) es decideixen quan Ona Bages 24h estigui acabat (D-045).
 - Avís de programa no actualitzat; avís opcional de l'Automatitzador quan actualitza un fitxer (`library.fileUpdated`).
 - **Usuaris, rols** (administrador, programador, operador), inici de sessió per operar i **registre de canvis** (D-035).
+- Arrencada sense silenci: la primera vegada que el motor va obrir un fitxer d'una unitat de xarxa (`O:\musica`) va trigar 10 s a sonar; en tornar-lo a engegar, va ser immediat (prova del pas 8). Si la primera pista no s'obre en uns segons, fer sonar una pista de reserva de disc local i avisar.
 - Opcional: edició remota a la xarxa local; codificador intern cap a Icecast.
 
 **Criteri de tancament:** cada tipus d'error provocat a propòsit (motor tancat, pista encallada, silenci, stream caigut, fitxer que falta) genera el seu avís per correu i, quan toca, es recupera sol.
