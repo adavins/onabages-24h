@@ -1,0 +1,334 @@
+/* Ona Bages 24h — estil de la interfície (Bootstrap 5, tema fosc).
+   Sense animacions ni efectes que depenguin de la targeta gràfica: ha d'anar bé per escriptori remot. */
+
+:root {
+  --ob-bg: #121417;
+  --ob-panel: #191c20;
+  --ob-border: #2a2e34;
+  --ob-muted: #8b929b;
+  --ob-mix: #f0b44c;        /* punt de mescla (com a la maqueta) */
+  --ob-ok: #4cc38a;
+  --ob-progress: #3b82f6;
+  --ob-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  background: var(--ob-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* --- Capçalera --- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.brand {
+  font-weight: 600;
+  font-size: 1.15rem;
+  white-space: nowrap;
+}
+
+.brand .bi {
+  color: var(--ob-mix);
+}
+
+.sections {
+  display: flex;
+  gap: 0.25rem;
+  flex-grow: 1;
+}
+
+.section {
+  padding: 0.3rem 0.8rem;
+  border-radius: 0.375rem;
+  color: var(--ob-muted);
+}
+
+.section.active {
+  background: #262a30;
+  color: var(--bs-body-color);
+  font-weight: 600;
+}
+
+/* Estat del motor: sempre color + icona + text */
+.engine-status {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.status-connecting { color: var(--bs-warning); }
+.status-connected { color: var(--ob-ok); }
+.status-disconnected { color: var(--bs-danger); }
+
+.engine-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.5rem 1rem 0;
+  padding: 0.5rem 0.75rem;
+}
+
+.engine-banner > .bi {
+  font-size: 1.3rem;
+}
+
+/* --- En antena --- */
+
+.onair {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 1rem 1rem 1.1rem;
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.now {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.now-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.now-title {
+  font-size: 1.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.now-artist {
+  font-size: 1.3rem;
+  color: var(--ob-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.now-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.35rem 0 0.6rem;
+  min-height: 1.5rem;
+}
+
+.now-tags .badge {
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
+.now-origin {
+  color: var(--ob-muted);
+  font-size: 0.9rem;
+}
+
+.track-progress {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: #2a2e34;
+}
+
+.track-progress-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 4px;
+  background: var(--ob-progress);
+}
+
+/* A partir del punt de mescla, la barra es pinta del color de la mescla */
+.track-progress-mix {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  right: 0;
+  border-left: 3px solid var(--ob-mix);
+  background: rgba(240, 180, 76, 0.25);
+  border-radius: 0 4px 4px 0;
+}
+
+.now-times {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.4rem;
+  color: var(--ob-muted);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mix-note {
+  color: var(--ob-mix);
+}
+
+.counter {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.counter-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ob-muted);
+}
+
+.counter-value {
+  font-family: var(--ob-mono);
+  font-size: 1.6rem;
+  line-height: 1.2;
+}
+
+.counter-value.mix {
+  color: var(--ob-mix);
+}
+
+.counter-value.big {
+  font-size: 2.6rem;
+  font-weight: 700;
+}
+
+/* Últims 10 s: vermell i amb icona (no només color) */
+.counter-value.ending {
+  color: var(--bs-danger);
+}
+
+.counter-value.ending::before {
+  content: "\F33A"; /* bi-exclamation-triangle-fill */
+  font-family: "bootstrap-icons";
+  font-size: 0.6em;
+  vertical-align: middle;
+  margin-right: 0.3em;
+}
+
+/* --- Vúmetres --- */
+
+.meters {
+  width: 300px;
+  flex: 0 0 auto;
+}
+
+.meter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.meter-channel {
+  width: 0.8rem;
+  font-size: 0.8rem;
+  color: var(--ob-muted);
+}
+
+.meter {
+  position: relative;
+  flex-grow: 1;
+  height: 12px;
+  border-radius: 2px;
+  overflow: hidden;
+  /* Escala de −60 a 0 dB: verd fins a −20 dB (67 %), groc fins a −6 dB (90 %), vermell al final */
+  background: linear-gradient(to right, #2f9e5f 0%, #3fbf73 66%, #e3c548 67%, #e3a63a 89%, #e5533d 90%, #e5533d 100%);
+}
+
+/* La part que no s'il·lumina tapa el degradat des de la dreta */
+.meter-cover {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  background: #24282e;
+}
+
+/* Retenció del pic */
+.meter-peak {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  left: 0;
+  background: #f2f2f2;
+  display: none;
+}
+
+.meter-scale {
+  display: flex;
+  justify-content: space-between;
+  margin: 0.15rem 0 0 1.3rem;
+  font-size: 0.7rem;
+  color: var(--ob-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Rellotge --- */
+
+.clock-block {
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 1.5rem;
+  border-left: 1px solid var(--ob-border);
+}
+
+.clock {
+  font-family: var(--ob-mono);
+  font-size: 2.8rem;
+  font-weight: 700;
+  color: var(--ob-ok);
+  line-height: 1.1;
+}
+
+.clock-date {
+  color: var(--ob-muted);
+}
+
+/* --- Zona de treball --- */
+
+.workspace {
+  flex-grow: 1;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.placeholder {
+  border: 1px dashed var(--ob-border);
+  border-radius: 0.5rem;
+  padding: 2rem;
+  text-align: center;
+  color: var(--ob-muted);
+}
+
+.placeholder .bi {
+  margin-right: 0.4rem;
+}
+
+/* Pantalles estretes: el rellotge i els vúmetres passen a sota */
+@media (max-width: 1200px) {
+  .onair {
+    flex-wrap: wrap;
+    row-gap: 1rem;
+  }
+
+  .now {
+    flex-basis: 100%;
+  }
+}

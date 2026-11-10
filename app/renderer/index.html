@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ca" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src ws://127.0.0.1:*">
+  <title>Ona Bages 24h</title>
+  <link rel="stylesheet" href="../node_modules/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="../node_modules/bootstrap-icons/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand"><i class="bi bi-broadcast-pin"></i> Ona Bages 24h</div>
+    <nav class="sections" aria-label="Pantalles">
+      <span class="section active" aria-current="page">Emissió</span>
+    </nav>
+    <span id="engine-status" class="engine-status status-connecting" role="status">
+      <i class="bi bi-hourglass-split"></i>
+      <span class="label">Connectant amb el motor…</span>
+    </span>
+  </header>
+
+  <!-- Sense connexió amb el motor: es torna a provar sol; també es pot arrencar a mà. -->
+  <div id="engine-banner" class="engine-banner alert alert-danger d-none" role="alert">
+    <i class="bi bi-exclamation-octagon-fill"></i>
+    <div class="flex-grow-1">
+      <strong id="engine-banner-title">No hi ha connexió amb el motor.</strong>
+      <span id="engine-banner-detail">Si el motor funciona, l'emissió continua. Es torna a provar cada pocs segons.</span>
+    </div>
+    <button id="btn-start-engine" class="btn btn-sm btn-light" type="button">
+      <i class="bi bi-play-circle"></i> Arrenca el motor
+    </button>
+  </div>
+
+  <!-- Pista que sona, comptadors, vúmetres i rellotge -->
+  <section class="onair" aria-label="En antena">
+    <div class="now">
+      <div class="now-heading">
+        <span id="np-title" class="now-title">Res no sona</span>
+        <span id="np-artist" class="now-artist"></span>
+      </div>
+      <div class="now-tags">
+        <span id="np-type" class="badge text-bg-secondary d-none"></span>
+        <span id="np-origin" class="now-origin"></span>
+      </div>
+      <div class="track-progress" aria-hidden="true">
+        <div id="np-bar" class="track-progress-bar"></div>
+        <div id="np-mix-marker" class="track-progress-mix d-none" title="Punt de mescla: aquí entra la següent"></div>
+      </div>
+      <div class="now-times">
+        <span id="np-elapsed">–</span>
+        <span id="np-mix-note" class="mix-note"></span>
+      </div>
+    </div>
+
+    <div class="counter">
+      <div class="counter-label">Mescla en</div>
+      <div id="np-mix-in" class="counter-value mix">–</div>
+    </div>
+    <div class="counter">
+      <div class="counter-label">Restant</div>
+      <div id="np-remaining" class="counter-value big">–</div>
+    </div>
+
+    <div class="meters" aria-label="Nivell de la sortida">
+      <div class="counter-label">Sortida</div>
+      <div class="meter-row"><span class="meter-channel">E</span><div class="meter" id="meter-left"><div class="meter-cover"></div><div class="meter-peak"></div></div></div>
+      <div class="meter-row"><span class="meter-channel">D</span><div class="meter" id="meter-right"><div class="meter-cover"></div><div class="meter-peak"></div></div></div>
+      <div class="meter-scale" aria-hidden="true"><span>−60</span><span>−40</span><span>−20</span><span>−10</span><span>0 dB</span></div>
+    </div>
+
+    <div class="clock-block">
+      <div id="clock" class="clock">--:--:--</div>
+      <div id="clock-date" class="clock-date"></div>
+    </div>
+  </section>
+
+  <main class="workspace">
+    <div class="placeholder">
+      <i class="bi bi-list-ol"></i>
+      La cua, les últimes pistes i l'AutoDJ arriben al pas 10c.
+    </div>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

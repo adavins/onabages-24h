@@ -1,0 +1,19 @@
+{
+  "name": "ona-bages-24h",
+  "productName": "Ona Bages 24h",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Emissió continuada les 24 hores: interfície del motor (pista que sona, cua, AutoDJ).",
+  "main": "main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "bootstrap": "5.3.8",
+    "bootstrap-icons": "1.13.2"
+  },
+  "devDependencies": {
+    "electron": "45.2.1"
+  }
+}
