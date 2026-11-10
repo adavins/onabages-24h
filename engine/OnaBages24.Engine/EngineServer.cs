@@ -114,9 +114,24 @@ public static class EngineServer
             ReadNowPlayingSettings(library, log), log);
         log.LogInformation("Títol per a BUTT: {State} {Path}", nowPlaying.Settings.Enabled ? "s'escriu a" : "desactivat;", nowPlaying.FilePath);
 
+        // Planificador (fase 2, pas 3; D-008): al fil de control, amb el rellotge del motor. Si un esdeveniment canvia la
+        // rotació, es desa com amb autodj.set, perquè es mantingui si el motor es reinicia (D-053).
+        var events = new Events(database);
+        var executor = new Scheduling.EventExecutor(library, queue, autoDj, rotationId =>
+            library.SetSetting(CommandRouter.AutoDjSettingKey, System.Text.Json.JsonSerializer.Serialize(new { rotationId })));
+        var scheduler = new Scheduling.Scheduler(events, executor, log);
+        scheduler.Fired += record =>
+        {
+            var ev = Messages.Event("scheduler.fired");
+            ev["entry"] = EventJson.Execution(record);
+            Broadcast(ev);
+        };
+        scheduler.EventsChanged += () => Broadcast(Messages.Event("scheduler.changed"));
+
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
-            queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying);
+            queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
+            events: events, scheduler: scheduler);
 
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15) });
 
@@ -163,7 +178,7 @@ public static class EngineServer
         });
 
         // Fil de control (docs/disseny-motor.md, 3): la cua cada 10 ms i la sortida cada 0,5 s. Mai no fa esperar el fil d'àudio.
-        var control = new ControlLoop(queue, outputs, log, autoDj);
+        var control = new ControlLoop(queue, outputs, log, autoDj, scheduler);
         var deviceWatcher = new DeviceWatcher();
         deviceWatcher.Changed += _ => outputs.Poke();
         try { deviceWatcher.Start(); }

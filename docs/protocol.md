@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 1, pas 10c (motor, dispositius, sortida, cua, biblioteca, AutoDJ, historial, títol per a BUTT i mesuradors). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 2, pas 3 (motor, dispositius, sortida, cua, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -90,6 +90,14 @@ El `message` és en català i es pot mostrar a l'operador.
 | `history.list` | `from`, `to`: una hora ISO 8601 amb zona (`"2026-11-10T12:00:00Z"`) o un dia (`"2026-11-10"`, en hora local; a `to`, el dia hi és inclòs). `search`: text de l'artista o del títol. `limit`: per defecte 100, com a molt 2.000. Tots opcionals | `{ entries: [ … ], more }` (vegeu 4.6): les més recents primer. `more`: n'hi ha més que les retornades | fase 1, pas 9 |
 | `nowplaying.get` | — | `{ nowPlaying }` (vegeu 4.6) | fase 1, pas 9 |
 | `nowplaying.set` | `enabled`, `path` (ruta completa del fitxer; `null` o `""` = el per defecte), `template` (ha de tenir `$artist$` o `$title$`), `types` (llista de tipus de pista, 4.2). Tots opcionals: el que no s'envia es queda com està | `{ nowPlaying }`. Es desa a la configuració i es torna a escriure el títol de seguida | fase 1, pas 9 |
+| `scheduler.list` | — | `{ events: [ … ] }` (vegeu 4.7): tots, també els desactivats i les plantilles | fase 2, pas 3 |
+| `scheduler.get` | `eventId` | `{ event }` | fase 2, pas 3 |
+| `scheduler.save` | `event` (4.7). Sense `id` (o 0), en crea un de nou; amb `id`, el substitueix sencer (els camps que no s'envien prenen el valor per defecte) | `{ event }` tal com s'ha desat. El planificador el té en compte de seguida. Si no és coherent (p. ex. «cada N setmanes» sense dia de referència), `bad_params` amb el motiu en català | fase 2, pas 3 |
+| `scheduler.delete` | `eventId` | `{ deleted: <id> }`. El registre d'execució es conserva | fase 2, pas 3 |
+| `scheduler.occurrences` | `from`, `to` (com a `history.list`; per defecte, d'ara a 24 h; com a molt 400 dies), `eventId` (només aquest, encara que estigui desactivat), `limit` (per defecte 200, com a molt 2.000) | `{ occurrences: [ … ], more }` (4.7), per ordre. Sense `eventId`, només els actius que no són plantilles | fase 2, pas 3 |
+| `scheduler.log` | `from`, `to` (per defecte, avui), `eventId`, `limit` (per defecte 500) | `{ entries: [ … ], more }` (4.7): el registre d'execució, per hora prevista | fase 2, pas 3 |
+
+**Atenció:** el camp `id` del missatge és el número de l'ordre (2): per dir de quin esdeveniment es tracta, `eventId`.
 
 ### 4.1. Dispositius
 
@@ -199,6 +207,47 @@ Exportació del títol:
 - `problem`: per què no s'ha pogut escriure el fitxer (es torna a provar cada 5 s), o `null`.
 - El fitxer és una sola línia en UTF-8 sense BOM, sense salt de línia final.
 
+### 4.7. Planificador (docs/planificador.md; D-057, D-058, D-059)
+
+```json
+{ "id": 12, "name": "El Magazín", "mode": "TALLA", "startTime": "10:00:00",
+  "recurrence": "CADA_N_SETMANES", "daysMask": 16, "intervalWeeks": 2, "anchorDate": "2026-11-06",
+  "ordinals": [], "monthDays": [], "startDate": null, "endDate": null,
+  "repeat": "CAP", "intervalMinutes": null, "hoursMask": null,
+  "priority": 50, "toleranceSeconds": 60, "fadeMs": 2000, "marginSeconds": null, "duckingDb": null,
+  "maxDurationSeconds": 3600, "color": null, "categoryId": null,
+  "clearQueue": true, "commercialBlock": false, "isTemplate": false, "enabled": true, "notes": null,
+  "modified": "2026-11-10T18:00:00.000+00:00",
+  "actions": [ { "type": "PISTA", "params": { "songId": 10 }, "daysMask": null },
+               { "type": "ROTACIO", "params": { "rotacioId": 1 }, "daysMask": 16 } ],
+  "includedDates": [], "excludedDates": ["2027-01-01"] }
+```
+
+- Els valors de `mode` (`TALLA`, `ENCUA`, `SUPERPOSA`, `SISTEMA`), `recurrence` (`SETMANAL`, `CADA_N_SETMANES`, `MENSUAL_ORDINAL`, `DIES_MES`, `DATES`), `repeat` (`CAP`, `CADA_HORA`, `CADA_N_MIN`) i `type` de les accions són els de `planificador.md` (seccions 2–4 i 12).
+- `startTime`: hora local (`HH:MM:SS`; en desar també s'admet `HH:MM`). Dates: `AAAA-MM-DD`.
+- `daysMask`: bit 0 = dilluns (1) … bit 6 = diumenge (64); `127` = tots. `hoursMask`: bit 0 = 00 h … bit 23 = 23 h; `null` = totes.
+- `ordinals`: 1 = primer … 5 = cinquè, `-1` = l'últim. `monthDays`: 1–31, `-1` = l'últim dia del mes.
+- `params` de les accions disponibles ara: `PISTA` `{ songId }` (id de la pista a la biblioteca, el `trackId` de la cua), `ROTACIO` `{ rotacioId }`, `AUTODJ` `{ actiu }`. Les altres es poden desar, però encara no fan res (el registre ho diu).
+- Modes disponibles ara: `ENCUA` (el contingut va al davant de la cua; amb `clearQueue`, abans s'esborra la cua) i `SISTEMA`. Un `TALLA` o un `SUPERPOSA` s'anota com a `ERROR` fins als passos 4 i 5.
+
+Ocurrència (`scheduler.occurrences`):
+
+```json
+{ "eventId": 12, "name": "El Magazín", "mode": "TALLA", "date": "2026-11-20", "time": "10:00:00",
+  "at": "2026-11-20T10:00:00.0000000+01:00", "skippedClockChange": false }
+```
+
+- `date` i `time`: dia i hora locals programats. `at`: l'instant. `skippedClockChange`: aquella hora no existeix pel canvi d'hora i no sonarà (D-057); `at` és llavors el moment del salt.
+
+Línia del registre (`scheduler.log` i `scheduler.fired`):
+
+```json
+{ "id": 33, "eventId": 12, "name": "Mitja hora", "scheduledFor": "2026-11-20T09:30:00.0000000+00:00",
+  "executedAt": "2026-11-20T09:30:00.0120000+00:00", "result": "OK", "detail": "2 pistes a la cua" }
+```
+
+- `result`: `OK`, `OMES_TARD` (s'hi ha arribat més tard que la tolerància, p. ex. amb el motor aturat), `OMES_CONFLICTE` (coincidia amb un TALLA o ENCUA de més prioritat), `OMES_CANVI_HORA`, `NO_EMES` (pas 4) o `ERROR`. `executedAt` és `null` si no s'ha executat. `name` és el nom en aquell moment.
+
 ## 5. Esdeveniments
 
 | Esdeveniment | Camps | Freqüència | Des de |
@@ -211,6 +260,8 @@ Exportació del títol:
 | `output.changed` | `output` (4.3) | quan canvia la sortida, l'estat d'emergència o el problema | fase 1, pas 7c |
 | `autodj.changed` | `autodj` (4.5) | quan s'activa o es desactiva, canvia la rotació o canvia l'avís (les pistes que afegeix surten a `queue.changed`) | fase 1, pas 8 |
 | `meters` | `output` (nivells de la sortida), `position` (la pista que sona); vegeu 5.1 | unes 20 vegades per segon, només si hi ha algun client connectat | fase 1, pas 10a |
+| `scheduler.fired` | `entry` (línia del registre, 4.7) | quan el planificador executa o omet una emissió | fase 2, pas 3 |
+| `scheduler.changed` | — | quan es desa o s'esborra un esdeveniment (la interfície torna a demanar el que mostra) | fase 2, pas 3 |
 
 ### 5.1. Mesuradors i posició
 
@@ -232,5 +283,9 @@ Exportació del títol:
 - `tools/prova-motor.mjs`: envia ordres al motor des de la línia d'ordres i en mostra les respostes (Node 22 o posterior, sense paquets). Llegeix el port i el testimoni de `engine.json`.
 
 ```text
-node tools/prova-motor.mjs [--dades CARPETA] [--carpeta CARPETA_DE_MÚSICA [--quantes N]] [--escolta SEGONS] [ordre …]
+node tools/prova-motor.mjs [--dades CARPETA] [--carpeta CARPETA_DE_MÚSICA [--quantes N]] [--escolta SEGONS [--mesuradors]]
+                           [--encua SEGONS ID[,ID…]] [--rotacio SEGONS ROTACIO_ID] [ordre …]
 ```
+
+- `--escolta` mostra els esdeveniments que arriben (sense `engine.status` i, si no es posa `--mesuradors`, sense `meters`).
+- `--encua` i `--rotacio` creen un esdeveniment de prova per a avui d'aquí a uns segons, que sona una sola vegada (recurrència `DATES`).

@@ -1,7 +1,7 @@
 namespace OnaBages24.Engine.Playback;
 
 /// <summary>
-/// Fil de control del motor (docs/disseny-motor.md, secció 3): fa córrer l'AutoDJ i la cua cada 10 ms i comprova la
+/// Fil de control del motor (docs/disseny-motor.md, secció 3): fa córrer el planificador, l'AutoDJ i la cua cada 10 ms i comprova la
 /// sortida cada mig segon. No és el fil d'àudio: pot esperar uns mil·lisegons sense que se senti, perquè tot es programa
 /// en fotogrames amb antelació. Un error aquí no atura res: queda al registre (com a molt un cop cada 10 s) i continua.
 /// </summary>
@@ -13,12 +13,14 @@ public sealed class ControlLoop : IDisposable
     private readonly QueuePlayer _queue;
     private readonly OutputManager _outputs;
     private readonly AutoDj? _autoDj;
+    private readonly Scheduling.Scheduler? _scheduler;
     private readonly ILogger _log;
     private readonly CancellationTokenSource _stop = new();
     private readonly Thread _thread;
 
-    public ControlLoop(QueuePlayer queue, OutputManager outputs, ILogger log, AutoDj? autoDj = null)
+    public ControlLoop(QueuePlayer queue, OutputManager outputs, ILogger log, AutoDj? autoDj = null, Scheduling.Scheduler? scheduler = null)
     {
+        _scheduler = scheduler;
         _queue = queue;
         _outputs = outputs;
         _autoDj = autoDj;
@@ -42,7 +44,17 @@ public sealed class ControlLoop : IDisposable
                     lastOutputCheck = DateTime.UtcNow;
                     _outputs.Ensure();
                 }
-                // Primer l'AutoDJ: si la cua era buida, la pista que hi posa comença a preparar-se en aquesta mateixa volta
+                // Primer el planificador: el contingut d'un esdeveniment entra a la cua abans que l'AutoDJ hi afegeixi res
+                try { _scheduler?.Tick(); }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    if (DateTime.UtcNow - lastError > TimeSpan.FromSeconds(10))
+                    {
+                        lastError = DateTime.UtcNow;
+                        _log.LogError("Error al planificador (continua): {Error}", ex);
+                    }
+                }
+                // Després l'AutoDJ: si la cua era buida, la pista que hi posa comença a preparar-se en aquesta mateixa volta
                 try { _autoDj?.Tick(); }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {

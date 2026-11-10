@@ -1,0 +1,170 @@
+using System.Text.Json.Nodes;
+using Microsoft.Extensions.Logging.Abstractions;
+using OnaBages.Audio;
+using OnaBages24.Data;
+using OnaBages24.Engine;
+using OnaBages24.Engine.Playback;
+using OnaBages24.Engine.Protocol;
+using OnaBages24.Engine.Scheduling;
+using OnaBages24.Tests.Data;
+
+namespace OnaBages24.Tests.Engine;
+
+/// <summary>Ordres scheduler.* (fase 2, pas 3; docs/protocol.md, 4.7).</summary>
+public sealed class SchedulerCommandsTests : IDisposable
+{
+    private readonly TempFolder _temp = new();
+    private readonly Database _db;
+    private readonly Library _library;
+    private readonly Events _events;
+    private readonly QueuePlayer _queue = new(new Mixer(48000));
+    private readonly Scheduler _scheduler;
+    private readonly CommandRouter _router;
+    private int _changed;
+
+    public SchedulerCommandsTests()
+    {
+        _db = Database.Open(_temp.File("ordres.db"));
+        _library = new Library(_db);
+        _events = new Events(_db);
+        _scheduler = new Scheduler(_events, new EventExecutor(_library, _queue, null), NullLogger.Instance, zone: TimeZoneInfo.Utc);
+        _scheduler.EventsChanged += () => _changed++;
+        _router = new CommandRouter(new EngineState(), () => { }, _library, () => [], _queue, events: _events, scheduler: _scheduler);
+    }
+
+    public void Dispose()
+    {
+        _queue.Dispose();
+        _db.Dispose();
+        _temp.Dispose();
+    }
+
+    private JsonObject Send(string json) => _router.Handle(json);
+
+    private static JsonNode Result(JsonObject response)
+    {
+        Assert.True(response["ok"]!.GetValue<bool>(), response.ToJsonString());
+        return response["result"]!;
+    }
+
+    private static string? ErrorCode(JsonObject response) => response["error"]?["code"]?.GetValue<string>();
+
+    private const string Magazin = """
+        { "v": 1, "id": 1, "cmd": "scheduler.save", "event": {
+            "name": "El Magazín", "mode": "TALLA", "startTime": "10:00:00",
+            "recurrence": "CADA_N_SETMANES", "daysMask": 16, "intervalWeeks": 2, "anchorDate": "2026-11-06",
+            "clearQueue": true, "maxDurationSeconds": 3600, "excludedDates": ["2027-01-01"],
+            "actions": [
+              { "type": "PISTA", "params": { "songId": 10 } },
+              { "type": "ROTACIO", "params": { "rotacioId": 1 }, "daysMask": 16 }
+            ] } }
+        """;
+
+    [Fact]
+    public void Desa_un_esdeveniment_nou_i_el_torna_amb_l_id()
+    {
+        var ev = Result(Send(Magazin))["event"]!;
+
+        Assert.True(ev["id"]!.GetValue<long>() > 0);
+        Assert.Equal("El Magazín", ev["name"]!.GetValue<string>());
+        Assert.Equal("TALLA", ev["mode"]!.GetValue<string>());
+        Assert.Equal("10:00:00", ev["startTime"]!.GetValue<string>());
+        Assert.Equal("CADA_N_SETMANES", ev["recurrence"]!.GetValue<string>());
+        Assert.Equal("2026-11-06", ev["anchorDate"]!.GetValue<string>());
+        Assert.Equal(60, ev["toleranceSeconds"]!.GetValue<int>()); // per defecte
+        Assert.True(ev["enabled"]!.GetValue<bool>());
+        Assert.Equal(10, ev["actions"]![0]!["params"]!["songId"]!.GetValue<int>());
+        Assert.Equal(16, ev["actions"]![1]!["daysMask"]!.GetValue<int>());
+        Assert.Equal("2027-01-01", ev["excludedDates"]![0]!.GetValue<string>());
+        Assert.Equal(1, _changed); // el planificador ho sap
+    }
+
+    [Fact]
+    public void Llista_obte_modifica_i_esborra()
+    {
+        long id = Result(Send(Magazin))["event"]!["id"]!.GetValue<long>();
+
+        Assert.Single(Result(Send("""{ "v": 1, "id": 2, "cmd": "scheduler.list" }"""))["events"]!.AsArray());
+
+        var changed = Result(Send($$"""
+            { "v": 1, "id": 3, "cmd": "scheduler.save", "event": { "id": {{id}}, "name": "Magazín d'estiu", "mode": "ENCUA", "startTime": "10:30" } }
+            """))["event"]!;
+        Assert.Equal("Magazín d'estiu", changed["name"]!.GetValue<string>());
+        Assert.Equal("10:30:00", changed["startTime"]!.GetValue<string>());
+        Assert.Equal("SETMANAL", changed["recurrence"]!.GetValue<string>()); // el que no s'envia torna al valor per defecte
+        Assert.Empty(changed["actions"]!.AsArray());
+
+        var got = Result(Send($$"""{ "v": 1, "id": 4, "cmd": "scheduler.get", "eventId": {{id}} }"""))["event"]!;
+        Assert.Equal("Magazín d'estiu", got["name"]!.GetValue<string>());
+
+        Assert.Equal(id, Result(Send($$"""{ "v": 1, "id": 5, "cmd": "scheduler.delete", "eventId": {{id}} }"""))["deleted"]!.GetValue<long>());
+        Assert.Empty(Result(Send("""{ "v": 1, "id": 6, "cmd": "scheduler.list" }"""))["events"]!.AsArray());
+        Assert.Equal("bad_params", ErrorCode(Send($$"""{ "v": 1, "id": 7, "cmd": "scheduler.get", "eventId": {{id}} }""")));
+        Assert.Equal(3, _changed);
+    }
+
+    [Theory]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save" }""", "event")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "startTime": "10:00" } }""", "mode")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "mode": "TALLA" } }""", "startTime")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "mode": "PUNXA", "startTime": "10:00" } }""", "PUNXA")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "mode": "TALLA", "startTime": "25:00" } }""", "hora")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "mode": "TALLA", "startTime": "10:00", "daysMask": "dl" } }""", "daysMask")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "mode": "TALLA", "startTime": "10:00", "recurrence": "CADA_N_SETMANES" } }""", "setmanes")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "mode": "TALLA", "startTime": "10:00", "actions": [{ "type": "SALTA" }] } }""", "SALTA")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "mode": "TALLA", "startTime": "10:00", "actions": [{ "type": "PISTA", "params": 5 }] } }""", "objecte")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "id": 999, "name": "X", "mode": "TALLA", "startTime": "10:00" } }""", "999")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.delete", "eventId": 999 }""", "999")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.get" }""", "eventId")]
+    public void Dades_dolentes_donen_bad_params_amb_el_motiu(string json, string expected)
+    {
+        var response = Send(json);
+
+        Assert.Equal("bad_params", ErrorCode(response));
+        Assert.Contains(expected, response["error"]!["message"]!.GetValue<string>());
+        Assert.Equal(0, _changed);
+    }
+
+    [Fact]
+    public void Ocurrencies_entre_dues_dates_i_d_un_esdeveniment()
+    {
+        long id = Result(Send(Magazin))["event"]!["id"]!.GetValue<long>();
+        Send("""{ "v": 1, "id": 2, "cmd": "scheduler.save", "event": { "name": "Senyal", "mode": "SUPERPOSA", "startTime": "00:00", "repeat": "CADA_HORA", "hoursMask": 128 } }""");
+        Send("""{ "v": 1, "id": 3, "cmd": "scheduler.save", "event": { "name": "Apagat", "mode": "ENCUA", "startTime": "08:00", "enabled": false } }""");
+
+        var all = Result(Send("""{ "v": 1, "id": 4, "cmd": "scheduler.occurrences", "from": "2026-11-20T00:00:00Z", "to": "2026-11-21T00:00:00Z" }"""));
+        Assert.Equal(["Senyal", "El Magazín"], all["occurrences"]!.AsArray().Select(o => o!["name"]!.GetValue<string>()));
+        Assert.False(all["more"]!.GetValue<bool>());
+        var magazin = all["occurrences"]![1]!;
+        Assert.Equal("2026-11-20", magazin["date"]!.GetValue<string>());
+        Assert.Equal("10:00:00", magazin["time"]!.GetValue<string>());
+        Assert.Equal("TALLA", magazin["mode"]!.GetValue<string>());
+
+        // D'un sol esdeveniment: els 3 pròxims divendres que toquen (l'1/1 no)
+        var one = Result(Send($$"""{ "v": 1, "id": 5, "cmd": "scheduler.occurrences", "eventId": {{id}}, "from": "2026-12-01T00:00:00Z", "to": "2027-01-31T00:00:00Z" }"""));
+        Assert.Equal(["2026-12-04", "2026-12-18", "2027-01-15", "2027-01-29"], one["occurrences"]!.AsArray().Select(o => o!["date"]!.GetValue<string>()));
+    }
+
+    [Fact]
+    public void Registre_d_execucio()
+    {
+        var when = new DateTimeOffset(2026, 11, 20, 9, 30, 0, TimeSpan.Zero);
+        _events.AddExecution(new ExecutionRecord { EventId = 3, Name = "Mitja hora", ScheduledFor = when, ExecutedAt = when, Result = ExecutionResult.Ok, Detail = "2 pistes a la cua" });
+
+        var log = Result(Send("""{ "v": 1, "id": 1, "cmd": "scheduler.log", "from": "2026-11-20T00:00:00Z", "to": "2026-11-21T00:00:00Z" }"""));
+
+        var entry = Assert.Single(log["entries"]!.AsArray())!;
+        Assert.Equal("Mitja hora", entry["name"]!.GetValue<string>());
+        Assert.Equal("OK", entry["result"]!.GetValue<string>());
+        Assert.Equal("2 pistes a la cua", entry["detail"]!.GetValue<string>());
+        Assert.Equal(when, DateTimeOffset.Parse(entry["scheduledFor"]!.GetValue<string>()));
+    }
+
+    [Fact]
+    public void Sense_planificador_ho_diu()
+    {
+        var router = new CommandRouter(new EngineState(), () => { }, _library, () => []);
+
+        Assert.Equal("bad_params", ErrorCode(router.Handle("""{ "v": 1, "id": 1, "cmd": "scheduler.list" }""")));
+    }
+}

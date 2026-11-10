@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using OnaBages.Audio;
 using OnaBages24.Data;
 using OnaBages24.Engine.Playback;
+using OnaBages24.Engine.Scheduling;
 
 namespace OnaBages24.Engine.Protocol;
 
@@ -30,6 +31,8 @@ public sealed class CommandRouter
     private readonly AutoDj? _autoDj;
     private readonly Rotations? _rotations;
     private readonly NowPlaying? _nowPlaying;
+    private readonly Events? _events;
+    private readonly Scheduler? _scheduler;
 
     /// <param name="state">Estat del motor.</param>
     /// <param name="requestShutdown">Atura el motor (s'executa després de respondre).</param>
@@ -40,9 +43,11 @@ public sealed class CommandRouter
     /// <param name="autoDj">AutoDJ (igual).</param>
     /// <param name="rotations">Rotacions (igual).</param>
     /// <param name="nowPlaying">Exportació del títol per a BUTT (igual).</param>
+    /// <param name="events">Esdeveniments del planificador (igual).</param>
+    /// <param name="scheduler">Planificador: se li diu que torni a llegir els esdeveniments quan canvien (igual).</param>
     public CommandRouter(EngineState state, Action requestShutdown, Library? library = null, Func<IReadOnlyList<AudioDevice>>? listDevices = null,
         QueuePlayer? queue = null, OutputManager? outputs = null, AutoDj? autoDj = null, Rotations? rotations = null,
-        NowPlaying? nowPlaying = null)
+        NowPlaying? nowPlaying = null, Events? events = null, Scheduler? scheduler = null)
     {
         _state = state;
         _requestShutdown = requestShutdown;
@@ -53,6 +58,8 @@ public sealed class CommandRouter
         _autoDj = autoDj;
         _rotations = rotations;
         _nowPlaying = nowPlaying;
+        _events = events;
+        _scheduler = scheduler;
     }
 
     public JsonObject Handle(string text)
@@ -104,6 +111,12 @@ public sealed class CommandRouter
                 "history.list" => HistoryList(msg),
                 "nowplaying.get" => new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(NowPlayingOrError()) },
                 "nowplaying.set" => NowPlayingSet(msg),
+                "scheduler.list" => SchedulerList(),
+                "scheduler.get" => SchedulerGet(msg),
+                "scheduler.save" => SchedulerSave(msg),
+                "scheduler.delete" => SchedulerDelete(msg),
+                "scheduler.occurrences" => SchedulerOccurrences(msg),
+                "scheduler.log" => SchedulerLog(msg),
                 _ => null,
             };
 
@@ -420,6 +433,108 @@ public sealed class CommandRouter
         _library?.SetSetting(NowPlayingSettingKey, settings.ToJson());
         return new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(nowPlaying) };
     }
+
+    // --- Planificador (fase 2, pas 3) ---
+
+    private Events EventsOrError() => _events ?? throw new BadParamsException("El motor no té planificador.");
+
+    private TimeZoneInfo Zone => _scheduler?.Zone ?? TimeZoneInfo.Local;
+
+    private JsonObject SchedulerList() => new()
+    {
+        ["events"] = new JsonArray(EventsOrError().List().Select(e => (JsonNode)EventJson.Event(e)).ToArray()),
+    };
+
+    private JsonObject SchedulerGet(JsonObject msg)
+    {
+        long id = RequireId(msg);
+        var ev = EventsOrError().Get(id) ?? throw new BadParamsException($"No existeix l'esdeveniment {id}.");
+        return new JsonObject { ["event"] = EventJson.Event(ev) };
+    }
+
+    /// <summary>
+    /// Desa un esdeveniment (<c>event</c>, docs/protocol.md 4.7): sense <c>id</c> (o 0), un de nou; amb <c>id</c>, en substitueix
+    /// un. Retorna l'esdeveniment desat. El planificador el té en compte de seguida.
+    /// </summary>
+    private JsonObject SchedulerSave(JsonObject msg)
+    {
+        var events = EventsOrError();
+        if (msg["event"] is not JsonObject json) throw new BadParamsException("Falta el camp 'event' (un objecte).");
+        long id;
+        try
+        {
+            id = events.Save(EventJson.FromJson(json));
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException)
+        {
+            throw new BadParamsException(ex.Message);
+        }
+        _scheduler?.Reload();
+        return new JsonObject { ["event"] = EventJson.Event(events.Get(id)!) };
+    }
+
+    private JsonObject SchedulerDelete(JsonObject msg)
+    {
+        long id = RequireId(msg);
+        if (!EventsOrError().Delete(id)) throw new BadParamsException($"No existeix l'esdeveniment {id}.");
+        _scheduler?.Reload();
+        return new JsonObject { ["deleted"] = id };
+    }
+
+    /// <summary>
+    /// Quan sonaran els esdeveniments actius entre <c>from</c> i <c>to</c> (per defecte, d'ara a 24 hores). Amb <c>eventId</c>,
+    /// només aquest esdeveniment, encara que estigui desactivat. <c>limit</c>: per defecte 200, com a molt 2.000.
+    /// </summary>
+    private JsonObject SchedulerOccurrences(JsonObject msg)
+    {
+        var events = EventsOrError();
+        var from = ReadTime(msg, "from", endOfDay: false) ?? DateTimeOffset.Now;
+        var to = ReadTime(msg, "to", endOfDay: true) ?? from.AddDays(1);
+        if (from >= to) throw new BadParamsException("El camp 'from' ha de ser anterior a 'to'.");
+        if (to - from > TimeSpan.FromDays(400)) throw new BadParamsException("Com a molt, un any i un mes.");
+        int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 200, 1, 2000);
+
+        IEnumerable<ScheduledEvent> selected;
+        if (msg["eventId"] is not null)
+        {
+            long id = RequireId(msg);
+            selected = [events.Get(id) ?? throw new BadParamsException($"No existeix l'esdeveniment {id}.")];
+        }
+        else
+        {
+            selected = events.List().Where(e => e.Enabled && !e.IsTemplate);
+        }
+
+        var list = selected.SelectMany(e => Recurrences.Between(e, from, to, Zone))
+            .OrderBy(o => o.At).ThenByDescending(o => o.Event.Priority)
+            .Take(limit + 1).ToList();
+        return new JsonObject
+        {
+            ["occurrences"] = new JsonArray(list.Take(limit).Select(o => (JsonNode)EventJson.Occurrence(o)).ToArray()),
+            ["more"] = list.Count > limit,
+        };
+    }
+
+    /// <summary>Registre d'execució entre <c>from</c> i <c>to</c> (per defecte, avui), per hora prevista. Amb <c>eventId</c>, només d'aquest esdeveniment.</summary>
+    private JsonObject SchedulerLog(JsonObject msg)
+    {
+        var events = EventsOrError();
+        var today = new DateTimeOffset(DateTime.Today);
+        var from = ReadTime(msg, "from", endOfDay: false) ?? today;
+        var to = ReadTime(msg, "to", endOfDay: true) ?? from.AddDays(1);
+        if (from >= to) throw new BadParamsException("El camp 'from' ha de ser anterior a 'to'.");
+        int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 500, 1, 5000);
+        long? id = msg["eventId"] is null ? null : RequireId(msg);
+        var records = events.Executions(from, to, id, limit + 1);
+        return new JsonObject
+        {
+            ["entries"] = new JsonArray(records.Take(limit).Select(r => (JsonNode)EventJson.Execution(r)).ToArray()),
+            ["more"] = records.Count > limit,
+        };
+    }
+
+    private static long RequireId(JsonObject msg) =>
+        msg["eventId"] is JsonValue v && v.TryGetValue(out long id) ? id : throw new BadParamsException("Falta el camp 'eventId' (un nombre).");
 
     private static string RequireString(JsonObject msg, string field)
     {
