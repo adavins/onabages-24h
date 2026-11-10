@@ -23,6 +23,12 @@ public interface IAudioOutput : IDisposable
     void Stop();
 
     /// <summary>
+    /// Quants fotogrames ha fet sonar ja el dispositiu des que s'ha engegat (el rellotge de la targeta), o null si
+    /// no se sap. Serveix per mesurar la latència real de la sortida. Fil de control.
+    /// </summary>
+    long? PlayedFrames();
+
+    /// <summary>
     /// La sortida s'ha aturat. Si porta una excepció, és un error (p. ex. el dispositiu
     /// s'ha desconnectat). Qui escolta només ha d'apuntar-ho: no pot tancar la sortida aquí dins.
     /// </summary>
@@ -122,6 +128,20 @@ public sealed class WasapiAudioOutput : IAudioOutput
     public void Play() => _out.Play();
     public void Pause() => _out.Pause();
     public void Stop() => _out.Stop();
+
+    /// <summary>La posició del dispositiu (IAudioClock de Windows), que NAudio dona en bytes del format de la sortida.</summary>
+    public long? PlayedFrames()
+    {
+        try
+        {
+            if (_out.PlaybackState != PlaybackState.Playing) return null;
+            return _out.GetPosition() / _out.OutputWaveFormat.BlockAlign;
+        }
+        catch (Exception)
+        {
+            return null; // el dispositiu s'ha desconnectat o encara no està a punt: aquesta vegada no es mesura
+        }
+    }
 
     public void Dispose()
     {

@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 2, pas 4 (motor, dispositius, sortida, cua, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 2, pas 4b (motor, dispositius, sortida, cua, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -138,13 +138,17 @@ El `message` és en català i es pot mostrar a l'operador.
 { "configured": { "id": "{0.0.0.00000000}.{…}", "name": "Altavoces - Realtek (…)" },
   "current": { …dispositiu (4.1)… },
   "emergency": false,
-  "problem": null }
+  "problem": null,
+  "latencyMs": 119.9,
+  "latencyMeasured": true }
 ```
 
 - `configured`: la desada amb `output.set` (`id` i `name` `null` si no n'hi ha cap).
 - `current`: per on s'emet ara (`null` si no hi ha cap sortida).
 - `emergency`: s'emet per una sortida d'emergència (no és la configurada). Llavors `problem` ho explica i la interfície ho ha de mostrar fins que es resolgui (D-039).
 - `problem`: text en català si hi ha algun problema (sortida d'emergència, cap sortida disponible…), o `null`.
+- `latencyMs`: quant tarda el so a sortir per la sortida d'ara, en ms (fase 2, pas 4b). El motor la mesura cada segon amb el rellotge de la targeta (la mediana de les últimes 9 mesures) i la fa servir per tallar a l'hora exacta.
+- `latencyMeasured`: `false` si encara no s'ha pogut mesurar (acaba d'obrir la sortida, o la targeta no ho diu): llavors `latencyMs` és la suposada, 100 ms.
 
 ### 4.4. Pistes
 
@@ -257,7 +261,7 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 |---|---|---|---|
 | `engine.status` | `version`, `uptime` (s), `clients` | cada segon | fase 1, pas 6 |
 | `queue.changed` | `queue` (4.2) | quan s'afegeix, es treu, comença o s'acaba una pista | fase 1, pas 7c |
-| `player.trackStarted` | `item` (element de la cua), `time` (UTC) | quan una pista comença a sonar | fase 1, pas 7c |
+| `player.trackStarted` | `item` (element de la cua), `time` (UTC; quan el motor la comença a mesclar), `heardAt` (hora local amb zona en què surt per la sortida, comptant-hi la latència; `null` si no hi ha sortida) | quan una pista comença a sonar | fase 1, pas 7c; `heardAt`, fase 2, pas 4b |
 | `player.trackEnded` | `item`, `playedMs`, `complete` (ha arribat al final previst) | quan una pista s'acaba | fase 1, pas 7c |
 | `player.trackFailed` | `item`, `message` | quan una pista no es pot fer sonar (fitxer que falta o il·legible) i se salta | fase 1, pas 7c |
 | `output.changed` | `output` (4.3) | quan canvia la sortida, l'estat d'emergència o el problema | fase 1, pas 7c |

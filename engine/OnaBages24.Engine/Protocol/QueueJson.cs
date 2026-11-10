@@ -55,6 +55,9 @@ public static class QueueJson
         ["current"] = outputs.Current is { } device ? DeviceJson.Device(device) : null,
         ["emergency"] = outputs.IsEmergency,
         ["problem"] = outputs.Problem,
+        // Fase 2, pas 4b: quant tarda el so a sortir per la targeta, i si és mesurat (si no, el suposat de 100 ms)
+        ["latencyMs"] = Math.Round(outputs.Latency.TotalMilliseconds, 1),
+        ["latencyMeasured"] = outputs.LatencyMeasured,
     };
 
     /// <summary>Estat de l'AutoDJ (docs/protocol.md, 4.5).</summary>

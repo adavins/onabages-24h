@@ -9,7 +9,8 @@ namespace OnaBages24.Engine.Playback;
 /// rellotge que l'encadenament, i no depèn de quan passa el fil de control.
 ///
 /// Com es calcula: el mesclador diu quants fotogrames havia mesclat en acabar l'últim bloc i quan. Aquell últim
-/// fotograma no surt pels altaveus fins al cap de la latència de la sortida (la memòria de Windows, uns 100 ms).
+/// fotograma no surt pels altaveus fins al cap de la latència de la sortida (la memòria de Windows, uns 120 ms), que
+/// mesura en marxa el gestor de sortides (fase 2, pas 4b: <see cref="OutputManager.MeasureLatency"/>).
 /// A partir d'aquí, cada segon són <c>SampleRate</c> fotogrames més.
 /// </summary>
 public sealed class SampleClock
@@ -21,25 +22,27 @@ public sealed class SampleClock
     private readonly Func<(long Frames, long Timestamp)> _snapshot;
     private readonly Func<long> _timestamp;
     private readonly Func<DateTimeOffset> _wallClock;
+    private readonly Func<TimeSpan> _latency;
 
-    /// <param name="latency">Quant tarda un fotograma mesclat a sortir pels altaveus.</param>
-    public SampleClock(Mixer mixer, TimeSpan latency, Func<DateTimeOffset>? wallClock = null)
+    /// <param name="latency">Quant tarda ara un fotograma mesclat a sortir pels altaveus (es demana cada vegada).</param>
+    public SampleClock(Mixer mixer, Func<TimeSpan> latency, Func<DateTimeOffset>? wallClock = null)
         : this(mixer.SampleRate, mixer.RenderSnapshot, Stopwatch.GetTimestamp, wallClock ?? (() => DateTimeOffset.Now), latency)
     {
     }
 
     /// <summary>Per a les proves: la parella del mesclador, la marca de temps actual i l'hora, tot fals.</summary>
     public SampleClock(int sampleRate, Func<(long Frames, long Timestamp)> snapshot, Func<long> timestamp,
-        Func<DateTimeOffset> wallClock, TimeSpan latency)
+        Func<DateTimeOffset> wallClock, Func<TimeSpan> latency)
     {
         _sampleRate = sampleRate;
         _snapshot = snapshot;
         _timestamp = timestamp;
         _wallClock = wallClock;
-        Latency = latency;
+        _latency = latency;
     }
 
-    public TimeSpan Latency { get; set; }
+    /// <summary>La latència de la sortida que es fa servir ara.</summary>
+    public TimeSpan Latency => _latency();
 
     /// <summary>El fotograma que sonarà a l'hora <paramref name="when"/>, o null si ara no hi ha sortida (el mesclador no mescla).</summary>
     public long? FrameAt(DateTimeOffset when)

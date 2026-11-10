@@ -208,7 +208,7 @@ public sealed class CutTests : IDisposable
         long t0 = 1_000_000_000;
         long now = t0 + Stopwatch.Frequency / 50; // l'últim bloc es va mesclar fa 20 ms
         var wall = new DateTimeOffset(2026, 11, 20, 12, 0, 0, TimeSpan.Zero);
-        var clock = new SampleClock(Rate, () => (480_000, t0), () => now, () => wall, TimeSpan.FromMilliseconds(100));
+        var clock = new SampleClock(Rate, () => (480_000, t0), () => now, () => wall, () => TimeSpan.FromMilliseconds(100));
 
         // El fotograma 480.000 sonarà a les 12:00:00,080 (−20 ms + 100 ms de latència)
         Assert.Equal(480_000, clock.FrameAt(wall.AddMilliseconds(80)));
@@ -220,8 +220,8 @@ public sealed class CutTests : IDisposable
     public void Sense_sortida_el_rellotge_de_mostres_no_respon()
     {
         var wall = new DateTimeOffset(2026, 11, 20, 12, 0, 0, TimeSpan.Zero);
-        var never = new SampleClock(Rate, () => (0, 0), () => 5, () => wall, TimeSpan.Zero);
-        var stopped = new SampleClock(Rate, () => (1000, 1), () => 1 + Stopwatch.Frequency * 2, () => wall, TimeSpan.Zero); // fa 2 s
+        var never = new SampleClock(Rate, () => (0, 0), () => 5, () => wall, () => TimeSpan.Zero);
+        var stopped = new SampleClock(Rate, () => (1000, 1), () => 1 + Stopwatch.Frequency * 2, () => wall, () => TimeSpan.Zero); // fa 2 s
 
         Assert.Null(never.FrameAt(wall));
         Assert.Null(stopped.FrameAt(wall));
@@ -243,7 +243,7 @@ public sealed class CutTests : IDisposable
 
         // Rellotge fals, però el del mesclador és el de veritat: el mesclador «sona» quan el fem córrer
         var now = new DateTimeOffset(2026, 11, 20, 9, 59, 50, TimeSpan.Zero);
-        var sampleClock = new SampleClock(_mixer, TimeSpan.Zero, () => now);
+        var sampleClock = new SampleClock(_mixer, () => TimeSpan.Zero, () => now);
         var executor = new EventExecutor(library, player, null, clock: sampleClock);
         var scheduler = new Scheduler(events, executor, NullLogger.Instance, clock: () => now, zone: TimeZoneInfo.Utc);
         var fired = new List<ExecutionRecord>();

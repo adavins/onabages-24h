@@ -10,7 +10,9 @@ namespace OnaBages24.Engine.Playback;
 /// </summary>
 public sealed class PlaybackEvents
 {
-    public PlaybackEvents(QueuePlayer queue, OutputManager outputs, ILogger log, Action<JsonObject> broadcast, AutoDj? autoDj = null)
+    /// <param name="clock">Per dir a <c>player.trackStarted</c> a quina hora se sent la pista (<c>heardAt</c>).</param>
+    public PlaybackEvents(QueuePlayer queue, OutputManager outputs, ILogger log, Action<JsonObject> broadcast, AutoDj? autoDj = null,
+        SampleClock? clock = null)
     {
         if (autoDj is not null)
         {
@@ -30,6 +32,8 @@ public sealed class PlaybackEvents
             var ev = Messages.Event("player.trackStarted");
             ev["item"] = QueueJson.Item(e.Item);
             ev["time"] = DateTimeOffset.UtcNow.ToString("O");
+            // Quan surt pels altaveus: el moment de començar al mesclador més la latència de la sortida (null si no hi ha sortida)
+            ev["heardAt"] = clock?.TimeOf(e.StartFrame)?.ToString("O");
             broadcast(ev);
         };
 

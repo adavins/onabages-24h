@@ -68,7 +68,9 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 3. ✔ Planificador bàsic al fil de control: pròxim esdeveniment, preparació 30 s abans i disparament; modes ENCUA i SISTEMA, accions `PISTA`, `ROTACIO` i `AUTODJ`; tolerància, conflictes per prioritat, registre d'execució i canvis atòmics; ordres `scheduler.*`.
 4. TALLA a l'hora exacta: rellotge de mostres (hora ↔ fotograma, amb la latència de la sortida), fos de la pista que sonava al mateix fotograma, «Esborra la cua» i `NO_EMES`. Eina de mesura del retard real (objectiu: menys de 50 ms). En dues parts:
    - 4a. ✔ Tall a la mostra, rellotge de mostres, reserva de la primera pista 30 s abans, `NO_EMES` i diferència anotada al registre (D-061). Provat a l'ordinador real el 10-11-2026: fos de 3 s, tall sec i `NO_EMES`, els tres a la mostra prevista.
-   - 4b. Mesura del retard real a la sortida (part de la targeta de so) i ajust de la latència.
+   - 4b. Mesura del retard real a la sortida i ajust de la latència.
+     - Part 1 ✔: el motor mesura la latència amb el rellotge de la targeta i la fa servir per tallar (D-062).
+     - Part 2: eina `OnaBages.ToneCheck retard` (loopback o cable) que comprova amb el so de veritat que la pista surt a l'hora prevista.
 5. SUPERPOSA i senyals horaris: una veu a sobre de la música, amb atenuació opcional; acció `AUXILIAR`.
 6. Migració dels esdeveniments de RadioDJ a `importa-radiodj` (secció 6), amb informe.
 7. Acció `STREAM` (D-010, D-030, D-031), amb un servidor de proves local.

@@ -153,6 +153,72 @@ public class OutputManagerTests
         Assert.False(adapter.Resampling);
         Assert.Equal([0.25f, 0.25f, 0f, 0f], output[..4]);
     }
+
+    // Latència real de la sortida (fase 2, pas 4b). La sortida falsa fa de Windows: Pump lliura fotogrames i Played diu
+    // quants n'ha fet sonar la «targeta». Els que falten encara són a la memòria: aquesta és la latència.
+
+    /// <summary>Mesura amb la «targeta» endarrerida <paramref name="behindFrames"/> fotogrames respecte del que s'ha lliurat.</summary>
+    private static TimeSpan? MeasureBehind(OutputManager manager, FakeOutput output, long behindFrames)
+    {
+        output.Pump(480);
+        output.Played = output.Pumped - behindFrames;
+        return manager.MeasureLatency();
+    }
+
+    [Fact]
+    public void La_latencia_es_mesura_amb_el_rellotge_de_la_targeta()
+    {
+        var manager = Manager(new Mixer(48000));
+        manager.Ensure();
+        var output = _opened["realtek"];
+        Assert.Equal(OutputManager.DefaultLatency, manager.Latency); // abans de mesurar, la suposada
+        Assert.False(manager.LatencyMeasured);
+
+        var latency = MeasureBehind(manager, output, 5760); // 120 ms a 48 kHz
+
+        Assert.NotNull(latency);
+        Assert.InRange(latency.Value.TotalMilliseconds, 119.9, 140); // 120 ms més el poc temps que ha passat des del lliurament
+        Assert.True(manager.LatencyMeasured);
+        Assert.Equal(latency, manager.Latency);
+        Assert.Equal(latency.Value.TotalMilliseconds, QueueJson.Output(manager)["latencyMs"]!.GetValue<double>(), 0.1);
+        Assert.True(QueueJson.Output(manager)["latencyMeasured"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void La_latencia_es_la_mediana_i_les_mesures_impossibles_no_compten()
+    {
+        var manager = Manager(new Mixer(48000));
+        manager.Ensure();
+        var output = _opened["realtek"];
+
+        for (int i = 0; i < 4; i++) MeasureBehind(manager, output, 5760); // 120 ms
+        MeasureBehind(manager, output, 24000);                            // 500 ms: una d'estranya
+        Assert.Null(MeasureBehind(manager, output, 48000 * 3));           // 3 s: impossible, es descarta
+        Assert.Null(MeasureBehind(manager, output, -48000));              // la targeta «per davant»: impossible
+
+        Assert.InRange(manager.Latency.TotalMilliseconds, 119.9, 140);
+
+        output.Played = null; // la targeta no ho sap dir: no es mesura, i es manté la d'abans
+        Assert.Null(manager.MeasureLatency());
+        Assert.InRange(manager.Latency.TotalMilliseconds, 119.9, 140);
+    }
+
+    [Fact]
+    public void En_canviar_de_sortida_es_torna_a_mesurar_amb_la_seva_frequencia()
+    {
+        var manager = Manager(new Mixer(48000));
+        manager.Ensure();
+        MeasureBehind(manager, _opened["realtek"], 5760);
+        Assert.True(manager.LatencyMeasured);
+
+        manager.Configure(new ConfiguredOutput("spdif", "Sortida digital")); // 44,1 kHz
+        manager.Ensure();
+        Assert.False(manager.LatencyMeasured);
+        Assert.Equal(OutputManager.DefaultLatency, manager.Latency);
+
+        var latency = MeasureBehind(manager, _opened["spdif"], 4410); // 100 ms a 44,1 kHz
+        Assert.InRange(latency!.Value.TotalMilliseconds, 99.9, 120);
+    }
 }
 
 /// <summary>Recàlcul dels punts en segon pla (D-042).</summary>

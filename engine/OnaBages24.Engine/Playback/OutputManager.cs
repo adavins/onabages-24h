@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using OnaBages.Audio;
 
 namespace OnaBages24.Engine.Playback;
@@ -15,11 +16,26 @@ public sealed record ConfiguredOutput(string? Id, string? Name);
 /// </summary>
 public sealed class OutputManager : IDisposable
 {
+    /// <summary>
+    /// Latència que se suposa mentre no se n'ha mesurat cap: la memòria que es demana a Windows. La real és una mica més
+    /// gran (Windows hi afegeix el seu període i el del controlador); es mesura en marxa (fase 2, pas 4b).
+    /// </summary>
+    public static readonly TimeSpan DefaultLatency = TimeSpan.FromMilliseconds(WasapiAudioOutput.LatencyMs);
+
+    /// <summary>Mesures que es guarden per calcular la latència (la mediana: una mesura estranya no la mou).</summary>
+    private const int LatencySamples = 9;
+
+    /// <summary>Una mesura fora d'aquest marge és un error de lectura, no una latència: es descarta.</summary>
+    private static readonly TimeSpan MaxLatency = TimeSpan.FromSeconds(2);
+
     private readonly Mixer _mixer;
     private readonly Func<IReadOnlyList<AudioDevice>> _listDevices;
     private readonly Func<string, IAudioOutput> _openOutput;
     private readonly object _sync = new();
     private IAudioOutput? _output;
+    private OutputAdapter? _adapter;
+    private readonly List<double> _latencies = new(LatencySamples); // ms, les últimes mesures de la sortida d'ara
+    private TimeSpan _latency = DefaultLatency;
     private volatile bool _failed;
     private volatile bool _poked = true;
 
@@ -43,6 +59,21 @@ public sealed class OutputManager : IDisposable
 
     /// <summary>L'últim problema (en català), o null si tot va bé.</summary>
     public string? Problem { get; private set; }
+
+    /// <summary>
+    /// Quant tarda un fotograma mesclat a sonar per la sortida d'ara: la mediana de les últimes mesures o, si encara
+    /// no n'hi ha cap, <see cref="DefaultLatency"/>. La fa servir el rellotge de mostres (talls a l'hora exacta).
+    /// </summary>
+    public TimeSpan Latency
+    {
+        get { lock (_sync) return _latency; }
+    }
+
+    /// <summary>La latència és mesurada a la sortida d'ara (no la suposada).</summary>
+    public bool LatencyMeasured
+    {
+        get { lock (_sync) return _latencies.Count > 0; }
+    }
 
     /// <summary>Ha canviat la sortida, l'estat d'emergència o el problema.</summary>
     public event Action? Changed;
@@ -99,9 +130,11 @@ public sealed class OutputManager : IDisposable
                 {
                     var output = _openOutput(candidate.Device.Id);
                     output.Stopped += ex => { if (ex is not null) { _failed = true; _poked = true; } };
-                    output.Init(new OutputAdapter(_mixer, output.SampleRate, output.Channels));
+                    var adapter = new OutputAdapter(_mixer, output.SampleRate, output.Channels);
+                    output.Init(adapter);
                     output.Play();
                     _output = output;
+                    _adapter = adapter;
                     _failed = false;
                     Current = candidate.Device;
                     IsEmergency = candidate.Emergency;
@@ -121,6 +154,37 @@ public sealed class OutputManager : IDisposable
         }
     done:
         if (changed) Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Fil de control, cada segon: mesura la latència real de la sortida (fase 2, pas 4b). Compara els fotogrames que
+    /// s'han lliurat a Windows (i quan) amb els que el dispositiu ja ha fet sonar ara mateix: els que falten encara són
+    /// a la memòria i sonaran d'aquí a (lliurats − sonats) / freqüència. Retorna la mesura, o null si no s'ha pogut fer.
+    /// </summary>
+    public TimeSpan? MeasureLatency()
+    {
+        lock (_sync)
+        {
+            if (_output is null || _adapter is null || _failed) return null;
+            var (written, writtenAt) = _adapter.WrittenSnapshot();
+            if (writtenAt == 0) return null;
+            long before = Stopwatch.GetTimestamp();
+            long? played = _output.PlayedFrames();
+            long after = Stopwatch.GetTimestamp();
+            if (played is not { } p) return null;
+
+            // L'últim fotograma lliurat sona a: ara + (lliurats − sonats) / freqüència. La latència és des que es va lliurar.
+            double now = (before + after) / 2.0;
+            double sinceWritten = (now - writtenAt) / Stopwatch.Frequency;
+            var latency = TimeSpan.FromSeconds(sinceWritten + (double)(written - p) / _output.SampleRate);
+            if (latency <= TimeSpan.Zero || latency > MaxLatency) return null;
+
+            if (_latencies.Count == LatencySamples) _latencies.RemoveAt(0);
+            _latencies.Add(latency.TotalMilliseconds);
+            var sorted = _latencies.Order().ToList();
+            _latency = TimeSpan.FromMilliseconds(sorted[sorted.Count / 2]);
+            return latency;
+        }
     }
 
     private string EmergencyProblem(AudioDevice device) =>
@@ -162,6 +226,10 @@ public sealed class OutputManager : IDisposable
 
     private void CloseOutput()
     {
+        // Una altra sortida té una altra latència: es torna a mesurar des de zero
+        _latencies.Clear();
+        _latency = DefaultLatency;
+        _adapter = null;
         if (_output is null) return;
         try { _output.Stop(); } catch (Exception) { /* ja no hi és */ }
         try { _output.Dispose(); } catch (Exception) { }

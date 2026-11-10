@@ -119,9 +119,17 @@ internal sealed class FakeOutput(int sampleRate = 48000, int channels = 2) : IAu
     public void Stop() => IsPlaying = false;
     public void Dispose() => Disposed = true;
 
+    /// <summary>El que diria el rellotge de la targeta (les proves el posen a mà).</summary>
+    public long? Played { get; set; }
+    public long? PlayedFrames() => Played;
+
+    /// <summary>Fotogrames lliurats en total amb <see cref="Pump"/>.</summary>
+    public long Pumped { get; private set; }
+
     /// <summary>Demana <paramref name="frames"/> mostres per canal, com faria Windows.</summary>
     public float[] Pump(int frames)
     {
+        Pumped += frames;
         var bytes = new byte[frames * channels * sizeof(float)];
         _source!.Read(bytes);
         var samples = new float[frames * channels];

@@ -101,11 +101,13 @@ public static class EngineServer
         var outputs = new OutputManager(mixer);
         outputs.Configure(ReadConfiguredOutput(library, log));
         var queue = new QueuePlayer(mixer);
+        // Rellotge de mostres (fase 2, pas 4): l'hora en què sona cada fotograma, amb la latència mesurada de la sortida (pas 4b)
+        var sampleClock = new SampleClock(mixer, () => outputs.Latency);
 
         // AutoDJ (fase 1, pas 8): arrenca sol amb la rotació desada (o la primera), i l'emissió comença de seguida
         var rotations = new Rotations(database);
         var autoDj = new AutoDj(library, rotations, queue);
-        var playback = new PlaybackEvents(queue, outputs, log, Broadcast, autoDj);
+        var playback = new PlaybackEvents(queue, outputs, log, Broadcast, autoDj, sampleClock);
         var history = new PlayHistory(queue, library, log);
         ConfigureAutoDj(autoDj, library, log);
 
@@ -117,8 +119,7 @@ public static class EngineServer
         // Planificador (fase 2, pas 3; D-008): al fil de control, amb el rellotge del motor. Si un esdeveniment canvia la
         // rotació, es desa com amb autodj.set, perquè es mantingui si el motor es reinicia (D-053).
         var events = new Events(database);
-        // TALLA a la mostra exacta (fase 2, pas 4): l'hora es converteix en el fotograma que sonarà, comptant la memòria de la sortida
-        var sampleClock = new SampleClock(mixer, TimeSpan.FromMilliseconds(WasapiAudioOutput.LatencyMs));
+        // TALLA a la mostra exacta (fase 2, pas 4): l'hora es converteix en el fotograma que sonarà, amb el rellotge de mostres
         var executor = new Scheduling.EventExecutor(library, queue, autoDj, rotationId =>
             library.SetSetting(CommandRouter.AutoDjSettingKey, System.Text.Json.JsonSerializer.Serialize(new { rotationId })), sampleClock);
         var scheduler = new Scheduling.Scheduler(events, executor, log);

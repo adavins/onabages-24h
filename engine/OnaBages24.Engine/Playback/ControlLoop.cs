@@ -9,6 +9,10 @@ public sealed class ControlLoop : IDisposable
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(10);
     private static readonly TimeSpan OutputInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan LatencyInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>Un canvi de latència més petit que això no s'escriu al registre (la mesura balla una mica).</summary>
+    private static readonly TimeSpan LatencyLogStep = TimeSpan.FromMilliseconds(5);
 
     private readonly QueuePlayer _queue;
     private readonly OutputManager _outputs;
@@ -34,6 +38,8 @@ public sealed class ControlLoop : IDisposable
     {
         var token = _stop.Token;
         var lastOutputCheck = DateTime.MinValue;
+        var lastLatencyCheck = DateTime.MinValue;
+        TimeSpan? loggedLatency = null;
         var lastError = DateTime.MinValue;
         while (!token.IsCancellationRequested)
         {
@@ -43,6 +49,17 @@ public sealed class ControlLoop : IDisposable
                 {
                     lastOutputCheck = DateTime.UtcNow;
                     _outputs.Ensure();
+                }
+                // Latència real de la sortida (fase 2, pas 4b): el rellotge de mostres la fa servir per tallar a l'hora exacta
+                if (DateTime.UtcNow - lastLatencyCheck >= LatencyInterval)
+                {
+                    lastLatencyCheck = DateTime.UtcNow;
+                    _outputs.MeasureLatency();
+                    if (_outputs.LatencyMeasured && (loggedLatency is not { } logged || (_outputs.Latency - logged).Duration() >= LatencyLogStep))
+                    {
+                        loggedLatency = _outputs.Latency;
+                        _log.LogInformation("Latència de la sortida: {Latency:0.0} ms (mesurada)", _outputs.Latency.TotalMilliseconds);
+                    }
                 }
                 // Primer el planificador: el contingut d'un esdeveniment entra a la cua abans que l'AutoDJ hi afegeixi res
                 try { _scheduler?.Tick(); }

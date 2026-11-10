@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
@@ -17,6 +18,8 @@ public sealed class OutputAdapter : IWaveProvider
     private readonly IWaveProvider? _direct;    // mateixa freqüència
     private readonly ISampleProvider? _resampled; // freqüència diferent
     private readonly float[] _stereo;
+    private readonly FrameStamp _written = new();
+    private long _framesWritten;
 
     public OutputAdapter(Mixer mixer, int sampleRate, int channels)
     {
@@ -35,8 +38,22 @@ public sealed class OutputAdapter : IWaveProvider
     /// <summary>Si cal remostrejar (la sortida no va a la freqüència del mesclador).</summary>
     public bool Resampling => _resampled is not null;
 
+    /// <summary>
+    /// Fil de control: quants fotogrames (de la sortida) s'han lliurat a Windows en total i quan, per mesurar la latència
+    /// real comparant-ho amb els que el dispositiu ja ha fet sonar. Timestamp 0: encara no s'ha lliurat res.
+    /// </summary>
+    public (long Frames, long Timestamp) WrittenSnapshot() => _written.Read();
+
     /// <summary>Fil d'àudio de Windows.</summary>
     public int Read(Span<byte> buffer)
+    {
+        int read = Fill(buffer);
+        _framesWritten += buffer.Length / (_channels * sizeof(float));
+        _written.Write(_framesWritten, Stopwatch.GetTimestamp());
+        return read;
+    }
+
+    private int Fill(Span<byte> buffer)
     {
         Span<float> output = MemoryMarshal.Cast<byte, float>(buffer);
         int frames = output.Length / _channels;

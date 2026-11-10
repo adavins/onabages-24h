@@ -22,9 +22,7 @@ public sealed class Mixer : IWaveProvider
     private readonly int _outChannels;
     private long _framesRendered;
     private long _lastRenderTimestamp;
-    private int _snapshotVersion; // senar mentre el fil d'àudio escriu la parella (fotogrames, hora)
-    private long _snapshotFrames;
-    private long _snapshotTimestamp;
+    private readonly FrameStamp _snapshot = new(); // la parella (fotogrames, hora) de l'últim bloc
 
     /// <param name="sampleRate">Freqüència de la sortida (la del mesclador de Windows).</param>
     /// <param name="outChannels">Canals de la sortida (normalment 2; si en té més, els altres van en silenci).</param>
@@ -70,20 +68,7 @@ public sealed class Mixer : IWaveProvider
     /// Fil de control: quants fotogrames s'havien mesclat en acabar l'últim bloc, i quan (marca de <see cref="Stopwatch"/>).
     /// Les dues dades són del mateix bloc. Timestamp 0 vol dir que encara no s'ha mesclat res.
     /// </summary>
-    public (long Frames, long Timestamp) RenderSnapshot()
-    {
-        while (true)
-        {
-            int before = Volatile.Read(ref _snapshotVersion);
-            if ((before & 1) == 0)
-            {
-                long frames = Interlocked.Read(ref _snapshotFrames);
-                long timestamp = Interlocked.Read(ref _snapshotTimestamp);
-                if (Volatile.Read(ref _snapshotVersion) == before) return (frames, timestamp);
-            }
-            Thread.SpinWait(10);
-        }
-    }
+    public (long Frames, long Timestamp) RenderSnapshot() => _snapshot.Read();
 
     /// <summary>Fil de control: agafa una veu lliure (o null si no n'hi ha cap). La veu queda reservada i buida.</summary>
     public MixerVoice? AcquireVoice()
@@ -127,10 +112,7 @@ public sealed class Mixer : IWaveProvider
         Interlocked.Exchange(ref _lastRenderTimestamp, now);
 
         // La parella per al rellotge de mostres, escrita de manera que l'altre fil no en pugui llegir una de mig feta
-        Interlocked.Increment(ref _snapshotVersion);
-        Interlocked.Exchange(ref _snapshotFrames, Interlocked.Read(ref _framesRendered));
-        Interlocked.Exchange(ref _snapshotTimestamp, now);
-        Interlocked.Increment(ref _snapshotVersion);
+        _snapshot.Write(Interlocked.Read(ref _framesRendered), now);
         return buffer.Length;
     }
 
