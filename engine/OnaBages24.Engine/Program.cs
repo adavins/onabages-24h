@@ -46,11 +46,15 @@ public static class Program
 
             Ordres:
               importa-radiodj FITXER.sql [FITXER.sql…] [opcions]
-                  Importa la biblioteca de RadioDJ (categories, subcategories, gèneres, pistes i rotacions) des d'un backup.
-                  Es pot tornar a executar: les pistes ja importades s'actualitzen i les rotacions se substitueixen.
-                  --bd RUTA            base de dades (per defecte, la de la carpeta «dades» de l'aplicació)
-                  --arrel DE A         canvi d'arrel de les rutes (es pot repetir; s'aplica el primer que coincideixi)
-                  --sense-fitxers      no comprova si els fitxers existeixen
+                  Importa la biblioteca de RadioDJ (categories, subcategories, gèneres, pistes i rotacions) i els
+                  esdeveniments del Programador des d'un backup.
+                  Es pot tornar a executar: les pistes ja importades s'actualitzen, i les rotacions i els esdeveniments
+                  importats abans se substitueixen (els esdeveniments creats a mà no es toquen).
+                  --bd RUTA                     base de dades (per defecte, la de la carpeta «dades» de l'aplicació)
+                  --arrel DE A                  canvi d'arrel de les rutes (es pot repetir; s'aplica el primer que coincideixi)
+                  --sense-fitxers               no comprova si els fitxers existeixen
+                  --sense-esdeveniments         no importa els esdeveniments
+                  --esdeveniments-desactivats   els importa tots desactivats (en un ordinador sense els fitxers dels programes)
 
               importa-carpeta CARPETA --categoria NOM --subcategoria NOM [--bd RUTA]
                   Importa els fitxers d'àudio d'una carpeta (i subcarpetes) que encara no hi són: etiquetes,
@@ -69,6 +73,8 @@ public static class Program
         var rootChanges = new List<RootChange>();
         string databasePath = DefaultDatabasePath;
         bool checkFiles = true;
+        bool importEvents = true;
+        bool eventsDisabled = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -82,6 +88,12 @@ public static class Program
                     break;
                 case "--sense-fitxers":
                     checkFiles = false;
+                    break;
+                case "--sense-esdeveniments":
+                    importEvents = false;
+                    break;
+                case "--esdeveniments-desactivats":
+                    eventsDisabled = true;
                     break;
                 default:
                     files.Add(args[i]);
@@ -112,6 +124,15 @@ public static class Program
 
         Console.WriteLine();
         Console.WriteLine(report);
+
+        // Esdeveniments del Programador (fase 2, pas 6): després de la biblioteca, perquè les pistes es busquen pel seu id de RadioDJ
+        if (importEvents && dump.Rows("events").Count > 0)
+        {
+            var eventsReport = RadioDjEvents.Import(dump, library, new Rotations(database), new Events(database),
+                new RadioDjEventsOptions { AllDisabled = eventsDisabled });
+            Console.WriteLine();
+            Console.WriteLine(eventsReport);
+        }
         Console.WriteLine($"Temps: {(DateTime.Now - started).TotalSeconds:0.0} s");
         return 0;
     }

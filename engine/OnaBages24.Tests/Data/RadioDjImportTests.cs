@@ -22,13 +22,22 @@ public class RadioDjImportTests : IDisposable
         _temp.Dispose();
     }
 
-    /// <summary>Carpeta <c>docs/radiodj</c> del repositori (es busca pujant des de la carpeta de les proves).</summary>
-    private static string RadioDjDocs()
+    /// <summary>
+    /// Carpeta <c>docs/radiodj</c> del repositori: es busca pujant des de la carpeta de les proves i, si no hi és (proves
+    /// compilades en una altra carpeta), des de la carpeta de la variable d'entorn ONABAGES_REPO.
+    /// </summary>
+    internal static string RadioDjDocs()
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "docs", "radiodj")))
-            dir = dir.Parent;
-        return Path.Combine(dir?.FullName ?? throw new DirectoryNotFoundException("No es troba docs/radiodj"), "docs", "radiodj");
+        foreach (string? start in new[] { AppContext.BaseDirectory, Environment.GetEnvironmentVariable("ONABAGES_REPO") })
+        {
+            if (string.IsNullOrEmpty(start)) continue;
+            for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
+            {
+                string docs = Path.Combine(dir.FullName, "docs", "radiodj");
+                if (Directory.Exists(docs)) return docs;
+            }
+        }
+        throw new DirectoryNotFoundException("No es troba docs/radiodj");
     }
 
     private const string Schema = """

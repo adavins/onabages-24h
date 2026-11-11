@@ -271,4 +271,66 @@ public sealed class CutTests : IDisposable
         Assert.Contains("fos de 200 ms", record.Detail);
         Assert.Equal(2, fired.Count); // en programar-lo i quan ha sonat
     }
+
+    [Fact]
+    public void Un_TALLA_amb_tots_els_fitxers_que_falten_passa_a_l_AutoDJ_a_la_mostra_de_l_hora_sense_silenci()
+    {
+        // Fase 2, pas 6: amb la graella migrada en un ordinador sense els fitxers dels programes, aquest és el cas habitual
+        using var db = Database.Open(_temp.File("sense-fitxers.db"));
+        var library = new Library(db);
+        var rotations = new Rotations(db);
+        var events = new Events(db);
+        long music = library.EnsureSubcategory(library.EnsureCategory("Música"), "Bossa");
+        for (int i = 0; i < 4; i++)
+            library.AddTrack(new Track { Path = Wav($"musica{i}", 20, 0.1f), SubcategoryId = music, Title = $"Cançó {i}", DurationMs = 20_000 });
+        long rotation = rotations.Save("Prova", [new RotationStep { SubcategoryId = music, RepeatRule = false }]);
+        long missing1 = library.AddTrack(new Track { Path = _temp.File("no-hi-es-1.mp3"), Title = "Locució", DurationMs = 3000 });
+        long missing2 = library.AddTrack(new Track { Path = _temp.File("no-hi-es-2.mp3"), Title = "Programa", DurationMs = 3000 });
+
+        var player = NewPlayer();
+        var now = new DateTimeOffset(2026, 11, 20, 9, 59, 50, TimeSpan.Zero);
+        var autoDj = new AutoDj(library, rotations, player, clock: () => now);
+        autoDj.Configure(true, rotation);
+        var sampleClock = new SampleClock(_mixer, () => TimeSpan.Zero, () => now);
+        var scheduler = new Scheduler(events, new EventExecutor(library, player, autoDj, clock: sampleClock), NullLogger.Instance,
+            clock: () => now, zone: TimeZoneInfo.Utc);
+        events.Save(new ScheduledEvent { Name = "Programa", Mode = EventMode.Cut, StartTime = new TimeOnly(10, 0), ClearQueue = true, FadeMs = 200,
+            Actions = [new EventAction { Type = EventActionType.Track, Params = $$"""{"songId":{{missing1}}}""" },
+                       new EventAction { Type = EventActionType.Track, Params = $$"""{"songId":{{missing2}}}""" }] });
+
+        long first = _mixer.FramesRendered;
+        long? cutFrame = null;
+        int blocks = 0;
+        var output = Run(player, 12 * Rate, () =>
+        {
+            // La prova va molt més de pressa que el temps real: cada mig segon d'àudio, es deixa que els fils de lectura
+            // tornin a omplir la memòria de les veus (si no, es buiden i surt silenci, cosa que al motor no pot passar)
+            if (++blocks % 50 == 0)
+            {
+                var until = DateTime.UtcNow.AddMilliseconds(100);
+                while (DateTime.UtcNow < until && _mixer.Voices.Any(v => v.State == VoiceState.Playing && v.Buffer.Count < Rate * 2))
+                    Thread.Sleep(1);
+            }
+            now += TimeSpan.FromMilliseconds(10);
+            if (cutFrame is null && now >= new DateTimeOffset(2026, 11, 20, 9, 59, 58, TimeSpan.Zero))
+                cutFrame = _mixer.FramesRendered + 2 * Rate;
+            scheduler.Tick();
+            autoDj.Tick();
+        });
+
+        // La pista de l'AutoDJ comença a l'hora, al lloc de les que falten
+        var started = _started.Last();
+        Assert.StartsWith("Cançó", started.Item.Title);
+        Assert.Equal(started.CutFrame, started.StartFrame); // al fotograma exacte del tall
+        Assert.InRange(started.StartFrame, cutFrame!.Value - Rate / 100, cutFrame.Value + Rate / 100);
+        // I no hi ha cap mostra en silenci: ni abans, ni durant el fos, ni després de l'hora
+        int from = (int)(Rate / 2), to = (int)(cutFrame.Value - first) + Rate;
+        float quietest = Enumerable.Range(from, to - from).Min(f => output[f * 2]);
+        int at = Enumerable.Range(from, to - from).FirstOrDefault(f => output[f * 2] <= 0.05f);
+        int len = Enumerable.Range(at, to - at).TakeWhile(f => output[f * 2] <= 0.05f).Count();
+        Assert.True(quietest > 0.05f, $"Silenci a la sortida (mínim {quietest}) al fotograma {at} ({len} fotogrames); tall a {cutFrame.Value - first}; " +
+            $"talls de lectura: {_mixer.Voices.Sum(v => v.Underruns)}; començades: {string.Join(", ", _started.Select(s => $"{s.Item.Title}@{s.StartFrame - first}"))}");
+        var record = Assert.Single(events.Executions(now.AddHours(-1), now.AddHours(1)));
+        Assert.Equal(ExecutionResult.Ok, record.Result);
+    }
 }

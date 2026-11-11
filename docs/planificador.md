@@ -190,7 +190,7 @@ Les ordres `queue.replace` i `queue.insert` són **atòmiques**: l'AutoDJ no pot
 3. Deduir el mode: si hi ha `Play!`, **TALLA**; si només hi ha `PluginAction|Auxiliary Players`, **SUPERPOSA**; si només hi ha `Load…|Top`, **ENCUA**. Si hi ha `Clear Playlist!`, `neteja_cua = 1` (al backup, els 79 esdeveniments amb `Play!` tenen també `Clear Playlist!`).
 4. Treure les parelles `Assisted Enable!` / `Assisted Disable!` que embolcallen el muntatge de la cua, i treure els `Clear`/`Play` (ja recollits al mode i a `neteja_cua`).
 5. **Invertir l'ordre** dels `Load Track By ID…|Top` consecutius perquè quedin en ordre d'emissió.
-6. Agrupar esdeveniments idèntics en dies diferents en un de sol amb `dies_mask`. Per exemple, les 15:00 de dilluns a divendres passen a ser 1 esdeveniment en lloc de 5, si el contingut coincideix. Si només es diferencien en falques (pistes de tipus Falca) que hi ha uns dies sí i uns altres no, també s'agrupen, i aquestes pistes porten els seus dies a `accio.dies_mask` (D-028). L'informe de migració llista els agrupaments perquè es puguin revisar.
+6. Agrupar esdeveniments idèntics en dies diferents en un de sol amb `dies_mask` (fet; l'agrupament per falques no es fa de moment perquè a les dades no n'hi ha cap cas, D-066). Per exemple, les 15:00 de dilluns a divendres passen a ser 1 esdeveniment en lloc de 5, si el contingut coincideix. Si només es diferencien en falques (pistes de tipus Falca) que hi ha uns dies sí i uns altres no, també s'agrupen, i aquestes pistes porten els seus dies a `accio.dies_mask` (D-028). L'informe de migració llista els agrupaments perquè es puguin revisar.
 7. Els esdeveniments `type = 2` (amb màscara de dies i hores) passen a `repeticio = CADA_HORA` amb `hores_mask`.
 
 ## 7. Puntualitat
