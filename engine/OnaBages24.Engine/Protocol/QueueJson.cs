@@ -60,6 +60,17 @@ public static class QueueJson
         ["latencyMeasured"] = outputs.LatencyMeasured,
     };
 
+    /// <summary>Els reproductors auxiliars que no estan lliures (docs/protocol.md, 4.8).</summary>
+    public static JsonArray Aux(AuxPlayers aux) => new(aux.Status.Select(s => (JsonNode)new JsonObject
+    {
+        ["player"] = s.Player,
+        ["item"] = Item(s.Item),
+        ["started"] = s.Started,
+        ["elapsedMs"] = (long)s.Elapsed.TotalMilliseconds,
+        ["remainingMs"] = (long)s.Remaining.TotalMilliseconds,
+        ["duckingDb"] = s.DuckingDb,
+    }).ToArray());
+
     /// <summary>Estat de l'AutoDJ (docs/protocol.md, 4.5).</summary>
     public static JsonObject AutoDj(AutoDj autoDj) => new()
     {

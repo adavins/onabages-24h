@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 2, pas 4b (motor, dispositius, sortida, cua, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 2, pas 5a (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -83,6 +83,9 @@ El `message` és en català i es pot mostrar a l'operador.
 | `queue.insert` | `items`: llista de `{ "trackId": 12 }` (de la biblioteca) o `{ "path": "D:\\…" }` (un fitxer qualsevol), **o bé** `folder` (carpeta de la biblioteca: pistes barrejades, sense les que falten) i `limit` (per defecte 10); `position`: `"end"` (per defecte), `"next"` o un índex (0 = la primera que sonarà). Origen: `manual` | `{ queue }` | fase 1, pas 7c |
 | `queue.remove` | `itemId` | `{ queue }`. Només les que encara no han començat; si no, `bad_params` | fase 1, pas 7c |
 | `player.next` | `fadeMs` (de 0 a 10.000; per defecte 1.000) | `{ queue }`. La que sona baixa amb un fos i la següent comença de seguida | fase 1, pas 7c |
+| `aux.get` | — | `{ aux }` (vegeu 4.8) | fase 2, pas 5a |
+| `aux.play` | `trackId` (de la biblioteca) **o bé** `path` (un fitxer qualsevol); `player` (1–3, per defecte 1); `duckingDb` (atenuació de la música mentre sona, de −60 a 0; per defecte, cap) | `{ player, item }`. Sona per sobre del que soni, sencer i des del principi; si el reproductor ja sonava, el substitueix. Si no queden veus lliures, `bad_params` | fase 2, pas 5a |
+| `aux.stop` | `player` (per defecte 1), `fadeMs` (de 0 a 10.000; per defecte 500) | `{ stopped, aux }`. `stopped`: fals si no sonava res | fase 2, pas 5a |
 | `library.list` | `folder`, `limit` (per defecte 100, com a molt 1.000) | `{ tracks: [ … ] }` (vegeu 4.4): pistes de la carpeta i subcarpetes. De moment, per a les proves | fase 1, pas 7c |
 | `autodj.get` | — | `{ autodj }` (vegeu 4.5) | fase 1, pas 8 |
 | `autodj.set` | `enabled` (`true`/`false`), `rotationId`. Tots dos opcionals: el que no s'envia es queda com està | `{ autodj }`. La rotació es desa i es manté en tornar a arrencar; `enabled` no: el motor sempre arrenca amb l'AutoDJ actiu (D-053). Si la rotació no existeix, `bad_params` | fase 1, pas 8 |
@@ -255,6 +258,18 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 - `NO_EMES`: el contingut d'una emissió (normalment un ENCUA) s'ha esborrat de la cua abans de sonar, perquè un esdeveniment posterior amb `clearQueue` l'ha tret. És una línia nova amb el `scheduledFor` d'aquella emissió; la línia `OK` d'aquella emissió es manté. No compta per als certificats.
 - Un `TALLA` s'anota en programar-lo, amb `executedAt: null`. Quan la primera pista comença, la mateixa línia (mateix `id`) es completa: `executedAt` és l'hora en què sona i `detail` acaba amb «ha començat a la mostra prevista» o «ha començat amb +N ms de diferència». Per això `scheduler.fired` arriba dues vegades amb el mateix `id`.
 
+### 4.8. Reproductors auxiliars (D-064)
+
+```json
+"aux": [ { "player": 1, "item": { "id": "…", "title": "senyals horaris", … }, "started": true,
+           "elapsedMs": 1200, "remainingMs": 4800, "duckingDb": -12 } ]
+```
+
+- Només hi surten els reproductors que no estan lliures (els que sonen o esperen la seva hora). N'hi ha 3; el 1 és el dels senyals horaris.
+- `item`: com un element de la cua (4.2). `started`: fals si encara espera l'hora (un esdeveniment preparat).
+- `duckingDb`: l'atenuació de la música mentre sona (`null` = cap). La música baixa en els 200 ms d'abans que comenci l'auxiliar i torna a pujar en 500 ms quan s'acaba.
+- Un auxiliar no toca la cua: no surt a `queue.changed` ni a l'historial de la cua.
+
 ## 5. Esdeveniments
 
 | Esdeveniment | Camps | Freqüència | Des de |
@@ -264,6 +279,9 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 | `player.trackStarted` | `item` (element de la cua), `time` (UTC; quan el motor la comença a mesclar), `heardAt` (hora local amb zona en què surt per la sortida, comptant-hi la latència; `null` si no hi ha sortida) | quan una pista comença a sonar | fase 1, pas 7c; `heardAt`, fase 2, pas 4b |
 | `player.trackEnded` | `item`, `playedMs`, `complete` (ha arribat al final previst) | quan una pista s'acaba | fase 1, pas 7c |
 | `player.trackFailed` | `item`, `message` | quan una pista no es pot fer sonar (fitxer que falta o il·legible) i se salta | fase 1, pas 7c |
+| `aux.started` | `player`, `item`, `time`, `heardAt` (com a `player.trackStarted`), `aux` (4.8) | quan un auxiliar comença a sonar | fase 2, pas 5a |
+| `aux.ended` | `player`, `item`, `playedMs`, `complete` (fals si s'ha aturat o l'ha substituït un altre), `aux` (4.8) | quan un auxiliar s'acaba | fase 2, pas 5a |
+| `aux.failed` | `player`, `item`, `message` | quan el fitxer d'un auxiliar no es pot fer sonar (la música continua) | fase 2, pas 5a |
 | `output.changed` | `output` (4.3) | quan canvia la sortida, l'estat d'emergència o el problema | fase 1, pas 7c |
 | `autodj.changed` | `autodj` (4.5) | quan s'activa o es desactiva, canvia la rotació o canvia l'avís (les pistes que afegeix surten a `queue.changed`) | fase 1, pas 8 |
 | `meters` | `output` (nivells de la sortida), `position` (la pista que sona); vegeu 5.1 | unes 20 vegades per segon, només si hi ha algun client connectat | fase 1, pas 10a |

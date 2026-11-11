@@ -71,7 +71,9 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
    - 4b. Mesura del retard real a la sortida i ajust de la latència.
      - Part 1 ✔: el motor mesura la latència amb el rellotge de la targeta i la fa servir per tallar (D-062).
      - Part 2 ✔: eina `OnaBages.ToneCheck retard` (loopback o cable) que comprova amb el so de veritat que la pista surt a l'hora prevista (D-063). Primera mesura per loopback: +4,4 ms. Falta, opcional, la prova amb cable.
-5. SUPERPOSA i senyals horaris: una veu a sobre de la música, amb atenuació opcional; acció `AUXILIAR`.
+5. SUPERPOSA i senyals horaris: una veu a sobre de la música, amb atenuació opcional; acció `AUXILIAR`. En dues parts (D-064):
+   - 5a. ✔ Reproductors auxiliars (3) i atenuació de la música al mesclador, a la mostra exacta; ordres `aux.*`.
+   - 5b. Mode SUPERPOSA i acció `AUXILIAR` al planificador (oberta 30 s abans i a la mostra de l'hora), i `retard --auxiliar` per mesurar-ho amb el so real.
 6. Migració dels esdeveniments de RadioDJ a `importa-radiodj` (secció 6), amb informe.
 7. Acció `STREAM` (D-010, D-030, D-031), amb un servidor de proves local.
 8. Interfície: 8a graella per setmanes reals i plantilla (lectura); 8b editor d'esdeveniments amb les 10 pròximes emissions; 8c avisos en desar (franja massa llarga, ENCUA que no sonarà, emissions perdudes pel canvi d'hora).

@@ -33,6 +33,7 @@ public sealed class CommandRouter
     private readonly NowPlaying? _nowPlaying;
     private readonly Events? _events;
     private readonly Scheduler? _scheduler;
+    private readonly AuxPlayers? _aux;
 
     /// <param name="state">Estat del motor.</param>
     /// <param name="requestShutdown">Atura el motor (s'executa després de respondre).</param>
@@ -45,9 +46,10 @@ public sealed class CommandRouter
     /// <param name="nowPlaying">Exportació del títol per a BUTT (igual).</param>
     /// <param name="events">Esdeveniments del planificador (igual).</param>
     /// <param name="scheduler">Planificador: se li diu que torni a llegir els esdeveniments quan canvien (igual).</param>
+    /// <param name="aux">Reproductors auxiliars (igual).</param>
     public CommandRouter(EngineState state, Action requestShutdown, Library? library = null, Func<IReadOnlyList<AudioDevice>>? listDevices = null,
         QueuePlayer? queue = null, OutputManager? outputs = null, AutoDj? autoDj = null, Rotations? rotations = null,
-        NowPlaying? nowPlaying = null, Events? events = null, Scheduler? scheduler = null)
+        NowPlaying? nowPlaying = null, Events? events = null, Scheduler? scheduler = null, AuxPlayers? aux = null)
     {
         _state = state;
         _requestShutdown = requestShutdown;
@@ -60,6 +62,7 @@ public sealed class CommandRouter
         _nowPlaying = nowPlaying;
         _events = events;
         _scheduler = scheduler;
+        _aux = aux;
     }
 
     public JsonObject Handle(string text)
@@ -104,6 +107,9 @@ public sealed class CommandRouter
                 "queue.insert" => QueueInsert(msg),
                 "queue.remove" => QueueRemove(msg),
                 "player.next" => PlayerNext(msg),
+                "aux.get" => new JsonObject { ["aux"] = QueueJson.Aux(Aux()) },
+                "aux.play" => AuxPlay(msg),
+                "aux.stop" => AuxStop(msg),
                 "library.list" => LibraryList(msg),
                 "autodj.get" => new JsonObject { ["autodj"] = QueueJson.AutoDj(AutoDjOrError()) },
                 "autodj.set" => AutoDjSet(msg),
@@ -286,6 +292,66 @@ public sealed class CommandRouter
         if (fadeMs is < 0 or > 10_000) throw new BadParamsException("El camp 'fadeMs' ha de ser entre 0 i 10.000.");
         queue.Skip(TimeSpan.FromMilliseconds(fadeMs));
         return new JsonObject { ["queue"] = QueueJson.Queue(queue) };
+    }
+
+    // --- Reproductors auxiliars (fase 2, pas 5) ---
+
+    private AuxPlayers Aux() => _aux ?? throw new BadParamsException("El motor no té reproductors auxiliars.");
+
+    /// <summary>Número de reproductor (<c>player</c>, per defecte 1).</summary>
+    private static int ReadPlayer(JsonObject msg)
+    {
+        int player = msg["player"] is null ? 1 : ReadInt(msg["player"]) ?? 0;
+        if (!AuxPlayers.IsValidPlayer(player))
+            throw new BadParamsException($"El camp 'player' ha de ser un número de l'1 al {AuxPlayers.Count}.");
+        return player;
+    }
+
+    /// <summary>
+    /// Fa sonar un fitxer per un reproductor auxiliar, per sobre del que sona: <c>trackId</c> (de la biblioteca) o
+    /// <c>path</c>; <c>player</c> (1–3, per defecte 1); <c>duckingDb</c> (atenuació de la música, de −60 a 0; per defecte, cap).
+    /// </summary>
+    private JsonObject AuxPlay(JsonObject msg)
+    {
+        var aux = Aux();
+        int player = ReadPlayer(msg);
+
+        QueueItem item;
+        if (msg["trackId"] is JsonValue idValue && idValue.TryGetValue(out long trackId))
+        {
+            var track = _library?.GetTrack(trackId) ?? throw new BadParamsException($"No existeix la pista {trackId}.");
+            item = QueueItem.FromTrack(track, QueueOrigin.Manual);
+        }
+        else if (ReadString(msg["path"]) is { Length: > 0 } path)
+        {
+            item = _library?.FindByPath(path) is { } known
+                ? QueueItem.FromTrack(known, QueueOrigin.Manual)
+                : new QueueItem { Path = path, Title = System.IO.Path.GetFileNameWithoutExtension(path), Origin = QueueOrigin.Manual };
+        }
+        else throw new BadParamsException("Falta 'trackId' o 'path'.");
+
+        double? ducking = null;
+        if (msg["duckingDb"] is not null)
+        {
+            if (msg["duckingDb"] is not JsonValue v || !v.TryGetValue(out double db) || db is < -60 or > 0)
+                throw new BadParamsException("El camp 'duckingDb' ha de ser un nombre entre −60 i 0 (dB).");
+            ducking = db;
+        }
+
+        if (!aux.Play(player, item, ducking))
+            throw new BadParamsException("No queden veus lliures al mesclador: no es pot fer sonar ara.");
+        return new JsonObject { ["player"] = player, ["item"] = QueueJson.Item(item) };
+    }
+
+    /// <summary>Atura un reproductor auxiliar (<c>player</c>, per defecte 1) amb un fos (<c>fadeMs</c>, per defecte 500).</summary>
+    private JsonObject AuxStop(JsonObject msg)
+    {
+        var aux = Aux();
+        int player = ReadPlayer(msg);
+        int fadeMs = ReadInt(msg["fadeMs"]) ?? 500;
+        if (fadeMs is < 0 or > 10_000) throw new BadParamsException("El camp 'fadeMs' ha de ser entre 0 i 10.000.");
+        bool stopped = aux.Stop(player, TimeSpan.FromMilliseconds(fadeMs));
+        return new JsonObject { ["stopped"] = stopped, ["aux"] = QueueJson.Aux(aux) };
     }
 
     // --- Biblioteca ---

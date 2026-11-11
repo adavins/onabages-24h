@@ -99,8 +99,16 @@ public sealed class Mixer : IWaveProvider
             mix.Clear();
 
             long blockStart = Interlocked.Read(ref _framesRendered);
+            // Primer la música (la que s'atenua), després l'atenuació, i al final els auxiliars per sobre (fase 2, pas 5)
             foreach (var voice in _voices)
-                voice.MixInto(mix, _scratch, blockStart, frames);
+            {
+                if (!voice.Overlay) voice.MixInto(mix, _scratch, blockStart, frames);
+            }
+            ApplyDucking(mix, blockStart, frames);
+            foreach (var voice in _voices)
+            {
+                if (voice.Overlay) voice.MixInto(mix, _scratch, blockStart, frames);
+            }
 
             Meter.AddInterleaved(mix, 2);
             WriteOutput(mix, output.Slice(done * _outChannels, frames * _outChannels), frames);
@@ -114,6 +122,46 @@ public sealed class Mixer : IWaveProvider
         // La parella per al rellotge de mostres, escrita de manera que l'altre fil no en pugui llegir una de mig feta
         _snapshot.Write(Interlocked.Read(ref _framesRendered), now);
         return buffer.Length;
+    }
+
+    // --- Atenuació (ducking) ---
+
+    /// <summary>Quantes atenuacions hi pot haver alhora (una per reproductor auxiliar, amb marge).</summary>
+    public const int DuckSlots = 4;
+
+    private readonly DuckEnvelope?[] _ducks = new DuckEnvelope?[DuckSlots];
+
+    /// <summary>
+    /// Fil de control: programa (o treu, amb null) l'atenuació de la música del lloc <paramref name="slot"/>. Si n'hi ha
+    /// més d'una alhora, val la més forta. El fil d'àudio la recull al bloc següent; com que va en fotogrames, no
+    /// importa si arriba uns mil·lisegons tard (sempre que sigui abans que comenci a baixar).
+    /// </summary>
+    public void SetDuck(int slot, DuckEnvelope? duck) => Volatile.Write(ref _ducks[slot], duck);
+
+    /// <summary>L'atenuació programada al lloc <paramref name="slot"/> (o null). Per a les proves i l'estat.</summary>
+    public DuckEnvelope? GetDuck(int slot) => Volatile.Read(ref _ducks[slot]);
+
+    /// <summary>Fil d'àudio: multiplica la música del bloc pel guany de l'atenuació, mostra a mostra. Sense objectes nous.</summary>
+    private void ApplyDucking(Span<float> mix, long blockStart, int frames)
+    {
+        long blockEnd = blockStart + frames;
+        bool any = false;
+        for (int s = 0; s < DuckSlots; s++)
+        {
+            if (Volatile.Read(ref _ducks[s]) is { } d && d.Touches(blockStart, blockEnd)) any = true;
+        }
+        if (!any) return;
+
+        for (int i = 0; i < frames; i++)
+        {
+            float gain = 1f;
+            for (int s = 0; s < DuckSlots; s++)
+            {
+                if (_ducks[s] is { } d) gain = Math.Min(gain, d.GainAt(blockStart + i));
+            }
+            mix[i * 2] *= gain;
+            mix[i * 2 + 1] *= gain;
+        }
     }
 
     /// <summary>Copia la mescla estèreo a la sortida: tal qual (2 canals), barrejada (1 canal) o amb els altres canals en silenci.</summary>

@@ -103,11 +103,13 @@ public static class EngineServer
         var queue = new QueuePlayer(mixer);
         // Rellotge de mostres (fase 2, pas 4): l'hora en què sona cada fotograma, amb la latència mesurada de la sortida (pas 4b)
         var sampleClock = new SampleClock(mixer, () => outputs.Latency);
+        // Reproductors auxiliars (fase 2, pas 5): senyals horaris per sobre de la música, amb atenuació opcional
+        var aux = new AuxPlayers(mixer);
 
         // AutoDJ (fase 1, pas 8): arrenca sol amb la rotació desada (o la primera), i l'emissió comença de seguida
         var rotations = new Rotations(database);
         var autoDj = new AutoDj(library, rotations, queue);
-        var playback = new PlaybackEvents(queue, outputs, log, Broadcast, autoDj, sampleClock);
+        var playback = new PlaybackEvents(queue, outputs, log, Broadcast, autoDj, sampleClock, aux);
         var history = new PlayHistory(queue, library, log);
         ConfigureAutoDj(autoDj, library, log);
 
@@ -134,7 +136,7 @@ public static class EngineServer
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
-            events: events, scheduler: scheduler);
+            events: events, scheduler: scheduler, aux: aux);
 
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15) });
 
@@ -181,7 +183,7 @@ public static class EngineServer
         });
 
         // Fil de control (docs/disseny-motor.md, 3): la cua cada 10 ms i la sortida cada 0,5 s. Mai no fa esperar el fil d'àudio.
-        var control = new ControlLoop(queue, outputs, log, autoDj, scheduler);
+        var control = new ControlLoop(queue, outputs, log, autoDj, scheduler, aux);
         var deviceWatcher = new DeviceWatcher();
         deviceWatcher.Changed += _ => outputs.Poke();
         try { deviceWatcher.Start(); }
@@ -203,6 +205,7 @@ public static class EngineServer
             deviceWatcher.Dispose();
             control.Dispose();
             queue.Dispose();
+            aux.Dispose();
             outputs.Dispose();
             RuntimeFile.DeleteIfOwned();
         });

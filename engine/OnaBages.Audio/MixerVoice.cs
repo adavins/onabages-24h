@@ -38,6 +38,7 @@ public sealed class MixerVoice
     private long _fadeOutStart = long.MaxValue; // fotograma on comença el fos de sortida (o l'aturada, si no n'hi ha)
     private int _fadeOutFrames;
     private volatile float _gain = 1f;
+    private volatile bool _overlay;
     private volatile bool _sourceFinished;
     private long _framesPlayed;
     private long _actualStartFrame = -1;
@@ -77,6 +78,16 @@ public sealed class MixerVoice
     /// <summary>Vegades que la memòria s'ha buidat abans d'hora (el disc no ha anat prou ràpid). Ha de ser 0.</summary>
     public int Underruns => Volatile.Read(ref _underruns);
 
+    /// <summary>
+    /// Veu d'un reproductor auxiliar (senyals horaris, fase 2, pas 5): sona per sobre de la resta, i l'atenuació del
+    /// mesclador (<see cref="Mixer.SetDuck"/>) no l'afecta. Es posa després de reservar-la i abans de programar-la.
+    /// </summary>
+    public bool Overlay
+    {
+        get => _overlay;
+        set => _overlay = value;
+    }
+
     /// <summary>Guany lineal (1 = tal com és). S'hi arriba amb una rampa curta, sense clics.</summary>
     public float Gain
     {
@@ -98,6 +109,7 @@ public sealed class MixerVoice
         Volatile.Write(ref _underruns, 0);
         Interlocked.Exchange(ref _fadeOutStart, long.MaxValue);
         _gain = 1f;
+        _overlay = false;
         return true;
     }
 

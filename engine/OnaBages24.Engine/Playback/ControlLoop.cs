@@ -18,13 +18,16 @@ public sealed class ControlLoop : IDisposable
     private readonly OutputManager _outputs;
     private readonly AutoDj? _autoDj;
     private readonly Scheduling.Scheduler? _scheduler;
+    private readonly AuxPlayers? _aux;
     private readonly ILogger _log;
     private readonly CancellationTokenSource _stop = new();
     private readonly Thread _thread;
 
-    public ControlLoop(QueuePlayer queue, OutputManager outputs, ILogger log, AutoDj? autoDj = null, Scheduling.Scheduler? scheduler = null)
+    public ControlLoop(QueuePlayer queue, OutputManager outputs, ILogger log, AutoDj? autoDj = null, Scheduling.Scheduler? scheduler = null,
+        AuxPlayers? aux = null)
     {
         _scheduler = scheduler;
+        _aux = aux;
         _queue = queue;
         _outputs = outputs;
         _autoDj = autoDj;
@@ -80,6 +83,16 @@ public sealed class ControlLoop : IDisposable
                     {
                         lastError = DateTime.UtcNow;
                         _log.LogError("Error a l'AutoDJ (continua): {Error}", ex);
+                    }
+                }
+                // Els auxiliars, a part: un error a la cua no pot impedir que sonin els senyals horaris (ni al revés)
+                try { _aux?.Tick(); }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    if (DateTime.UtcNow - lastError > TimeSpan.FromSeconds(10))
+                    {
+                        lastError = DateTime.UtcNow;
+                        _log.LogError("Error als reproductors auxiliars (continua): {Error}", ex);
                     }
                 }
                 _queue.Tick();

@@ -12,8 +12,43 @@ public sealed class PlaybackEvents
 {
     /// <param name="clock">Per dir a <c>player.trackStarted</c> a quina hora se sent la pista (<c>heardAt</c>).</param>
     public PlaybackEvents(QueuePlayer queue, OutputManager outputs, ILogger log, Action<JsonObject> broadcast, AutoDj? autoDj = null,
-        SampleClock? clock = null)
+        SampleClock? clock = null, AuxPlayers? aux = null)
     {
+        if (aux is not null)
+        {
+            // Reproductors auxiliars (fase 2, pas 5): aux.started, aux.ended i aux.failed
+            aux.Started += e =>
+            {
+                log.LogInformation("Auxiliar {Player}: sona {Track}", e.Player, e.Item);
+                var ev = Messages.Event("aux.started");
+                ev["player"] = e.Player;
+                ev["item"] = QueueJson.Item(e.Item);
+                ev["time"] = DateTimeOffset.UtcNow.ToString("O");
+                ev["heardAt"] = clock?.TimeOf(e.StartFrame)?.ToString("O");
+                ev["aux"] = QueueJson.Aux(aux);
+                broadcast(ev);
+            };
+            aux.Ended += e =>
+            {
+                var ev = Messages.Event("aux.ended");
+                ev["player"] = e.Player;
+                ev["item"] = QueueJson.Item(e.Item);
+                ev["playedMs"] = (long)e.Played.TotalMilliseconds;
+                ev["complete"] = e.Complete;
+                ev["aux"] = QueueJson.Aux(aux);
+                broadcast(ev);
+            };
+            aux.Failed += e =>
+            {
+                log.LogWarning("Auxiliar {Player}: no es pot fer sonar {Track}: {Message}", e.Player, e.Item, e.Message);
+                var ev = Messages.Event("aux.failed");
+                ev["player"] = e.Player;
+                ev["item"] = QueueJson.Item(e.Item);
+                ev["message"] = e.Message;
+                broadcast(ev);
+            };
+        }
+
         if (autoDj is not null)
         {
             autoDj.Changed += () =>
