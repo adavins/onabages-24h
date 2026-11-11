@@ -111,12 +111,21 @@ public static class EngineServer
         // AutoDJ (fase 1, pas 8): arrenca sol amb la rotació desada (o la primera), i l'emissió comença de seguida
         var rotations = new Rotations(database);
         var autoDj = new AutoDj(library, rotations, queue);
+        // Trepitjador (fase 3, pas 5): el sweeper a sobre de l'inici de la pista, amb l'atenuació desada (D-078) o −8 dB
+        var sweepers = new SweeperOverlay(queue, aux) { DuckingDb = CommandRouter.ReadDucking(library).Sweepers };
         var playback = new PlaybackEvents(queue, outputs, log, Broadcast, autoDj, sampleClock, aux);
-        var history = new PlayHistory(queue, library, log);
+        var history = new PlayHistory(queue, library, log, aux);
         // Les pistes que sonaven si el motor es va aturar de cop (fase 3, pas 2a): es tanquen com a tallades
         if (library.CloseOpenHistory() is var closed and > 0)
             log.LogInformation("Historial: {Count} pistes que sonaven quan el motor es va aturar, tancades com a tallades", closed);
         ConfigureAutoDj(autoDj, library, log);
+        ConfigureSweepers(autoDj, library, log);
+        // La categoria de sweepers es desa cada vegada que canvia (a mà o amb l'acció SWEEPERS): es manté si el motor es reinicia
+        autoDj.SweepersChanged += subcategoryId =>
+        {
+            try { library.SetSetting(SweepersSettingKey, System.Text.Json.JsonSerializer.Serialize(new { subcategoryId })); }
+            catch (DatabaseException ex) { log.LogWarning("No s'ha pogut desar la categoria de sweepers: {Message}", ex.Message); }
+        };
 
         // Títol per a BUTT (fase 1, pas 9; D-009): per defecte, <dades>\NowPlaying.txt
         using var nowPlaying = new NowPlaying(queue, Path.Combine(RuntimeFile.DirectoryPath, "NowPlaying.txt"),
@@ -167,7 +176,7 @@ public static class EngineServer
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
-            events: events, scheduler: scheduler, aux: aux);
+            events: events, scheduler: scheduler, aux: aux, sweepers: sweepers);
         // Notes (fase 3, pas 4a): quan algú les desa, les altres interfícies connectades les reben
         router.NotesChanged += text =>
         {
@@ -221,7 +230,7 @@ public static class EngineServer
         });
 
         // Fil de control (docs/disseny-motor.md, 3): la cua cada 10 ms i la sortida cada 0,5 s. Mai no fa esperar el fil d'àudio.
-        var control = new ControlLoop(queue, outputs, log, autoDj, scheduler, aux);
+        var control = new ControlLoop(queue, outputs, log, autoDj, scheduler, aux, sweepers);
         var deviceWatcher = new DeviceWatcher();
         deviceWatcher.Changed += _ => outputs.Poke();
         try { deviceWatcher.Start(); }
@@ -356,6 +365,30 @@ public static class EngineServer
         {
             log.LogWarning("La rotació desada ({Id}) ja no existeix: es fa servir la primera", rotationId);
             autoDj.Configure(enabled, null, "en arrencar el motor");
+        }
+    }
+
+    /// <summary>Clau de la configuració amb la categoria de sweepers del trepitjador: <c>{ "subcategoryId": 55 }</c>.</summary>
+    internal const string SweepersSettingKey = "sweepers";
+
+    /// <summary>
+    /// La categoria de sweepers en arrencar el motor (fase 3, pas 5): la desada. Si no n'hi ha cap (primera vegada), cap:
+    /// la posarà el primer esdeveniment amb l'acció SWEEPERS o l'operador.
+    /// </summary>
+    internal static void ConfigureSweepers(AutoDj autoDj, Library library, ILogger log)
+    {
+        try
+        {
+            if (library.GetSetting(SweepersSettingKey) is { } json
+                && System.Text.Json.Nodes.JsonNode.Parse(json)?["subcategoryId"]?.GetValue<long?>() is { } id
+                && !autoDj.SetSweepers(id, "en arrencar el motor"))
+            {
+                log.LogWarning("La categoria de sweepers desada ({Id}) ja no existeix: no n'hi ha cap", id);
+            }
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or FormatException)
+        {
+            log.LogWarning("La categoria de sweepers desada no és vàlida ({Message}): no n'hi ha cap", ex.Message);
         }
     }
 

@@ -35,7 +35,7 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations)
                 EventActionType.Rotation => new ActionInfo(RotationName(Long(p, "rotacioId")), "Rotació de l'AutoDJ", false, null),
                 EventActionType.Sweepers => new ActionInfo(
                     Long(p, "subcategoriaId") is { } sub ? library?.SubcategoryName(sub) ?? $"Subcategoria {sub}" : "Sense subcategoria",
-                    "Sweepers (fase 3)", false, null),
+                    "Categoria de sweepers (trepitjador)", false, null),
                 EventActionType.AutoDj => new ActionInfo(
                     p.TryGetProperty("actiu", out var on) && on.ValueKind == JsonValueKind.False ? "Atura l'AutoDJ" : "Activa l'AutoDJ", null, false, null),
                 _ => new ActionInfo(Events.ActionTypeText(action.Type), "encara no fa res", false, null),

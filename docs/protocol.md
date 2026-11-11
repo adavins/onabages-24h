@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 4c (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 5a (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -101,6 +101,7 @@ El `message` és en català i es pot mostrar a l'operador.
 | `library.search` | `text` (paraules que han de sortir totes a l'artista, al títol, a l'àlbum o a la ruta; **sense distingir accents ni majúscules**: «magazin» troba «Magazín»; buit = totes), `categoryId`, `subcategoryId`, `tagId` (filtres, opcionals), `offset` (per anar carregant; per defecte 0), `limit` (per defecte 50, com a molt 200) | `{ tracks: [ … ], more }` (vegeu 4.4), per artista i títol. `more`: n'hi ha més que les retornades | fase 2, pas 8b; filtres, `offset` i sense accents, fase 3, pas 3a |
 | `library.filters` | — | `{ categories: [ { id, name, count, subcategories: [ { id, name, count } ] } ], tags: [ { id, name, count } ] }`: les opcions dels filtres de la cerca, amb quantes pistes tenen | fase 3, pas 3a |
 | `autodj.get` | — | `{ autodj }` (vegeu 4.5) | fase 1, pas 8 |
+| `sweepers.set` | `subcategoryId` (un número, o `null` perquè no n'hi hagi cap; obligatori) | `{ autodj }`, amb la categoria nova a `sweepers` (4.5). La categoria de sweepers del trepitjador: d'on surten els sweepers dels passos de rotació amb `sweeper` (com el desplegable de RadioDJ). Es desa i es manté en tornar a arrencar. Les pistes que ja són a la cua es queden amb el sweeper que tenien. Si la subcategoria no existeix, `bad_params`. També la canvia l'acció `SWEEPERS` dels esdeveniments; tots dos avisen amb `autodj.changed` | fase 3, pas 5a |
 | `autodj.set` | `enabled` (`true`/`false`), `rotationId`, `minutes` (si s'atura: quant temps, d'1 a 720; per defecte 120). Tots opcionals: el que no s'envia es queda com està. Aturat, es torna a activar sol quan s'acaba el temps o si la cua es queda sense res (D-073) | `{ autodj }`. La rotació es desa i es manté en tornar a arrencar; `enabled` no: el motor sempre arrenca amb l'AutoDJ actiu (D-053). Si la rotació no existeix, `bad_params` | fase 1, pas 8 |
 | `rotations.list` | — | `{ rotations: [ … ] }` (vegeu 4.5) | fase 1, pas 8 |
 | `history.list` | `from`, `to`: una hora ISO 8601 amb zona (`"2026-11-10T12:00:00Z"`) o un dia (`"2026-11-10"`, en hora local; a `to`, el dia hi és inclòs). `search`: text de l'artista o del títol. `limit`: per defecte 100, com a molt 2.000. Tots opcionals | `{ entries: [ … ], more }` (vegeu 4.6): les més recents primer. `more`: n'hi ha més que les retornades | fase 1, pas 9 |
@@ -152,6 +153,7 @@ El `message` és en català i es pot mostrar a l'operador.
 - `id`: identificador de l'element a la cua (no és el de la pista); `trackId`: el de la pista a la biblioteca (`null` si s'ha afegit per ruta i no hi és).
 - `type`: `music`, `sweeper`, `stationId`, `promo`, `commercial`, `program`, `news`, `timeAnnouncement`, `timeSignal`, `stream` o `other`.
 - `origin` (D-034): `autodj`, `manual` o `event`.
+- `sweeper` (fase 3, pas 5a; D-084): el sweeper que sonarà **a sobre de l'inici** d'aquesta pista (trepitjador), amb els mateixos camps que una pista de la cua (sense `sweeper`), o `null`. El tria l'AutoDJ en posar-la a la cua.
 - `durationMs`: quant sonarà, del punt d'inici al final (sense restar el solapament amb la següent), o `null` si no se sap (p. ex. un fitxer que no és a la biblioteca). Des del pas 10c.
 
 ### 4.3. Sortida (D-038)
@@ -206,9 +208,10 @@ Rotació:
 - `subcategory`: `null` si el pas tria de tota la categoria. `tag`: `null` si no filtra per etiqueta.
 - `selection`: `leastRecent` (la que fa més temps que no sona), `leastPlayed` (la que ha sonat menys vegades) o `random`.
 - `repeatRule`: s'apliquen els criteris de repetició (no repetir pista ni artista de la cua).
-- `sweeper`: trepitjador (sweeper) a l'inici de la pista (importat de RadioDJ; encara no es fa servir).
+- `sweeper`: trepitjador (sweeper) a l'inici de la pista, «A l'inici» de RadioDJ (fase 3, pas 5a; D-084): la pista porta un sweeper de la categoria de sweepers activa.
 
 - Fase 3, pas 2b (D-076): `autodj` porta també `disabledUntil` (si està aturat, fins quan; hora ISO), `notice` (l'avís de quan s'ha tornat a activar sol, per temps o perquè la cua s'acabava; es manté fins al pròxim canvi), `rotationChangedBy` («a mà», «en arrencar el motor», «esdeveniment «Converses»») i `rotationChangedAt` (quan).
+- Fase 3, pas 5a (D-084): `autodj` porta també `sweepers`, la categoria de sweepers del trepitjador, o `null` si no n'hi ha cap: `{ "subcategoryId": 55, "name": "Sweepers / Ona Bages", "changedBy": "esdeveniment «Dance90»", "changedAt": "…" }`.
 
 ### 4.6. Historial i títol per a BUTT (D-051)
 
@@ -257,7 +260,7 @@ Exportació del títol:
 - `startTime`: hora local (`HH:MM:SS`; en desar també s'admet `HH:MM`). Dates: `AAAA-MM-DD`.
 - `daysMask`: bit 0 = dilluns (1) … bit 6 = diumenge (64); `127` = tots. `hoursMask`: bit 0 = 00 h … bit 23 = 23 h; `null` = totes.
 - `ordinals`: 1 = primer … 5 = cinquè, `-1` = l'últim. `monthDays`: 1–31, `-1` = l'últim dia del mes.
-- `params` de les accions disponibles ara: `PISTA` `{ songId }` (id de la pista a la biblioteca, el `trackId` de la cua), `AUXILIAR` `{ songId, player, duckingDb }` (`player` 1–3, per defecte 1; `duckingDb` opcional: si no hi és, el de l'esdeveniment), `ROTACIO` `{ rotacioId }`, `AUTODJ` `{ actiu }`. Les altres es poden desar, però encara no fan res (el registre ho diu).
+- `params` de les accions disponibles ara: `PISTA` `{ songId }` (id de la pista a la biblioteca, el `trackId` de la cua), `AUXILIAR` `{ songId, player, duckingDb }` (`player` 1–3, per defecte 1; `duckingDb` opcional: si no hi és, el de l'esdeveniment), `ROTACIO` `{ rotacioId }`, `AUTODJ` `{ actiu }`, `SWEEPERS` `{ subcategoriaId }` (fase 3, pas 5a: canvia la categoria de sweepers, com `sweepers.set`). Les altres es poden desar, però encara no fan res (el registre ho diu).
 - Accions a les respostes de `scheduler.list`, `scheduler.get` i `scheduler.save` (pas 8a): a més de `type`, `params` i `daysMask`, porten com es mostren: `label` (el títol de la pista amb l'artista, «Rotació OnaBages»…), `detail` (una línia més petita: tipus de pista i durada, reproductor auxiliar…), `missing` (la pista no existeix o el fitxer falta: no sonarà) i `durationMs` (quant sona la pista, si se sap). Són només per mostrar: en desar, el motor no els llegeix.
 - Avisos (`warnings` de `scheduler.save` i `scheduler.preview`, pas 8c, D-071): llista de `{ "text": "…", "dates": ["2026-11-16", …] }`, en català i a punt per mostrar. `dates`: els dies dels pròxims 14 en què passa (buit si no depèn del dia). Els calcula el motor amb una simulació dels TALLA i ENCUA actius (més l'esdeveniment que s'edita, encara que estigui desactivat) i les durades de les pistes: programa més llarg que la seva franja, ENCUA que no arribarà a sonar o que es tallarà, contingut més llarg que `maxDurationSeconds`, emissions que no sonaran pel canvi d'hora (fins a un any vista) i pistes que no existeixen, sense fitxer o sense durada. Només hi surten els avisos en què intervé l'esdeveniment (com a afectat o com a causa). Són informatius: no impedeixen desar.
 - Modes disponibles: `ENCUA` (el contingut va al davant de la cua; amb `clearQueue`, abans s'esborra la cua), `TALLA`, `SUPERPOSA` i `SISTEMA`.

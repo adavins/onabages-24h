@@ -34,6 +34,7 @@ public sealed class CommandRouter
     private readonly Events? _events;
     private readonly Scheduler? _scheduler;
     private readonly AuxPlayers? _aux;
+    private readonly SweeperOverlay? _sweepers;
 
     /// <param name="state">Estat del motor.</param>
     /// <param name="requestShutdown">Atura el motor (s'executa després de respondre).</param>
@@ -49,8 +50,10 @@ public sealed class CommandRouter
     /// <param name="aux">Reproductors auxiliars (igual).</param>
     public CommandRouter(EngineState state, Action requestShutdown, Library? library = null, Func<IReadOnlyList<AudioDevice>>? listDevices = null,
         QueuePlayer? queue = null, OutputManager? outputs = null, AutoDj? autoDj = null, Rotations? rotations = null,
-        NowPlaying? nowPlaying = null, Events? events = null, Scheduler? scheduler = null, AuxPlayers? aux = null)
+        NowPlaying? nowPlaying = null, Events? events = null, Scheduler? scheduler = null, AuxPlayers? aux = null,
+        SweeperOverlay? sweepers = null)
     {
+        _sweepers = sweepers;
         _state = state;
         _requestShutdown = requestShutdown;
         _library = library;
@@ -126,6 +129,7 @@ public sealed class CommandRouter
                 "library.filters" => LibraryFilters(),
                 "autodj.get" => new JsonObject { ["autodj"] = QueueJson.AutoDj(AutoDjOrError()) },
                 "autodj.set" => AutoDjSet(msg),
+                "sweepers.set" => SweepersSet(msg),
                 "rotations.list" => RotationsList(),
                 "history.list" => HistoryList(msg),
                 "nowplaying.get" => new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(NowPlayingOrError()) },
@@ -479,8 +483,8 @@ public sealed class CommandRouter
     /// <summary>Clau de la configuració: <c>{ "auxiliars": -10, "sweepers": -8 }</c>.</summary>
     public const string DuckingSettingKey = "atenuacio";
 
-    /// <summary>Atenuació per defecte dels sweepers (provisional; es farà servir al pas 5 de la fase 3).</summary>
-    public const double StandardSweepersDuckingDb = -8;
+    /// <summary>Atenuació per defecte dels sweepers del trepitjador (fase 3, pas 5; provisional, es decidirà escoltant-ho).</summary>
+    public const double StandardSweepersDuckingDb = SweeperOverlay.StandardDuckingDb;
 
     /// <summary>Les atenuacions per defecte desades (o les estàndard, si no n'hi ha o no es poden llegir).</summary>
     public static (double Aux, double Sweepers) ReadDucking(Library? library)
@@ -517,6 +521,7 @@ public sealed class CommandRouter
         sweepersDb = Read(msg["sweepers"], "sweepers", sweepersDb);
         library.SetSetting(DuckingSettingKey, JsonSerializer.Serialize(new { auxiliars = auxDb, sweepers = sweepersDb }));
         if (_aux is not null) _aux.DefaultDuckingDb = auxDb;
+        if (_sweepers is not null) _sweepers.DuckingDb = sweepersDb;
         return new JsonObject { ["auxiliary"] = auxDb, ["sweepers"] = sweepersDb };
     }
 
@@ -656,6 +661,27 @@ public sealed class CommandRouter
             throw new BadParamsException($"No existeix la rotació {rotationId}.");
         // Només es desa la rotació: en arrencar, el motor sempre activa l'AutoDJ (D-053)
         _library?.SetSetting(AutoDjSettingKey, JsonSerializer.Serialize(new { rotationId = autoDj.Rotation?.Id }));
+        return new JsonObject { ["autodj"] = QueueJson.AutoDj(autoDj) };
+    }
+
+    /// <summary>
+    /// Categoria de sweepers del trepitjador (fase 3, pas 5): <c>subcategoryId</c> (un número, o null perquè no n'hi hagi
+    /// cap). Es desa sola (<see cref="AutoDj.SweepersChanged"/>). Retorna l'estat de l'AutoDJ, que la porta a <c>sweepers</c>.
+    /// </summary>
+    private JsonObject SweepersSet(JsonObject msg)
+    {
+        var autoDj = AutoDjOrError();
+        if (!msg.ContainsKey("subcategoryId"))
+            throw new BadParamsException("Falta 'subcategoryId' (un número, o null perquè no n'hi hagi cap).");
+        long? subcategoryId = null;
+        if (msg["subcategoryId"] is not null)
+        {
+            if (msg["subcategoryId"] is not JsonValue v || !v.TryGetValue(out long id))
+                throw new BadParamsException("El camp 'subcategoryId' ha de ser un número o null.");
+            subcategoryId = id;
+        }
+        if (!autoDj.SetSweepers(subcategoryId, "a mà"))
+            throw new BadParamsException($"No existeix la subcategoria {subcategoryId}.");
         return new JsonObject { ["autodj"] = QueueJson.AutoDj(autoDj) };
     }
 

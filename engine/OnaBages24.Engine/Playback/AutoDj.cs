@@ -78,8 +78,51 @@ public sealed class AutoDj
 
     public DateTimeOffset? RotationChangedAt { get; private set; }
 
+    /// <summary>
+    /// Categoria de sweepers activa (fase 3, pas 5): la subcategoria d'on surten els sweepers dels passos amb trepitjador
+    /// (com el desplegable de RadioDJ que canvia l'acció «Set Sweeper Category»). Null si no n'hi ha cap.
+    /// </summary>
+    public long? SweepersSubcategoryId { get; private set; }
+
+    /// <summary>«Categoria / Subcategoria» de la categoria de sweepers activa (per mostrar-la).</summary>
+    public string? SweepersName { get; private set; }
+
+    /// <summary>Qui ha posat la categoria de sweepers activa i quan (com <see cref="RotationChangedBy"/>).</summary>
+    public string? SweepersChangedBy { get; private set; }
+
+    public DateTimeOffset? SweepersChangedAt { get; private set; }
+
     /// <summary>Ha canviat l'estat, la rotació o l'avís (no cada vegada que s'afegeix una pista: per això hi ha <c>queue.changed</c>).</summary>
     public event Action? Changed;
+
+    /// <summary>Ha canviat la categoria de sweepers (per desar-la: es manté si el motor es reinicia).</summary>
+    public event Action<long?>? SweepersChanged;
+
+    /// <summary>
+    /// Canvia la categoria de sweepers activa (fase 3, pas 5): a mà, amb l'acció SWEEPERS d'un esdeveniment o en arrencar.
+    /// Les pistes que ja són a la cua es queden amb el sweeper que tenien. Retorna false, sense canviar res, si la
+    /// subcategoria no existeix.
+    /// </summary>
+    /// <param name="subcategoryId">La subcategoria, o null perquè no n'hi hagi cap (els passos amb trepitjador sonen sense).</param>
+    /// <param name="by">Qui fa el canvi («a mà», «esdeveniment «Dance90»», «en arrencar el motor»).</param>
+    public bool SetSweepers(long? subcategoryId, string? by)
+    {
+        string? name = null;
+        if (subcategoryId is { } id && (name = _library.SubcategoryName(id)) is null) return false;
+        lock (_sync)
+        {
+            if (subcategoryId != SweepersSubcategoryId)
+            {
+                SweepersChangedBy = by;
+                SweepersChangedAt = _clock();
+            }
+            SweepersSubcategoryId = subcategoryId;
+            SweepersName = name;
+        }
+        SweepersChanged?.Invoke(subcategoryId);
+        Changed?.Invoke();
+        return true;
+    }
 
     /// <summary>
     /// Activa o desactiva l'AutoDJ i tria la rotació. Sense <paramref name="rotationId"/>, es fa servir la primera rotació
@@ -196,7 +239,14 @@ public sealed class AutoDj
                 if (track is not null)
                 {
                     if (skipped.Count > 0) problem = $"Rotació «{rotation.Name}»: sense pistes disponibles a {string.Join(", ", skipped)}; s'ha saltat";
-                    return QueueItem.FromTrack(track, QueueOrigin.AutoDj);
+                    var item = QueueItem.FromTrack(track, QueueOrigin.AutoDj);
+                    if (step.Sweeper)
+                    {
+                        // Trepitjador (fase 3, pas 5): si no n'hi ha cap, la pista sona igual, sense sweeper, i es diu
+                        item = item with { Sweeper = PickSweeper(today, inQueue, out string? sweeperProblem) };
+                        if (sweeperProblem is not null) problem = problem is null ? sweeperProblem : $"{problem}. {sweeperProblem}";
+                    }
+                    return item;
                 }
                 skipped.Add($"«{step}»");
             }
@@ -212,6 +262,29 @@ public sealed class AutoDj
         }
         problem = $"{reason}: sona música de tota la biblioteca.";
         return QueueItem.FromTrack(fallback, QueueOrigin.AutoDj);
+    }
+
+    /// <summary>
+    /// El sweeper per a un pas amb trepitjador: de la categoria de sweepers activa, el que fa més temps que no sona, i
+    /// que no sigui el d'una altra pista de la cua. Null (amb l'avís a <paramref name="problem"/>) si no n'hi ha cap.
+    /// </summary>
+    private QueueItem? PickSweeper(DateOnly today, List<QueueItem> inQueue, out string? problem)
+    {
+        problem = null;
+        if (SweepersSubcategoryId is not { } id)
+        {
+            problem = "Un pas de la rotació demana un sweeper a l'inici de la pista, però no hi ha cap categoria de sweepers triada: sona sense";
+            return null;
+        }
+        var step = new RotationStep { SubcategoryId = id, Selection = RotationSelection.LeastRecent, RepeatRule = false };
+        var alreadyUsed = inQueue.Select(i => i.Sweeper?.TrackId).OfType<long>().ToHashSet();
+        var track = Choose(_library.TracksForRotationStep(step, today), RotationSelection.LeastRecent, false, alreadyUsed, []);
+        if (track is null)
+        {
+            problem = $"No hi ha cap sweeper disponible a «{SweepersName}»: la pista sona sense";
+            return null;
+        }
+        return QueueItem.FromTrack(track, QueueOrigin.AutoDj);
     }
 
     /// <summary>Tria una pista d'entre les candidates, amb els criteris de repetició i, si n'hi ha, amb punts d'encadenament.</summary>

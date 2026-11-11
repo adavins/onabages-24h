@@ -25,7 +25,7 @@ public sealed record RotationStep
     public RotationSelection Selection { get; init; } = RotationSelection.LeastRecent;
     /// <summary>S'apliquen els criteris de repetició (no repetir pista ni artista). A RadioDJ, activat per a la música.</summary>
     public bool RepeatRule { get; init; } = true;
-    /// <summary>Trepitjador: sweeper a l'inici de la pista (com a RadioDJ). Es desa, però encara no es fa servir (fase 3).</summary>
+    /// <summary>Trepitjador: sweeper a l'inici de la pista (com a RadioDJ «A l'inici»), de la categoria de sweepers activa (fase 3, pas 5).</summary>
     public bool Sweeper { get; init; }
 
     public string? CategoryName { get; init; }

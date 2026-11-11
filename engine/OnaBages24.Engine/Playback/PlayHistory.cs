@@ -13,43 +13,55 @@ public sealed class PlayHistory
     private readonly Library _library;
     private readonly ILogger _log;
 
-    public PlayHistory(QueuePlayer queue, Library library, ILogger log)
+    /// <param name="aux">Si hi és, també s'anoten els sweepers del trepitjador (fase 3, pas 5), com a RadioDJ. Els
+    /// reproductors auxiliars de l'operador i dels esdeveniments, no.</param>
+    public PlayHistory(QueuePlayer queue, Library library, ILogger log, AuxPlayers? aux = null)
     {
         _library = library;
         _log = log;
-        queue.Started += e =>
+        queue.Started += e => Open(e.Item);
+        queue.Ended += e => Close(e.Item, e.Played, e.Complete);
+        if (aux is not null)
         {
-            try
-            {
-                var track = (e.Item.TrackId is { } id ? library.GetTrack(id) : null)
-                            ?? new Track { Path = e.Item.Path, Artist = e.Item.Artist, Title = e.Item.Title };
-                var started = DateTimeOffset.UtcNow;
-                long entry = library.AddHistory(track, started, e.Item.Origin);
-                lock (_open) _open[e.Item.Id] = (entry, started);
-            }
-            catch (Exception ex) when (ex is DatabaseException or Microsoft.Data.Sqlite.SqliteException)
-            {
-                log.LogWarning("No s'ha pogut anotar {Track} a l'historial: {Message}", e.Item, ex.Message);
-            }
-        };
+            aux.Started += e => { if (e.Player == AuxPlayers.SweeperPlayer) Open(e.Item); };
+            aux.Ended += e => { if (e.Player == AuxPlayers.SweeperPlayer) Close(e.Item, e.Played, e.Complete); };
+        }
+    }
 
-        queue.Ended += e =>
+    /// <summary>Anota que comença a sonar (i n'actualitza la darrera reproducció).</summary>
+    private void Open(QueueItem item)
+    {
+        try
         {
-            long entry;
-            lock (_open)
-            {
-                if (!_open.Remove(e.Item.Id, out var open)) return;
-                entry = open.Entry;
-            }
-            try
-            {
-                library.FinishHistory(entry, e.Played, e.Complete);
-            }
-            catch (Exception ex) when (ex is DatabaseException or Microsoft.Data.Sqlite.SqliteException)
-            {
-                log.LogWarning("No s'ha pogut tancar {Track} a l'historial: {Message}", e.Item, ex.Message);
-            }
-        };
+            var track = (item.TrackId is { } id ? _library.GetTrack(id) : null)
+                        ?? new Track { Path = item.Path, Artist = item.Artist, Title = item.Title };
+            var started = DateTimeOffset.UtcNow;
+            long entry = _library.AddHistory(track, started, item.Origin);
+            lock (_open) _open[item.Id] = (entry, started);
+        }
+        catch (Exception ex) when (ex is DatabaseException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            _log.LogWarning("No s'ha pogut anotar {Track} a l'historial: {Message}", item, ex.Message);
+        }
+    }
+
+    /// <summary>Anota quant ha sonat i si ha sonat sencera.</summary>
+    private void Close(QueueItem item, TimeSpan played, bool complete)
+    {
+        long entry;
+        lock (_open)
+        {
+            if (!_open.Remove(item.Id, out var open)) return;
+            entry = open.Entry;
+        }
+        try
+        {
+            _library.FinishHistory(entry, played, complete);
+        }
+        catch (Exception ex) when (ex is DatabaseException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            _log.LogWarning("No s'ha pogut tancar {Track} a l'historial: {Message}", item, ex.Message);
+        }
     }
 
     /// <summary>

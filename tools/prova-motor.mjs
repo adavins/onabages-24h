@@ -9,7 +9,12 @@
 //
 // Una ordre pot ser només el nom o un objecte JSON amb els paràmetres (sense "v" ni "id"):
 //   node tools/prova-motor.mjs engine.hello devices.list
-//   node tools/prova-motor.mjs "{\"cmd\":\"queue.insert\",\"items\":[{\"trackId\":12}]}"
+//   node tools/prova-motor.mjs "{\"cmd\":\"queue.insert\",\"items\":[{\"trackId\":12}]}"   (consola de Windows, cmd)
+//
+// A PowerShell, el JSON amb cometes es trenca: millor els paràmetres com a «nom=valor» darrere de l'ordre (el valor
+// es llegeix com a JSON si es pot: números, null, true, [1,2]…; si no, és un text):
+//   node tools/prova-motor.mjs sweepers.set subcategoryId=16 autodj.set rotationId=2 queue.get
+//   node tools/prova-motor.mjs ducking.set sweepers=-6
 //
 // Amb --escolta SEGONS, mostra els esdeveniments des del principi (també els que arriben abans de les respostes) i,
 // després de les respostes, es queda escoltant aquests segons. No mostra els engine.status (excepte el primer) ni
@@ -96,6 +101,17 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '--quantes') {
     const last = JSON.parse(commands.pop());
     commands.push(JSON.stringify({ ...last, limit: Number(args[++i]) }));
+  }
+  // Paràmetre «nom=valor» de l'ordre anterior (sense JSON ni cometes, que PowerShell trenca). El valor es llegeix com a
+  // JSON si es pot (16, -8, null, true, [1,2]); si no, és un text.
+  else if (/^[A-Za-z]\w*=/.test(args[i]) && commands.length > 0) {
+    const [name, ...rest] = args[i].split('=');
+    const raw = rest.join('=');
+    let value;
+    try { value = JSON.parse(raw); } catch { value = raw; }
+    const last = commands.pop();
+    const params = last.trim().startsWith('{') ? JSON.parse(last) : { cmd: last };
+    commands.push(JSON.stringify({ ...params, [name]: value }));
   }
   else commands.push(args[i]);
 }

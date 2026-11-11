@@ -34,6 +34,13 @@ public sealed class AuxPlayers : IDisposable
     public const int Count = 3;
 
     /// <summary>
+    /// Reproductor intern del trepitjador (fase 3, pas 5; <see cref="SweeperOverlay"/>): funciona com els altres (a sobre,
+    /// amb atenuació i a un fotograma exacte), però no es pot fer servir amb les ordres <c>aux.*</c> ni surt a <see cref="Status"/>.
+    /// La seva atenuació és la quarta del mesclador (<see cref="Mixer.DuckSlots"/>).
+    /// </summary>
+    public const int SweeperPlayer = Count + 1;
+
+    /// <summary>
     /// Baixada de la música, que acaba just quan comença l'auxiliar. Curta (D-064): els senyals horaris tenen el primer
     /// pip als 16 ms del fitxer, i amb 200 ms es notava que la música baixava abans.
     /// </summary>
@@ -50,7 +57,7 @@ public sealed class AuxPlayers : IDisposable
     private readonly Mixer _mixer;
     private readonly object _sync = new();
     private readonly Dictionary<Guid, Aux> _prepared = [];
-    private readonly Aux?[] _active = new Aux?[Count + 1]; // per reproductor (l'índex 0 no es fa servir)
+    private readonly Aux?[] _active = new Aux?[SweeperPlayer + 1]; // per reproductor (l'índex 0 no es fa servir; l'últim és el del trepitjador)
     private readonly List<Aux> _ending = [];                // aturats o substituïts: s'alliberen quan acaben
     private readonly List<MixerVoice> _toRelease = [];
     private readonly QueueItem?[] _loaded = new QueueItem?[Count + 1]; // carregats a mà (fase 3, pas 4a)
@@ -128,7 +135,7 @@ public sealed class AuxPlayers : IDisposable
     /// <param name="duckingDb">Atenuació de la música mentre sona (negativa, en dB), o null perquè no n'hi hagi.</param>
     public Guid? Prepare(int player, QueueItem item, double? duckingDb)
     {
-        if (!IsValidPlayer(player)) throw new ArgumentOutOfRangeException(nameof(player));
+        if (!IsValidPlayer(player) && player != SweeperPlayer) throw new ArgumentOutOfRangeException(nameof(player));
         lock (_sync)
         {
             if (_prepared.Count >= MaxPrepared) return null;
@@ -218,7 +225,7 @@ public sealed class AuxPlayers : IDisposable
             }
 
             // 2. Els que han començat a sonar
-            for (int player = 1; player <= Count; player++)
+            for (int player = 1; player <= SweeperPlayer; player++)
             {
                 if (_active[player] is not { Reported: false } a || a.Voice.ActualStartFrame < 0) continue;
                 a.Reported = true;
@@ -228,7 +235,7 @@ public sealed class AuxPlayers : IDisposable
             }
 
             // 3. Els que han acabat
-            for (int player = 1; player <= Count; player++)
+            for (int player = 1; player <= SweeperPlayer; player++)
             {
                 if (_active[player] is not { } a || a.Voice.State != VoiceState.Finished) continue;
                 _active[player] = null;
@@ -330,7 +337,7 @@ public sealed class AuxPlayers : IDisposable
         {
             foreach (var a in _prepared.Values) Retire(a);
             _prepared.Clear();
-            for (int player = 1; player <= Count; player++)
+            for (int player = 1; player <= SweeperPlayer; player++)
             {
                 if (_active[player] is { } a) Retire(a);
                 _active[player] = null;

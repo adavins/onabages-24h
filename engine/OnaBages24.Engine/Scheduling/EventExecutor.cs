@@ -272,6 +272,7 @@ public sealed class EventExecutor
                 EventActionType.Auxiliary => (true, ""), // ja fet (i els avisos, a la preparació)
                 EventActionType.Rotation => ChangeRotation(action),
                 EventActionType.AutoDj => ChangeAutoDj(action),
+                EventActionType.Sweepers => ChangeSweepers(action),
                 _ => (false, $"L'acció {Events.ActionTypeText(action.Type)} encara no està disponible: no s'ha fet."),
             };
             if (action.Type is EventActionType.Track or EventActionType.Auxiliary) continue;
@@ -304,6 +305,18 @@ public sealed class EventExecutor
         if (!autoDj.Configure(autoDj.Enabled, id, $"esdeveniment «{currentEventName}»")) return (false, $"La rotació {id} no existeix: no s'ha canviat.");
         rememberRotation?.Invoke(id); // com amb autodj.set: es manté si el motor es reinicia (D-053)
         return (true, $"rotació «{autoDj.Rotation?.Name}»");
+    }
+
+    /// <summary>
+    /// Acció SWEEPERS (fase 3, pas 5): canvia la categoria de sweepers del trepitjador, com «Set Sweeper Category» de
+    /// RadioDJ. Es desa sola (<see cref="AutoDj.SweepersChanged"/>): es manté si el motor es reinicia.
+    /// </summary>
+    private (bool Ok, string Note) ChangeSweepers(EventAction action)
+    {
+        if (autoDj is null) return (false, "No hi ha AutoDJ: no s'ha canviat la categoria de sweepers.");
+        if (ReadLong(action, "subcategoriaId") is not { } id) return (false, "Una acció SWEEPERS no diu quina subcategoria (subcategoriaId).");
+        if (!autoDj.SetSweepers(id, $"esdeveniment «{currentEventName}»")) return (false, $"La subcategoria {id} no existeix: no s'han canviat els sweepers.");
+        return (true, $"sweepers «{autoDj.SweepersName}»");
     }
 
     private (bool Ok, string Note) ChangeAutoDj(EventAction action)

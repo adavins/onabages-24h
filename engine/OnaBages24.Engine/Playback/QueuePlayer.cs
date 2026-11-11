@@ -193,6 +193,21 @@ public sealed class QueuePlayer : IDisposable
         return FramesFromMs(mixMs - startMs);
     }
 
+    /// <summary>
+    /// La pista següent, si ja està programada i encara no sona: quina és i a quin fotograma començarà (per al
+    /// trepitjador, fase 3, pas 5). El fotograma pot canviar (p. ex. si l'operador salta a la següent).
+    /// </summary>
+    public (QueueItem Item, long StartFrame)? ScheduledNext
+    {
+        get { lock (_sync) return _next is { Scheduled: true, HasStarted: false } n ? (n.Item, n.StartFrame) : null; }
+    }
+
+    /// <summary>La pista que sona i el fotograma on ha començat de debò, o null si no sona res.</summary>
+    public (QueueItem Item, long StartFrame)? CurrentStart
+    {
+        get { lock (_sync) return _current is { HasStarted: true } c ? (c.Item, c.Voice.ActualStartFrame) : null; }
+    }
+
     /// <summary>Hi ha una pista preparant-se que encara no s'ha pogut programar (el fitxer s'està obrint). Per a les proves.</summary>
     public bool IsPreparing
     {

@@ -23,9 +23,12 @@ public sealed class ControlLoop : IDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly Thread _thread;
 
+    private readonly SweeperOverlay? _sweepers;
+
     public ControlLoop(QueuePlayer queue, OutputManager outputs, ILogger log, AutoDj? autoDj = null, Scheduling.Scheduler? scheduler = null,
-        AuxPlayers? aux = null)
+        AuxPlayers? aux = null, SweeperOverlay? sweepers = null)
     {
+        _sweepers = sweepers;
         _scheduler = scheduler;
         _aux = aux;
         _queue = queue;
@@ -85,8 +88,13 @@ public sealed class ControlLoop : IDisposable
                         _log.LogError("Error a l'AutoDJ (continua): {Error}", ex);
                     }
                 }
-                // Els auxiliars, a part: un error a la cua no pot impedir que sonin els senyals horaris (ni al revés)
-                try { _aux?.Tick(); }
+                // Els auxiliars, a part: un error a la cua no pot impedir que sonin els senyals horaris (ni al revés).
+                // Abans, el trepitjador (fase 3, pas 5), que hi programa el sweeper de la pista següent.
+                try
+                {
+                    _sweepers?.Tick();
+                    _aux?.Tick();
+                }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
                     if (DateTime.UtcNow - lastError > TimeSpan.FromSeconds(10))

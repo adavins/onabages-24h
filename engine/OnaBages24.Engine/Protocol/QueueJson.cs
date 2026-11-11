@@ -18,6 +18,8 @@ public static class QueueJson
         ["origin"] = Origin(item.Origin),
         ["eventName"] = item.EventName,
         ["durationMs"] = item.PlannedMs,
+        // Trepitjador (fase 3, pas 5): el sweeper que sonarà a sobre de l'inici, o null
+        ["sweeper"] = item.Sweeper is { } sweeper ? Item(sweeper) : null,
     };
 
     /// <summary>
@@ -111,6 +113,16 @@ public static class QueueJson
         ["notice"] = autoDj.Notice,
         ["rotationChangedBy"] = autoDj.RotationChangedBy,
         ["rotationChangedAt"] = autoDj.RotationChangedAt?.ToString("O"),
+        // Fase 3, pas 5: la categoria de sweepers del trepitjador, i d'on ve (null si no n'hi ha cap)
+        ["sweepers"] = autoDj.SweepersSubcategoryId is { } sweepersId
+            ? new JsonObject
+            {
+                ["subcategoryId"] = sweepersId,
+                ["name"] = autoDj.SweepersName,
+                ["changedBy"] = autoDj.SweepersChangedBy,
+                ["changedAt"] = autoDj.SweepersChangedAt?.ToString("O"),
+            }
+            : null,
     };
 
     /// <summary>Una rotació amb els seus passos (docs/protocol.md, 4.5).</summary>

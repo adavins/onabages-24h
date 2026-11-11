@@ -19,6 +19,12 @@ public sealed class PlaybackEvents
             // Reproductors auxiliars (fase 2, pas 5): aux.started, aux.ended i aux.failed
             aux.Started += e =>
             {
+                // El trepitjador (fase 3, pas 5) no és un reproductor de la interfície: només va al registre
+                if (e.Player == AuxPlayers.SweeperPlayer)
+                {
+                    log.LogInformation("Trepitjador: sona {Track}", e.Item);
+                    return;
+                }
                 log.LogInformation("Auxiliar {Player}: sona {Track}", e.Player, e.Item);
                 var ev = Messages.Event("aux.started");
                 ev["player"] = e.Player;
@@ -30,6 +36,7 @@ public sealed class PlaybackEvents
             };
             aux.Ended += e =>
             {
+                if (e.Player == AuxPlayers.SweeperPlayer) return;
                 var ev = Messages.Event("aux.ended");
                 ev["player"] = e.Player;
                 ev["item"] = QueueJson.Item(e.Item);
@@ -40,6 +47,11 @@ public sealed class PlaybackEvents
             };
             aux.Failed += e =>
             {
+                if (e.Player == AuxPlayers.SweeperPlayer)
+                {
+                    log.LogWarning("Trepitjador: no es pot fer sonar {Track}: {Message}. La pista sona sense sweeper.", e.Item, e.Message);
+                    return;
+                }
                 log.LogWarning("Auxiliar {Player}: no es pot fer sonar {Track}: {Message}", e.Player, e.Item, e.Message);
                 var ev = Messages.Event("aux.failed");
                 ev["player"] = e.Player;
