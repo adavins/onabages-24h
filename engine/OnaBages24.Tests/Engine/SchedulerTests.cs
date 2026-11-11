@@ -329,4 +329,70 @@ public sealed class SchedulerTests : IDisposable
         Assert.Equal(ExecutionResult.SkippedConflict, Log().Single(r => r.Name == "Programa").Result);
         Assert.All(_mixer.Voices, v => Assert.Equal(VoiceState.Idle, v.State));
     }
+
+    // --- «Atura els esdeveniments» (fase 3, pas 2c; D-073) ---
+
+    [Fact]
+    public void Aturats_no_se_n_dispara_cap_i_queden_com_a_OMES_ATURAT()
+    {
+        Save("A les 9:30", 9, 30, actions: [Pista(Track("Promo"))]);
+        Save("A les 10:00", 10, 0, actions: [Pista(Track("Programa"))]);
+        Save("A les 10:05", 10, 5, actions: [Pista(Track("Després"))]);
+        var scheduler = NewScheduler();
+        RunUntil(scheduler, At(9, 10));
+        scheduler.Pause(At(10, 0, 30), "a mà");
+
+        RunUntil(scheduler, At(10, 0, 20));
+        Assert.Empty(_queue.Upcoming);                 // no ha sonat res
+        var skipped = Assert.Single(Log());            // el de les 9:30 (fa més d'un minut); el de les 10:00 encara espera
+        Assert.Equal(ExecutionResult.SkippedPaused, skipped.Result);
+        Assert.Contains("aturats fins a les", skipped.Detail);
+
+        // A les 10:00:30 tornen a funcionar sols. El de les 10:00 ja havia d'haver sonat: no sona tard (D-077)
+        RunUntil(scheduler, At(10, 0, 31));
+        Assert.Null(scheduler.PausedUntil);
+        Assert.Empty(_queue.Upcoming);
+        Assert.Equal(ExecutionResult.SkippedPaused, Log().Single(r => r.Name == "A les 10:00").Result);
+
+        // El que encara havia d'arribar sona amb normalitat
+        RunUntil(scheduler, At(10, 5));
+        Assert.Equal(["Després"], _queue.Upcoming.Select(i => i.Title));
+    }
+
+    [Fact]
+    public void En_reactivar_a_ma_el_que_ja_havia_d_haver_sonat_no_sona_tard()
+    {
+        // Cas trobat provant-ho (11-11-2026): uns senyals horaris reactivats 15 s després van sonar 15 s tard
+        Save("Senyals", 9, 30, actions: [Pista(Track("Senyals"))]);
+        var scheduler = NewScheduler();
+        RunUntil(scheduler, At(9, 20));
+        scheduler.Pause(At(10, 0));
+        RunUntil(scheduler, At(9, 30, 15));
+
+        scheduler.Resume();
+        RunUntil(scheduler, At(9, 31));
+
+        Assert.Empty(_queue.Upcoming);
+        Assert.Equal(ExecutionResult.SkippedPaused, Assert.Single(Log()).Result);
+        Assert.Contains("el que ja havia d'haver sonat no sona", Log()[0].Detail);
+    }
+
+    [Fact]
+    public void Reactivar_abans_d_hora_i_mai_mes_de_12_hores()
+    {
+        Save("A les 9:30", 9, 30, actions: [Pista(Track("Promo"))]);
+        var scheduler = NewScheduler();
+        int changes = 0;
+        scheduler.PauseChanged += () => changes++;
+
+        scheduler.Pause(_now.AddDays(2));
+        Assert.Equal(_now.AddHours(12), scheduler.PausedUntil);   // mai indefinidament
+
+        RunUntil(scheduler, At(9, 20));
+        scheduler.Resume();
+        RunUntil(scheduler, At(9, 30));
+
+        Assert.Equal(["Promo"], _queue.Upcoming.Select(i => i.Title));
+        Assert.Equal(2, changes);
+    }
 }

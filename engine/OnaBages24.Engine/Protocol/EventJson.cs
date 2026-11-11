@@ -111,6 +111,11 @@ public static class EventJson
         return o;
     }
 
+    /// <summary>Si els esdeveniments estan aturats (fase 3, pas 2c): <c>{ until, by }</c>, o null si funcionen.</summary>
+    public static JsonObject? Paused(Scheduler scheduler) => scheduler.PausedUntil is { } until
+        ? new JsonObject { ["until"] = until.ToString("O", CultureInfo.InvariantCulture), ["by"] = scheduler.PausedBy }
+        : null;
+
     public static JsonObject Occurrence(Occurrence occurrence) => new()
     {
         ["eventId"] = occurrence.Event.Id,

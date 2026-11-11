@@ -136,6 +136,32 @@ public static class EngineServer
         };
         scheduler.EventsChanged += () => Broadcast(Messages.Event("scheduler.changed"));
 
+        // «Atura els esdeveniments» (fase 3, pas 2c; D-073): es desa, perquè si el motor es reinicia continuïn aturats fins
+        // a l'hora prevista (i no més), i s'avisa la interfície
+        const string PauseSettingKey = "esdeveniments_aturats";
+        try
+        {
+            if (library.GetSetting(PauseSettingKey) is { } pauseJson && System.Text.Json.Nodes.JsonNode.Parse(pauseJson) is { } saved
+                && saved["until"]?.GetValue<string>() is { } untilText && DateTimeOffset.TryParse(untilText, out var savedUntil)
+                && savedUntil > DateTimeOffset.Now)
+            {
+                scheduler.Pause(savedUntil, saved["by"]?.GetValue<string>());
+            }
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or FormatException)
+        {
+            log.LogWarning("L'aturada dels esdeveniments desada no és vàlida ({Message}): els esdeveniments funcionen", ex.Message);
+        }
+        scheduler.PauseChanged += () =>
+        {
+            var paused = EventJson.Paused(scheduler);
+            try { library.SetSetting(PauseSettingKey, paused?.ToJsonString() ?? "null"); }
+            catch (DatabaseException ex) { log.LogWarning("No s'ha pogut desar l'aturada dels esdeveniments: {Message}", ex.Message); }
+            var ev = Messages.Event("scheduler.paused");
+            ev["paused"] = paused;
+            Broadcast(ev);
+        };
+
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,

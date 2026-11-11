@@ -90,6 +90,7 @@
     <span class="upcoming-title">Pròxims esdeveniments</span>
     <div id="upcoming-list" class="upcoming-list"></div>
     <span id="upcoming-empty" class="text-body-secondary d-none">Cap en les pròximes 48 hores.</span>
+    <span id="upcoming-paused" class="upcoming-paused d-none" role="status"></span>
   </section>
 
   <main class="workspace">
@@ -188,6 +189,7 @@
     <span id="status-next"></span>
     <span id="status-output"></span>
     <span id="status-butt"></span>
+    <span id="status-events" class="status-events"></span>
     <button id="status-warnings" class="btn btn-link statusbar-button" type="button"></button>
   </footer>
 
@@ -210,6 +212,7 @@
       <p id="duration-message" class="ob-dialog-message"></p>
       <label for="duration-select" class="form-label">Durant</label>
       <select id="duration-select" class="form-select mb-2"></select>
+      <input id="duration-time" class="form-control mb-2 d-none" type="time" aria-label="Fins a quina hora">
       <p id="duration-until" class="form-text"></p>
       <div class="d-flex justify-content-end gap-2">
         <button id="duration-cancel" class="btn btn-secondary" value="cancel">Cancel·la</button>

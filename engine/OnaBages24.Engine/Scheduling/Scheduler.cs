@@ -80,6 +80,77 @@ public sealed class Scheduler
     /// <summary>S'ha desat o esborrat algun esdeveniment (per avisar la interfície).</summary>
     public event Action? EventsChanged;
 
+    /// <summary>S'han aturat o reactivat els esdeveniments (per desar-ho i avisar la interfície).</summary>
+    public event Action? PauseChanged;
+
+    /// <summary>
+    /// Fins quan estan aturats els esdeveniments (fase 3, pas 2c; D-073), o null si funcionen. Mai indefinidament: quan
+    /// arriba l'hora, tornen a funcionar sols.
+    /// </summary>
+    public DateTimeOffset? PausedUntil { get; private set; }
+
+    /// <summary>Qui els ha aturat i quan (per mostrar-ho), o null.</summary>
+    public string? PausedBy { get; private set; }
+
+    /// <summary>El màxim que es poden aturar d'una vegada.</summary>
+    public static readonly TimeSpan MaxPause = TimeSpan.FromHours(12);
+
+    /// <summary>
+    /// Atura els esdeveniments fins a <paramref name="until"/> (com a molt, 12 h des d'ara). Mentrestant no se'n dispara
+    /// cap: els que passen de la tolerància queden al registre com a OMES_ATURAT; si es reactiven abans, els que encara
+    /// són dins de la tolerància sonen.
+    /// </summary>
+    public void Pause(DateTimeOffset until, string? by = null)
+    {
+        var now = _clock();
+        if (until > now + MaxPause) until = now + MaxPause;
+        lock (_sync)
+        {
+            PausedUntil = until > now ? until : null;
+            PausedBy = PausedUntil is null ? null : by;
+            // El que s'havia preparat (veus de reserva dels TALLA i dels auxiliars) es deixa anar: ja no sonarà a l'hora
+            foreach (var prepared in _prepared.Values) Discard(prepared);
+            _prepared.Clear();
+        }
+        if (PausedUntil is { } u) _log.LogWarning("Esdeveniments aturats fins a les {Until:HH:mm} ({By})", u.LocalDateTime, by ?? "a mà");
+        PauseChanged?.Invoke();
+    }
+
+    /// <summary>Torna a activar els esdeveniments abans d'hora.</summary>
+    public void Resume()
+    {
+        lock (_sync)
+        {
+            if (PausedUntil is null) return;
+            SkipMissedWhilePaused(_clock());
+            PausedUntil = null;
+            PausedBy = null;
+        }
+        _log.LogInformation("Esdeveniments reactivats");
+        PauseChanged?.Invoke();
+    }
+
+    private bool IsPaused(DateTimeOffset now) => PausedUntil is { } until && now < until;
+
+    /// <summary>
+    /// En reactivar els esdeveniments (a mà o perquè s'acaba el temps): el que ja havia d'haver sonat no sona tard, queda com
+    /// a OMES_ATURAT (D-077: un senyal horari 15 s tard és pitjor que no fer-lo sonar). Només sona el que encara ha d'arribar.
+    /// Cal tenir el bloqueig.
+    /// </summary>
+    private void SkipMissedWhilePaused(DateTimeOffset now)
+    {
+        string detail = $"Els esdeveniments estaven aturats fins a les {PausedUntil!.Value.LocalDateTime:HH\\:mm}{(PausedBy is null ? "" : $" ({PausedBy})")}; en reactivar-los, el que ja havia d'haver sonat no sona.";
+        foreach (var occurrence in _window.Where(o => o.At <= now && !_handled.Contains(Key(o))).ToList())
+        {
+            if (_prepared.Remove(Key(occurrence), out var prepared)) Discard(prepared);
+            if (occurrence.SkippedClockChange)
+                Record(occurrence, null, ExecutionResult.SkippedClockChange,
+                    $"Les {occurrence.LocalTime:HH\\:mm\\:ss} no existeixen el {occurrence.Date:dd/MM/yyyy} pel canvi d'hora.");
+            else
+                Record(occurrence, null, ExecutionResult.SkippedPaused, detail);
+        }
+    }
+
     public TimeZoneInfo Zone => _zone;
 
     /// <summary>Les emissions que encara no s'han fet dels pròxims minuts, en ordre (per a la interfície i les proves).</summary>
@@ -102,6 +173,18 @@ public sealed class Scheduler
     public void Tick()
     {
         var now = _clock();
+        // S'ha acabat el temps d'aturada: tornen a funcionar sols
+        if (PausedUntil is { } until && now >= until)
+        {
+            lock (_sync)
+            {
+                SkipMissedWhilePaused(now);
+                PausedUntil = null;
+                PausedBy = null;
+            }
+            _log.LogInformation("Esdeveniments reactivats sols (s'havien aturat fins a les {Until:HH:mm})", until.LocalDateTime);
+            PauseChanged?.Invoke();
+        }
         lock (_sync)
         {
             if (_reloadRequested || now >= _nextRefresh) Refresh(now);
@@ -112,7 +195,8 @@ public sealed class Scheduler
                 if (occurrence.At > now + _settings.PrepareAhead) break; // la finestra va per ordre
                 var key = Key(occurrence);
                 if (_handled.Contains(key)) continue;
-                if (!occurrence.SkippedClockChange && !_prepared.ContainsKey(key)) _prepared[key] = Prepare(occurrence);
+                // Aturats: no es prepara res (si es reactiven, es prepararà de seguida)
+                if (!occurrence.SkippedClockChange && !_prepared.ContainsKey(key) && !IsPaused(now)) _prepared[key] = Prepare(occurrence);
                 if (DueAt(occurrence) <= now) due.Add(occurrence);
             }
 
@@ -160,8 +244,16 @@ public sealed class Scheduler
         // amb una hora que ja ha passat no s'anota com a omès. En arrencar, des de fa una hora (motor aturat o reiniciat).
         var from = (_lastTick ?? now - _settings.Lookback) - Margin;
         var to = now + _settings.Lookahead;
+        // Les emissions d'abans que encara esperen dins de la seva tolerància (p. ex. mentre els esdeveniments estan aturats,
+        // fase 3, pas 2c) es conserven: si no, en recalcular la finestra desapareixerien sense anotar-se
+        var waiting = _window
+            // (amb un minut de marge: la volta que les anota com a omeses ha de trobar-les encara a la finestra)
+            .Where(o => o.At < from && !_handled.Contains(Key(o)) && now - o.At <= TimeSpan.FromSeconds(o.Event.ToleranceSeconds) + TimeSpan.FromMinutes(1)
+                        && active.Any(e => e.Id == o.Event.Id))
+            .ToList();
         _window = active
             .SelectMany(e => Recurrences.Between(e, from, to, _zone))
+            .Concat(waiting)
             .OrderBy(o => o.At)
             .ThenByDescending(o => o.Event.Priority)
             .ThenBy(o => o.Event.Id)
@@ -221,6 +313,21 @@ public sealed class Scheduler
     /// <summary>Les emissions d'un mateix instant: omeses, en conflicte o disparades.</summary>
     private void Handle(List<Occurrence> group, DateTimeOffset now)
     {
+        // Aturats (D-073): no se'n dispara cap. Mentre són dins de la tolerància s'esperen (si es reactiven a temps, sonen);
+        // després queden al registre com a OMES_ATURAT
+        if (IsPaused(now))
+        {
+            foreach (var occurrence in group)
+            {
+                if (occurrence.SkippedClockChange)
+                    Record(occurrence, null, ExecutionResult.SkippedClockChange,
+                        $"Les {occurrence.LocalTime:HH\\:mm\\:ss} no existeixen el {occurrence.Date:dd/MM/yyyy} pel canvi d'hora.");
+                else if (now - occurrence.At > TimeSpan.FromSeconds(occurrence.Event.ToleranceSeconds))
+                    Record(occurrence, null, ExecutionResult.SkippedPaused,
+                        $"Els esdeveniments estaven aturats fins a les {PausedUntil!.Value.LocalDateTime:HH\\:mm}{(PausedBy is null ? "" : $" ({PausedBy})")}.");
+            }
+            return;
+        }
         var toRun = new List<Occurrence>();
         foreach (var occurrence in group)
         {

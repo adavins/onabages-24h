@@ -124,7 +124,8 @@ CREATE TABLE registre_execucio (
   nom              TEXT NOT NULL,           -- nom de l'esdeveniment en aquell moment
   programat_per    TEXT NOT NULL,           -- data i hora previstes
   executat_a       TEXT,
-  resultat         TEXT NOT NULL,           -- OK | OMES_TARD | OMES_CONFLICTE | OMES_CANVI_HORA | NO_EMES | ERROR
+  resultat         TEXT NOT NULL,           -- OK | OMES_TARD | OMES_CONFLICTE | OMES_CANVI_HORA | OMES_ATURAT | NO_EMES | ERROR
+                                            -- OMES_ATURAT: els esdeveniments estaven aturats a mà (D-073)
                                             -- OMES_CANVI_HORA: l'hora no existeix aquell dia (pas a l'hora d'estiu, D-057)
                                             -- NO_EMES: contingut d'un ENCUA esborrat per un TALLA abans de sonar (2.1)
   detall           TEXT

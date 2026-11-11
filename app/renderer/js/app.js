@@ -13,6 +13,7 @@ import { AutoDjView } from './ui/autodj.js';
 import { renderOutput, renderNowPlaying, renderWarnings } from './ui/statusbar.js';
 import { PlannerView } from './ui/planner.js';
 import { UpcomingEvents } from './ui/upcoming.js';
+import { EventsPause } from './ui/events-pause.js';
 
 /**
  * @typedef {{
@@ -89,6 +90,7 @@ const planner = new PlannerView(send);
 /** L'última cua rebuda: la previsió es torna a calcular quan canvien els pròxims esdeveniments. @type {any} */
 let lastQueue = { current: null, currentEndsAt: null, upcoming: [] };
 const upcoming = new UpcomingEvents(send, () => queueView.render(lastQueue, upcoming.events));
+const eventsPause = new EventsPause(send);
 const problems = { autodj: /** @type {string | null} */ (null), output: /** @type {string | null} */ (null) };
 renderWarnings(problems);
 
@@ -255,6 +257,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
     upcoming.refresh();
   });
   client.addEventListener('ev:scheduler.fired', () => upcoming.refresh());
+  client.addEventListener('ev:scheduler.paused', (e) => eventsPause.show(detail(e).paused));
   client.addEventListener('ev:meters', (e) => {
     const ev = detail(e);
     meters.set(ev.output);
@@ -277,6 +280,7 @@ async function loadState() {
     await Promise.all([historyView.refresh(), refreshNowPlayingStatus()]);
     planner.refresh(); // només si es mostra
     upcoming.refresh();
+    eventsPause.refresh();
   } catch (err) {
     console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }

@@ -74,6 +74,8 @@ public enum ExecutionResult
     SkippedClockChange,
     /// <summary>NO_EMES: el contingut d'un ENCUA s'ha esborrat de la cua abans de sonar (D-021).</summary>
     NotPlayed,
+    /// <summary>OMES_ATURAT: els esdeveniments estaven aturats a mà (D-073).</summary>
+    SkippedPaused,
     /// <summary>ERROR: no s'ha pogut executar.</summary>
     Error,
 }
@@ -629,7 +631,8 @@ public sealed class Events(Database database)
     private static readonly (ExecutionResult Value, string Text)[] ResultNames =
     [
         (ExecutionResult.Ok, "OK"), (ExecutionResult.SkippedLate, "OMES_TARD"), (ExecutionResult.SkippedConflict, "OMES_CONFLICTE"),
-        (ExecutionResult.SkippedClockChange, "OMES_CANVI_HORA"), (ExecutionResult.NotPlayed, "NO_EMES"), (ExecutionResult.Error, "ERROR"),
+        (ExecutionResult.SkippedClockChange, "OMES_CANVI_HORA"), (ExecutionResult.NotPlayed, "NO_EMES"), (ExecutionResult.SkippedPaused, "OMES_ATURAT"),
+        (ExecutionResult.Error, "ERROR"),
     ];
 
     private static string ToText<T>((T Value, string Text)[] names, T value) where T : struct, Enum =>

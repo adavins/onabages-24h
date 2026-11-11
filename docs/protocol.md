@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 2b (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 2c (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -103,6 +103,9 @@ El `message` és en català i es pot mostrar a l'operador.
 | `scheduler.preview` | `event` (4.7), encara que no s'hagi desat; `limit` (per defecte 10, com a molt 100) | `{ occurrences: [ … ], warnings }` (4.7): les pròximes emissions des d'ara (fins a 400 dies), comptant-hi les dates excloses i els canvis d'hora, i els avisos (pas 8c). No desa res. Si l'esdeveniment no és coherent, `bad_params` amb el motiu en català | fase 2, pas 8b |
 | `scheduler.delete` | `eventId` | `{ deleted: <id> }`. El registre d'execució es conserva | fase 2, pas 3 |
 | `scheduler.occurrences` | `from`, `to` (com a `history.list`; per defecte, d'ara a 24 h; com a molt 400 dies), `eventId` (només aquest, encara que estigui desactivat), `includeDisabled` (també els desactivats; per defecte, no), `limit` (per defecte 200, com a molt 2.000) | `{ occurrences: [ … ], more }` (4.7), per ordre. Sense `eventId`, només els actius que no són plantilles (amb `includeDisabled`, també els desactivats) | fase 2, pas 3; `includeDisabled`, pas 8a |
+| `scheduler.status` | — | `{ paused }`: si els esdeveniments estan aturats, `{ until, by }` (fins quan, hora ISO, i qui); si funcionen, `null` | fase 3, pas 2c |
+| `scheduler.pause` | `minutes` (1 a 720) **o bé** `until` (una hora ISO, com a molt d'aquí a 12 h) | `{ paused }`. «Atura els esdeveniments» (D-073, D-077): mentre estan aturats no se'n dispara cap, ni els senyals horaris, i queden al registre com a `OMES_ATURAT`; en reactivar-los, el que ja havia d'haver sonat tampoc no sona. Mai indefinidament: a l'hora tornen a funcionar sols. Es manté si el motor es reinicia | fase 3, pas 2c |
+| `scheduler.resume` | — | `{ paused: null }`. Els torna a activar abans d'hora. El que ja havia d'haver sonat no sona tard (`OMES_ATURAT`); només sona el que encara ha d'arribar (D-077) | fase 3, pas 2c |
 | `scheduler.log` | `from`, `to` (per defecte, avui), `eventId`, `limit` (per defecte 500) | `{ entries: [ … ], more }` (4.7): el registre d'execució, per hora prevista | fase 2, pas 3 |
 
 **Atenció:** el camp `id` del missatge és el número de l'ordre (2): per dir de quin esdeveniment es tracta, `eventId`.
@@ -300,6 +303,7 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 | `autodj.changed` | `autodj` (4.5) | quan s'activa o es desactiva, canvia la rotació o canvia l'avís (les pistes que afegeix surten a `queue.changed`) | fase 1, pas 8 |
 | `meters` | `output` (nivells de la sortida), `position` (la pista que sona); vegeu 5.1 | unes 20 vegades per segon, només si hi ha algun client connectat | fase 1, pas 10a |
 | `scheduler.fired` | `entry` (línia del registre, 4.7) | quan el planificador executa o omet una emissió, i quan comença la primera pista d'un TALLA o l'auxiliar d'un SUPERPOSA (la mateixa línia, completada) | fase 2, passos 3 a 5 |
+| `scheduler.paused` | `paused` (com a `scheduler.status`) | quan s'aturen o es reactiven els esdeveniments (també quan tornen a funcionar sols) | fase 3, pas 2c |
 | `scheduler.changed` | — | quan es desa o s'esborra un esdeveniment (la interfície torna a demanar el que mostra) | fase 2, pas 3 |
 
 ### 5.1. Mesuradors i posició

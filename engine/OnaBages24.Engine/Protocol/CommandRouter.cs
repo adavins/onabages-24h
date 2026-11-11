@@ -128,6 +128,9 @@ public sealed class CommandRouter
                 "scheduler.delete" => SchedulerDelete(msg),
                 "scheduler.occurrences" => SchedulerOccurrences(msg),
                 "scheduler.log" => SchedulerLog(msg),
+                "scheduler.status" => new JsonObject { ["paused"] = EventJson.Paused(SchedulerOrError()) },
+                "scheduler.pause" => SchedulerPause(msg),
+                "scheduler.resume" => SchedulerResume(),
                 _ => null,
             };
 
@@ -573,6 +576,42 @@ public sealed class CommandRouter
     private Events EventsOrError() => _events ?? throw new BadParamsException("El motor no té planificador.");
 
     private TimeZoneInfo Zone => _scheduler?.Zone ?? TimeZoneInfo.Local;
+
+    private Scheduler SchedulerOrError() => _scheduler ?? throw new BadParamsException("El motor no té planificador.");
+
+    /// <summary>
+    /// «Atura els esdeveniments» (fase 3, pas 2c; D-073): <c>minutes</c> (1 a 720) o <c>until</c> (una hora ISO, com a molt
+    /// d'aquí a 12 h). Mai indefinidament.
+    /// </summary>
+    private JsonObject SchedulerPause(JsonObject msg)
+    {
+        var scheduler = SchedulerOrError();
+        var now = DateTimeOffset.Now;
+        DateTimeOffset until;
+        if (msg["minutes"] is not null)
+        {
+            if (ReadInt(msg["minutes"]) is not { } minutes || minutes is < 1 or > 720)
+                throw new BadParamsException("El camp 'minutes' ha de ser entre 1 i 720 (12 hores).");
+            until = now.AddMinutes(minutes);
+        }
+        else if (ReadString(msg["until"]) is { } text && DateTimeOffset.TryParse(text, System.Globalization.CultureInfo.InvariantCulture,
+                     System.Globalization.DateTimeStyles.None, out var parsed))
+        {
+            if (parsed <= now) throw new BadParamsException("L'hora ha de ser més tard que ara.");
+            if (parsed > now + Scheduler.MaxPause) throw new BadParamsException("Com a molt, 12 hores.");
+            until = parsed;
+        }
+        else throw new BadParamsException("Falta 'minutes' (1 a 720) o 'until' (una hora ISO).");
+        scheduler.Pause(until, "a mà");
+        return new JsonObject { ["paused"] = EventJson.Paused(scheduler) };
+    }
+
+    private JsonObject SchedulerResume()
+    {
+        var scheduler = SchedulerOrError();
+        scheduler.Resume();
+        return new JsonObject { ["paused"] = EventJson.Paused(scheduler) };
+    }
 
     private JsonObject SchedulerList()
     {
