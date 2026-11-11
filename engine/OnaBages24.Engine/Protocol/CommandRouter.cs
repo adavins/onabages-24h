@@ -110,7 +110,11 @@ public sealed class CommandRouter
                 "queue.regenerate" => QueueRegenerate(),
                 "player.playItem" => PlayerPlayItem(msg),
                 "player.next" => PlayerNext(msg),
-                "aux.get" => new JsonObject { ["aux"] = QueueJson.Aux(Aux()) },
+                "aux.get" => new JsonObject { ["aux"] = QueueJson.Aux(Aux()), ["loaded"] = QueueJson.AuxLoaded(Aux()) },
+                "aux.load" => AuxLoad(msg),
+                "aux.unload" => AuxUnload(msg),
+                "notes.get" => NotesGet(),
+                "notes.set" => NotesSet(msg),
                 "aux.play" => AuxPlay(msg),
                 "aux.stop" => AuxStop(msg),
                 "library.list" => LibraryList(msg),
@@ -406,20 +410,7 @@ public sealed class CommandRouter
     {
         var aux = Aux();
         int player = ReadPlayer(msg);
-
-        QueueItem item;
-        if (msg["trackId"] is JsonValue idValue && idValue.TryGetValue(out long trackId))
-        {
-            var track = _library?.GetTrack(trackId) ?? throw new BadParamsException($"No existeix la pista {trackId}.");
-            item = QueueItem.FromTrack(track, QueueOrigin.Manual);
-        }
-        else if (ReadString(msg["path"]) is { Length: > 0 } path)
-        {
-            item = _library?.FindByPath(path) is { } known
-                ? QueueItem.FromTrack(known, QueueOrigin.Manual)
-                : new QueueItem { Path = path, Title = System.IO.Path.GetFileNameWithoutExtension(path), Origin = QueueOrigin.Manual };
-        }
-        else throw new BadParamsException("Falta 'trackId' o 'path'.");
+        var item = ReadAuxItem(msg);
 
         double? ducking = null;
         if (msg["duckingDb"] is not null)
@@ -429,9 +420,77 @@ public sealed class CommandRouter
             ducking = db;
         }
 
+        // Sense pista ni fitxer: la carregada al reproductor (fase 3, pas 4a)
+        // Cada vegada és un element nou (amb un id nou), perquè els avisos d'inici i final no es confonguin
+        item ??= (aux.Loaded(player) ?? throw new BadParamsException($"El reproductor {player} no té cap pista carregada."))
+            with { Id = Guid.NewGuid() };
         if (!aux.Play(player, item, ducking))
             throw new BadParamsException("No queden veus lliures al mesclador: no es pot fer sonar ara.");
         return new JsonObject { ["player"] = player, ["item"] = QueueJson.Item(item) };
+    }
+
+    /// <summary>La pista d'una ordre dels auxiliars: <c>trackId</c> (de la biblioteca) o <c>path</c>; null si no n'hi ha cap.</summary>
+    private QueueItem? ReadAuxItem(JsonObject msg)
+    {
+        if (msg["trackId"] is JsonValue idValue && idValue.TryGetValue(out long trackId))
+        {
+            var track = _library?.GetTrack(trackId) ?? throw new BadParamsException($"No existeix la pista {trackId}.");
+            return QueueItem.FromTrack(track, QueueOrigin.Manual);
+        }
+        if (ReadString(msg["path"]) is { Length: > 0 } path)
+        {
+            return _library?.FindByPath(path) is { } known
+                ? QueueItem.FromTrack(known, QueueOrigin.Manual)
+                : new QueueItem { Path = path, Title = System.IO.Path.GetFileNameWithoutExtension(path), Origin = QueueOrigin.Manual };
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Carrega una pista a un reproductor auxiliar sense fer-la sonar (fase 3, pas 4a): <c>player</c> i <c>trackId</c> o
+    /// <c>path</c>. Si el fitxer falta, <c>bad_params</c> (no sonaria).
+    /// </summary>
+    private JsonObject AuxLoad(JsonObject msg)
+    {
+        var aux = Aux();
+        int player = ReadPlayer(msg);
+        var item = ReadAuxItem(msg) ?? throw new BadParamsException("Falta 'trackId' o 'path'.");
+        if (!System.IO.File.Exists(item.Path))
+            throw new BadParamsException($"El fitxer no hi és: {item.Path}");
+        aux.Load(player, item);
+        return new JsonObject { ["loaded"] = QueueJson.AuxLoaded(aux) };
+    }
+
+    /// <summary>Treu la pista carregada d'un reproductor auxiliar (el que hi soni continua sonant).</summary>
+    private JsonObject AuxUnload(JsonObject msg)
+    {
+        var aux = Aux();
+        aux.Load(ReadPlayer(msg), null);
+        return new JsonObject { ["loaded"] = QueueJson.AuxLoaded(aux) };
+    }
+
+    // --- Notes (fase 3, pas 4a) ---
+
+    /// <summary>Clau de la configuració on es desa el bloc de notes compartit.</summary>
+    public const string NotesSettingKey = "notes";
+
+    /// <summary>Llargada màxima de les notes (és un bloc de notes, no un document).</summary>
+    public const int NotesMaxLength = 20_000;
+
+    /// <summary>Quan es desen unes notes noves: el text (per avisar les altres interfícies).</summary>
+    public event Action<string>? NotesChanged;
+
+    private JsonObject NotesGet() => new() { ["text"] = (_library ?? throw new BadParamsException("El motor no té biblioteca.")).GetSetting(NotesSettingKey) ?? "" };
+
+    private JsonObject NotesSet(JsonObject msg)
+    {
+        if (msg["text"] is not JsonValue v || !v.TryGetValue(out string? text))
+            throw new BadParamsException("Falta 'text' (pot ser buit).");
+        if (text.Length > NotesMaxLength)
+            throw new BadParamsException($"Les notes poden tenir com a molt {NotesMaxLength:N0} caràcters.");
+        (_library ?? throw new BadParamsException("El motor no té biblioteca.")).SetSetting(NotesSettingKey, text);
+        NotesChanged?.Invoke(text);
+        return new JsonObject { ["text"] = text };
     }
 
     /// <summary>Atura un reproductor auxiliar (<c>player</c>, per defecte 1) amb un fos (<c>fadeMs</c>, per defecte 500).</summary>

@@ -47,6 +47,14 @@ public sealed class PlaybackEvents
                 ev["message"] = e.Message;
                 broadcast(ev);
             };
+            // Fase 3, pas 4a: s'ha carregat o tret una pista d'un reproductor
+            aux.LoadedChanged += player =>
+            {
+                var ev = Messages.Event("aux.loaded");
+                ev["player"] = player;
+                ev["loaded"] = QueueJson.AuxLoaded(aux);
+                broadcast(ev);
+            };
         }
 
         if (autoDj is not null)

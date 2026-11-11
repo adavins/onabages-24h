@@ -11,8 +11,9 @@
 //   node tools/prova-motor.mjs engine.hello devices.list
 //   node tools/prova-motor.mjs "{\"cmd\":\"queue.insert\",\"items\":[{\"trackId\":12}]}"
 //
-// Amb --escolta SEGONS, després de les respostes es queda escoltant i mostra els esdeveniments (excepte engine.status i
-// els mesuradors) durant aquests segons. Amb --mesuradors, també els mesuradors (meters, 20 per segon):
+// Amb --escolta SEGONS, mostra els esdeveniments des del principi (també els que arriben abans de les respostes) i,
+// després de les respostes, es queda escoltant aquests segons. No mostra els engine.status (excepte el primer) ni
+// els mesuradors; amb --mesuradors, també els mesuradors (meters, 20 per segon):
 //   node tools/prova-motor.mjs --escolta 2 --mesuradors engine.ping
 //
 // Esdeveniments de prova (fase 2, passos 3 a 5): es creen per a avui, d'aquí a SEGONS segons, i només sonen una vegada.
@@ -136,7 +137,7 @@ socket.addEventListener('message', (event) => {
     if (msg.ev === 'engine.status' && !statusSeen) {
       statusSeen = true;
       console.log('← esdeveniment', JSON.stringify(msg));
-    } else if (listening && msg.ev !== 'engine.status' && (showMeters || msg.ev !== 'meters')) {
+    } else if ((listening || listenSeconds > 0) && msg.ev !== 'engine.status' && (showMeters || msg.ev !== 'meters')) {
       console.log('← esdeveniment', JSON.stringify(msg));
     }
   } else {

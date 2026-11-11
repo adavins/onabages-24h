@@ -270,8 +270,65 @@ public sealed class AuxTests : IDisposable
         Assert.True(stop["stopped"]!.GetValue<bool>());
     }
 
+    [Fact]
+    public void Una_pista_carregada_sona_amb_play_i_s_hi_queda_per_tornar_a_sonar()
+    {
+        var changed = new List<int>();
+        _aux.LoadedChanged += changed.Add;
+        string path = Wav("jingle", 1, Signal).Replace(@"\", @"\\");
+
+        var load = Send($$"""{ "v": 1, "id": 1, "cmd": "aux.load", "path": "{{path}}", "player": 3 }""");
+        Assert.True(load["ok"]!.GetValue<bool>());
+        var loaded = load["result"]!["loaded"]!.AsArray();
+        Assert.Equal(3, loaded.Count); // un per reproductor
+        Assert.Null(loaded[0]!["item"]);
+        Assert.Equal("jingle", loaded[2]!["item"]!["title"]!.GetValue<string>());
+        Assert.Equal([3], changed);
+        Run(Rate / 10);
+        Assert.Empty(_started); // carregar no la fa sonar
+
+        // ▶ sense pista: sona la carregada
+        var play = Send("""{ "v": 1, "id": 2, "cmd": "aux.play", "player": 3 }""");
+        Assert.True(play["ok"]!.GetValue<bool>());
+        WaitReady();
+        var output = Run(Rate / 2);
+        Assert.Equal(Signal, Left(output, Rate / 4), 3);
+        var first = Assert.Single(_started);
+        Assert.Equal(3, first.Player);
+        Assert.Equal(first.Item.Id.ToString(), play["result"]!["item"]!["id"]!.GetValue<string>()); // la resposta diu la que sona
+
+        // S'acaba i continua carregada: es pot tornar a fer sonar (amb un altre id)
+        Run(Rate);
+        Assert.Single(_ended);
+        Assert.Equal("jingle", Send("""{ "v": 1, "id": 3, "cmd": "aux.get" }""")["result"]!["loaded"]![2]!["item"]!["title"]!.GetValue<string>());
+        Assert.True(Send("""{ "v": 1, "id": 4, "cmd": "aux.play", "player": 3 }""")["ok"]!.GetValue<bool>());
+        WaitReady();
+        Run(Rate / 2);
+        Assert.Equal(2, _started.Count);
+        Assert.NotEqual(_started[0].Item.Id, _started[1].Item.Id);
+
+        // Treure-la no atura el que sona; després, ▶ respon que no hi ha res carregat
+        Assert.True(Send("""{ "v": 1, "id": 5, "cmd": "aux.unload", "player": 3 }""")["ok"]!.GetValue<bool>());
+        Assert.Single(_aux.Status);
+        var empty = Send("""{ "v": 1, "id": 6, "cmd": "aux.play", "player": 3 }""");
+        Assert.False(empty["ok"]!.GetValue<bool>());
+        Assert.Contains("cap pista carregada", empty["error"]!["message"]!.GetValue<string>());
+        Assert.Equal([3, 3], changed);
+    }
+
+    [Fact]
+    public void No_es_pot_carregar_un_fitxer_que_no_hi_es()
+    {
+        var response = Send("""{ "v": 1, "id": 1, "cmd": "aux.load", "path": "D:\\no-hi-es\\x.mp3", "player": 2 }""");
+        Assert.False(response["ok"]!.GetValue<bool>());
+        Assert.Contains("no hi és", response["error"]!["message"]!.GetValue<string>());
+        Assert.Null(_aux.Loaded(2));
+    }
+
     [Theory]
     [InlineData("""{ "v": 1, "id": 1, "cmd": "aux.play" }""")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "aux.load", "player": 2 }""")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "aux.unload", "player": 9 }""")]
     [InlineData("""{ "v": 1, "id": 1, "cmd": "aux.play", "path": "D:\\x.mp3", "player": 4 }""")]
     [InlineData("""{ "v": 1, "id": 1, "cmd": "aux.play", "path": "D:\\x.mp3", "duckingDb": 3 }""")]
     [InlineData("""{ "v": 1, "id": 1, "cmd": "aux.stop", "player": 0 }""")]

@@ -166,6 +166,13 @@ public static class EngineServer
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
             events: events, scheduler: scheduler, aux: aux);
+        // Notes (fase 3, pas 4a): quan algú les desa, les altres interfícies connectades les reben
+        router.NotesChanged += text =>
+        {
+            var ev = Messages.Event("notes.changed");
+            ev["text"] = text;
+            Broadcast(ev);
+        };
 
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15) });
 

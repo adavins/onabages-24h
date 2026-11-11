@@ -262,4 +262,36 @@ public class HistoryAndNowPlayingTests : IDisposable
         Assert.Null(result["text"]);
         Assert.Null(result["problem"]);
     }
+
+    // --- Notes (fase 3, pas 4a) ---
+
+    [Fact]
+    public void Les_notes_es_desen_es_conserven_i_avisen_les_altres_interficies()
+    {
+        var changed = new List<string>();
+        _router.NotesChanged += changed.Add;
+        Assert.Equal("", Send("""{ "v": 1, "id": 1, "cmd": "notes.get" }""")["result"]!["text"]!.GetValue<string>());
+
+        var set = Send("""{ "v": 1, "id": 2, "cmd": "notes.set", "text": "Avui: falca de la fira a les 12.\nTrucar en Pere." }""");
+        Assert.True(set["ok"]!.GetValue<bool>());
+        Assert.Equal(["Avui: falca de la fira a les 12.\nTrucar en Pere."], changed);
+
+        // Un router nou (com si el motor s'hagués reiniciat) les llegeix de la base de dades
+        var again = new CommandRouter(new EngineState(), () => { }, _library);
+        Assert.Equal("Avui: falca de la fira a les 12.\nTrucar en Pere.",
+            again.Handle("""{ "v": 1, "id": 3, "cmd": "notes.get" }""")["result"]!["text"]!.GetValue<string>());
+
+        // Es poden buidar
+        Assert.True(Send("""{ "v": 1, "id": 4, "cmd": "notes.set", "text": "" }""")["ok"]!.GetValue<bool>());
+        Assert.Equal("", Send("""{ "v": 1, "id": 5, "cmd": "notes.get" }""")["result"]!["text"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Les_notes_sense_text_o_massa_llargues_responen_bad_params()
+    {
+        Assert.Equal("bad_params", Send("""{ "v": 1, "id": 1, "cmd": "notes.set" }""")["error"]!["code"]!.GetValue<string>());
+        Assert.Equal("bad_params", Send("""{ "v": 1, "id": 2, "cmd": "notes.set", "text": 5 }""")["error"]!["code"]!.GetValue<string>());
+        var tooLong = new JsonObject { ["v"] = 1, ["id"] = 3, ["cmd"] = "notes.set", ["text"] = new string('a', CommandRouter.NotesMaxLength + 1) };
+        Assert.Equal("bad_params", Send(tooLong.ToJsonString())["error"]!["code"]!.GetValue<string>());
+    }
 }

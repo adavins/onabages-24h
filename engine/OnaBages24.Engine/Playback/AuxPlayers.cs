@@ -53,6 +53,7 @@ public sealed class AuxPlayers : IDisposable
     private readonly Aux?[] _active = new Aux?[Count + 1]; // per reproductor (l'índex 0 no es fa servir)
     private readonly List<Aux> _ending = [];                // aturats o substituïts: s'alliberen quan acaben
     private readonly List<MixerVoice> _toRelease = [];
+    private readonly QueueItem?[] _loaded = new QueueItem?[Count + 1]; // carregats a mà (fase 3, pas 4a)
 
     public AuxPlayers(Mixer mixer)
     {
@@ -62,6 +63,26 @@ public sealed class AuxPlayers : IDisposable
     public event Action<AuxStarted>? Started;
     public event Action<AuxEnded>? Ended;
     public event Action<AuxFailed>? Failed;
+    /// <summary>S'ha carregat o tret la pista d'un reproductor (el número del reproductor).</summary>
+    public event Action<int>? LoadedChanged;
+
+    /// <summary>
+    /// La pista carregada a mà a cada reproductor (fase 3, pas 4a): sona quan l'operador prem ▶ i s'hi queda carregada
+    /// després, per tornar-la a fer sonar. No té res a veure amb el que preparen els esdeveniments.
+    /// </summary>
+    public QueueItem? Loaded(int player)
+    {
+        if (!IsValidPlayer(player)) throw new ArgumentOutOfRangeException(nameof(player));
+        lock (_sync) return _loaded[player];
+    }
+
+    /// <summary>Carrega una pista a un reproductor (o el buida, amb null). No el fa sonar ni atura el que hi soni.</summary>
+    public void Load(int player, QueueItem? item)
+    {
+        if (!IsValidPlayer(player)) throw new ArgumentOutOfRangeException(nameof(player));
+        lock (_sync) _loaded[player] = item;
+        LoadedChanged?.Invoke(player);
+    }
 
     public int SampleRate => _mixer.SampleRate;
 

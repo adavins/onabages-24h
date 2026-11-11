@@ -92,6 +92,13 @@ public static class QueueJson
         ["duckingDb"] = s.DuckingDb,
     }).ToArray());
 
+    /// <summary>Pistes carregades a mà als reproductors auxiliars (fase 3, pas 4a): una entrada per reproductor, amb null si és buit.</summary>
+    public static JsonArray AuxLoaded(AuxPlayers aux) => new(Enumerable.Range(1, AuxPlayers.Count).Select(player => (JsonNode)new JsonObject
+    {
+        ["player"] = player,
+        ["item"] = aux.Loaded(player) is { } item ? Item(item) : null,
+    }).ToArray());
+
     /// <summary>Estat de l'AutoDJ (docs/protocol.md, 4.5).</summary>
     public static JsonObject AutoDj(AutoDj autoDj) => new()
     {
