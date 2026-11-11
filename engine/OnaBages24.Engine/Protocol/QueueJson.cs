@@ -51,6 +51,10 @@ public static class QueueJson
         ["title"] = track.Title,
         ["type"] = Type(track.Type),
         ["durationMs"] = track.DurationMs,
+        // Fase 3, pas 3a: per a la cerca de la biblioteca («ha sonat fa 3 dies»)
+        ["album"] = track.Album,
+        ["lastPlayed"] = track.LastPlayed?.ToString("O"),
+        ["playCount"] = track.PlayCount,
         ["cueSource"] = track.CueSource switch
         {
             CueSource.RadioDj => "radiodj",

@@ -287,4 +287,58 @@ public sealed class SchedulerCommandsTests : IDisposable
         Assert.Equal("bad_params", ErrorCode(Send($$"""{ "v": 1, "id": 1, "cmd": "queue.move", "itemId": "{{id}}", "delta": 3 }""")));
         Result(Send($$"""{ "v": 1, "id": 2, "cmd": "queue.move", "itemId": "{{id}}", "delta": 1 }"""));
     }
+
+    // --- Cerca de la biblioteca (fase 3, pas 3a; D-079) ---
+
+    [Fact]
+    public void La_cerca_no_distingeix_accents_i_filtra_per_categoria_subcategoria_i_etiqueta()
+    {
+        long music = _library.EnsureCategory("Music");
+        long catala = _library.EnsureSubcategory(music, "Ona Bages Català");
+        long adult = _library.EnsureSubcategory(music, "Ona Bages Adult 5");
+        long promos = _library.EnsureSubcategory(_library.EnsureCategory("Promos"), "Promos");
+        long a = _library.AddTrack(new Track { Path = @"O:\c\a.mp3", Artist = "Txarango", Title = "Músic de carrer", SubcategoryId = catala });
+        _library.AddTrack(new Track { Path = @"O:\c\b.mp3", Artist = "Sopa de Cabra", Title = "L'Empordà", SubcategoryId = catala });
+        _library.AddTrack(new Track { Path = @"O:\a\c.mp3", Artist = "Feist", Title = "One Evening", Album = "Àlbum Únic", SubcategoryId = adult });
+        _library.AddTrack(new Track { Path = @"D:\p\d.mp3", Artist = "Ona Bages", Title = "Promo Cançons", SubcategoryId = promos });
+        _library.SetTags(a, ["català"]);
+        long tag = _library.EnsureTag("català");
+
+        string[] Titles(string json) => Result(Send(json))["tracks"]!.AsArray().Select(t => t!["title"]!.GetValue<string>()).ToArray();
+        string Ask(string extra) => $$"""{ "v": 1, "id": 1, "cmd": "library.search", "limit": 10{{extra}} }""";
+
+        Assert.Equal(["Músic de carrer"], Titles(Ask(""", "text": "music carrer" """)));        // sense accents
+        Assert.Equal(["L'Empordà"], Titles(Ask(""", "text": "EMPORDA" """)));                  // ni majúscules
+        Assert.Equal(["Promo Cançons"], Titles(Ask(""", "text": "cancons" """)));              // la ç és una c
+        Assert.Equal(["One Evening"], Titles(Ask(""", "text": "album unic" """)));             // també l'àlbum
+        Assert.Equal(3, Titles(Ask($$""", "categoryId": {{music}} """)).Length);                 // les 3 de Music, no la promo
+        Assert.Equal(["L'Empordà", "Músic de carrer"], Titles(Ask($$""", "subcategoryId": {{catala}} """))); // per artista
+        Assert.Equal(["Músic de carrer"], Titles(Ask($$""", "tagId": {{tag}} """)));
+
+        // Paginació: la segona de la subcategoria, i que n'hi ha més
+        var page = Result(Send($$"""{ "v": 1, "id": 1, "cmd": "library.search", "subcategoryId": {{catala}}, "offset": 1, "limit": 1 }"""));
+        Assert.Equal("Músic de carrer", Assert.Single(page["tracks"]!.AsArray())!["title"]!.GetValue<string>());
+        Assert.False(page["more"]!.GetValue<bool>());
+        var first = Result(Send($$"""{ "v": 1, "id": 1, "cmd": "library.search", "subcategoryId": {{catala}}, "offset": 0, "limit": 1 }"""));
+        Assert.True(first["more"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void Els_filtres_de_la_cerca_porten_quantes_pistes_hi_ha()
+    {
+        long music = _library.EnsureCategory("Music");
+        long catala = _library.EnsureSubcategory(music, "Ona Bages Català");
+        _library.EnsureSubcategory(music, "Buida");
+        long a = _library.AddTrack(new Track { Path = @"O:\c\a.mp3", Title = "A", SubcategoryId = catala });
+        _library.AddTrack(new Track { Path = @"O:\c\b.mp3", Title = "B", SubcategoryId = catala });
+        _library.SetTags(a, ["SW - catala"]);
+
+        var result = Result(Send("""{ "v": 1, "id": 1, "cmd": "library.filters" }"""));
+
+        var category = Assert.Single(result["categories"]!.AsArray(), c => c!["name"]!.GetValue<string>() == "Music")!;
+        Assert.Equal(2, category["count"]!.GetValue<int>());
+        Assert.Equal(["Buida 0", "Ona Bages Català 2"], category["subcategories"]!.AsArray()
+            .Select(s => $"{s!["name"]!.GetValue<string>()} {s["count"]!.GetValue<int>()}"));
+        Assert.Equal("SW - catala", Assert.Single(result["tags"]!.AsArray())!["name"]!.GetValue<string>());
+    }
 }

@@ -23,6 +23,26 @@ public enum FileState
 /// <summary>D'on surt la informació dels punts d'encadenament.</summary>
 public enum CueSource { RadioDj, Analyzer, Manual }
 
+/// <summary>
+/// Una cerca a la biblioteca (fase 3, pas 3a; D-079): les paraules (totes han de sortir a l'artista, el títol, l'àlbum o
+/// la ruta, sense accents ni majúscules) i, opcionalment, una categoria, una subcategoria i una etiqueta.
+/// </summary>
+public sealed record TrackQuery
+{
+    public string Text { get; init; } = "";
+    public long? CategoryId { get; init; }
+    public long? SubcategoryId { get; init; }
+    public long? TagId { get; init; }
+    public int Offset { get; init; }
+    public int Limit { get; init; } = 100;
+}
+
+/// <summary>Una opció dels filtres de la cerca, amb quantes pistes té.</summary>
+public sealed record FilterOption(long Id, string Name, int Count);
+
+/// <summary>Una categoria amb les seves subcategories.</summary>
+public sealed record CategoryFilter(long Id, string Name, int Count, IReadOnlyList<FilterOption> Subcategories);
+
 /// <summary>D'on ve un element de la cua (D-034).</summary>
 public enum QueueOrigin { AutoDj, Manual, Event }
 
@@ -173,20 +193,78 @@ public sealed class Library(Database database)
     /// Cerca pistes per text (fase 2, pas 8b): totes les paraules han de sortir a l'artista, al títol o a la ruta,
     /// sense distingir majúscules. Sense text, les primeres per ordre. Com a molt <paramref name="limit"/>.
     /// </summary>
-    public IReadOnlyList<Track> Search(string text, int limit)
+    public IReadOnlyList<Track> Search(string text, int limit) => Search(new TrackQuery { Text = text, Limit = limit });
+
+    /// <summary>
+    /// Cerca a la biblioteca (fase 3, pas 3a; D-079): sense accents ni majúscules («magazin» troba «Magazín»), amb la
+    /// funció <c>sense_accents</c> que registra <see cref="Database"/>. Una cerca de «conté» mira totes les files igualment
+    /// (cap índex no hi ajuda); amb unes quantes milers de pistes són pocs mil·lisegons. Per artista i títol.
+    /// </summary>
+    public IReadOnlyList<Track> Search(TrackQuery query)
     {
-        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(8).ToArray();
+        var words = (TextSearch.Fold(query.Text) ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(8).ToArray();
         var conditions = new List<string>();
-        var parameters = new List<(string, object)> { ("$limit", limit) };
+        var parameters = new List<(string, object)> { ("$limit", query.Limit), ("$offset", query.Offset) };
         for (int i = 0; i < words.Length; i++)
         {
             // LIKE amb els caràcters especials escapats (%, _ i el mateix caràcter d'escapament)
             string pattern = "%" + words[i].Replace("!", "!!").Replace("%", "!%").Replace("_", "!_") + "%";
-            conditions.Add($"(artista LIKE $w{i} ESCAPE '!' OR titol LIKE $w{i} ESCAPE '!' OR ruta LIKE $w{i} ESCAPE '!')");
+            conditions.Add($"(sense_accents(artista) LIKE $w{i} ESCAPE '!' OR sense_accents(titol) LIKE $w{i} ESCAPE '!' " +
+                           $"OR sense_accents(album) LIKE $w{i} ESCAPE '!' OR sense_accents(ruta) LIKE $w{i} ESCAPE '!')");
             parameters.Add(($"$w{i}", pattern));
         }
+        if (query.SubcategoryId is { } sub)
+        {
+            conditions.Add("subcategoria_id = $sub");
+            parameters.Add(("$sub", sub));
+        }
+        else if (query.CategoryId is { } cat)
+        {
+            conditions.Add("subcategoria_id IN (SELECT id FROM subcategoria WHERE categoria_id = $cat)");
+            parameters.Add(("$cat", cat));
+        }
+        if (query.TagId is { } tag)
+        {
+            conditions.Add("EXISTS (SELECT 1 FROM pista_etiqueta pe WHERE pe.pista_id = pista.id AND pe.etiqueta_id = $tag)");
+            parameters.Add(("$tag", tag));
+        }
         string where = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
-        return QueryTracks($"{where} ORDER BY artista COLLATE NOCASE, titol COLLATE NOCASE, id LIMIT $limit", parameters.ToArray());
+        return QueryTracks($"{where} ORDER BY artista COLLATE NOCASE, titol COLLATE NOCASE, id LIMIT $limit OFFSET $offset", parameters.ToArray());
+    }
+
+    /// <summary>Les opcions dels filtres de la cerca: categories (amb les subcategories) i etiquetes, amb quantes pistes tenen.</summary>
+    public (IReadOnlyList<CategoryFilter> Categories, IReadOnlyList<FilterOption> Tags) SearchFilters()
+    {
+        lock (database.Sync)
+        {
+            var subs = new List<(long CategoryId, FilterOption Option)>();
+            using (var command = database.Command(
+                "SELECT s.categoria_id, s.id, s.nom, (SELECT count(*) FROM pista p WHERE p.subcategoria_id = s.id) " +
+                "FROM subcategoria s ORDER BY s.nom COLLATE NOCASE;"))
+            using (var r = command.ExecuteReader())
+            {
+                while (r.Read()) subs.Add((r.GetInt64(0), new FilterOption(r.GetInt64(1), r.GetString(2), r.GetInt32(3))));
+            }
+            var categories = new List<CategoryFilter>();
+            using (var command = database.Command("SELECT id, nom FROM categoria ORDER BY nom COLLATE NOCASE;"))
+            using (var r = command.ExecuteReader())
+            {
+                while (r.Read())
+                {
+                    long id = r.GetInt64(0);
+                    var own = subs.Where(s => s.CategoryId == id).Select(s => s.Option).ToList();
+                    categories.Add(new CategoryFilter(id, r.GetString(1), own.Sum(s => s.Count), own));
+                }
+            }
+            var tags = new List<FilterOption>();
+            using (var command = database.Command(
+                "SELECT e.id, e.nom, (SELECT count(*) FROM pista_etiqueta pe WHERE pe.etiqueta_id = e.id) FROM etiqueta e ORDER BY e.nom COLLATE NOCASE;"))
+            using (var r = command.ExecuteReader())
+            {
+                while (r.Read()) tags.Add(new FilterOption(r.GetInt64(0), r.GetString(1), r.GetInt32(2)));
+            }
+            return (categories, tags);
+        }
     }
 
     public IReadOnlyList<Track> TracksInFolder(string folder)

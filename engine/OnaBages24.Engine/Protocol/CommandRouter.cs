@@ -115,6 +115,7 @@ public sealed class CommandRouter
                 "aux.stop" => AuxStop(msg),
                 "library.list" => LibraryList(msg),
                 "library.search" => LibrarySearch(msg),
+                "library.filters" => LibraryFilters(),
                 "autodj.get" => new JsonObject { ["autodj"] = QueueJson.AutoDj(AutoDjOrError()) },
                 "autodj.set" => AutoDjSet(msg),
                 "rotations.list" => RotationsList(),
@@ -342,18 +343,45 @@ public sealed class CommandRouter
     }
 
     /// <summary>
-    /// Cerca a tota la biblioteca (fase 2, pas 8b): <c>text</c> (paraules que han de sortir a l'artista, al títol o a la
-    /// ruta) i <c>limit</c> (per defecte 50, com a molt 200).
+    /// Cerca a tota la biblioteca (fase 2, pas 8b; fase 3, pas 3a): <c>text</c> (paraules que han de sortir a l'artista, al
+    /// títol, a l'àlbum o a la ruta, sense accents ni majúscules), <c>categoryId</c>, <c>subcategoryId</c>, <c>tagId</c>,
+    /// <c>offset</c> (per anar carregant) i <c>limit</c> (per defecte 50, com a molt 200).
     /// </summary>
     private JsonObject LibrarySearch(JsonObject msg)
     {
         var library = _library ?? throw new BadParamsException("El motor no té biblioteca.");
         int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 50, 1, 200);
-        var tracks = library.Search(ReadString(msg["text"]) ?? "", limit + 1);
+        long? Id(string field) => msg[field] is JsonValue v && v.TryGetValue(out long id) ? id : null;
+        var tracks = library.Search(new TrackQuery
+        {
+            Text = ReadString(msg["text"]) ?? "",
+            CategoryId = Id("categoryId"),
+            SubcategoryId = Id("subcategoryId"),
+            TagId = Id("tagId"),
+            Offset = Math.Max(0, ReadInt(msg["offset"]) ?? 0),
+            Limit = limit + 1,
+        });
         return new JsonObject
         {
             ["tracks"] = new JsonArray(tracks.Take(limit).Select(t => (JsonNode)QueueJson.Track(t)).ToArray()),
             ["more"] = tracks.Count > limit,
+        };
+    }
+
+    /// <summary>Les opcions dels filtres de la cerca (fase 3, pas 3a): categories amb subcategories i etiquetes, amb comptes.</summary>
+    private JsonObject LibraryFilters()
+    {
+        var library = _library ?? throw new BadParamsException("El motor no té biblioteca.");
+        var (categories, tags) = library.SearchFilters();
+        JsonObject Option(FilterOption o) => new() { ["id"] = o.Id, ["name"] = o.Name, ["count"] = o.Count };
+        return new JsonObject
+        {
+            ["categories"] = new JsonArray(categories.Select(c => (JsonNode)new JsonObject
+            {
+                ["id"] = c.Id, ["name"] = c.Name, ["count"] = c.Count,
+                ["subcategories"] = new JsonArray(c.Subcategories.Select(s => (JsonNode)Option(s)).ToArray()),
+            }).ToArray()),
+            ["tags"] = new JsonArray(tags.Select(t => (JsonNode)Option(t)).ToArray()),
         };
     }
 

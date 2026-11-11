@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 2c (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 3a (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -90,7 +90,8 @@ El `message` és en català i es pot mostrar a l'operador.
 | `aux.play` | `trackId` (de la biblioteca) **o bé** `path` (un fitxer qualsevol); `player` (1–3, per defecte 1); `duckingDb` (atenuació de la música mentre sona, de −60 a 0; per defecte, cap) | `{ player, item }`. Sona per sobre del que soni, sencer i des del principi; si el reproductor ja sonava, el substitueix. Si no queden veus lliures, `bad_params` | fase 2, pas 5a |
 | `aux.stop` | `player` (per defecte 1), `fadeMs` (de 0 a 10.000; per defecte 500) | `{ stopped, aux }`. `stopped`: fals si no sonava res | fase 2, pas 5a |
 | `library.list` | `folder`, `limit` (per defecte 100, com a molt 1.000) | `{ tracks: [ … ] }` (vegeu 4.4): pistes de la carpeta i subcarpetes. De moment, per a les proves | fase 1, pas 7c |
-| `library.search` | `text` (paraules que han de sortir totes a l'artista, al títol o a la ruta, sense distingir majúscules; buit = totes), `limit` (per defecte 50, com a molt 200) | `{ tracks: [ … ], more }` (vegeu 4.4), per artista i títol. `more`: n'hi ha més que les retornades | fase 2, pas 8b |
+| `library.search` | `text` (paraules que han de sortir totes a l'artista, al títol, a l'àlbum o a la ruta; **sense distingir accents ni majúscules**: «magazin» troba «Magazín»; buit = totes), `categoryId`, `subcategoryId`, `tagId` (filtres, opcionals), `offset` (per anar carregant; per defecte 0), `limit` (per defecte 50, com a molt 200) | `{ tracks: [ … ], more }` (vegeu 4.4), per artista i títol. `more`: n'hi ha més que les retornades | fase 2, pas 8b; filtres, `offset` i sense accents, fase 3, pas 3a |
+| `library.filters` | — | `{ categories: [ { id, name, count, subcategories: [ { id, name, count } ] } ], tags: [ { id, name, count } ] }`: les opcions dels filtres de la cerca, amb quantes pistes tenen | fase 3, pas 3a |
 | `autodj.get` | — | `{ autodj }` (vegeu 4.5) | fase 1, pas 8 |
 | `autodj.set` | `enabled` (`true`/`false`), `rotationId`, `minutes` (si s'atura: quant temps, d'1 a 720; per defecte 120). Tots opcionals: el que no s'envia es queda com està. Aturat, es torna a activar sol quan s'acaba el temps o si la cua es queda sense res (D-073) | `{ autodj }`. La rotació es desa i es manté en tornar a arrencar; `enabled` no: el motor sempre arrenca amb l'AutoDJ actiu (D-053). Si la rotació no existeix, `bad_params` | fase 1, pas 8 |
 | `rotations.list` | — | `{ rotations: [ … ] }` (vegeu 4.5) | fase 1, pas 8 |
@@ -172,6 +173,8 @@ El `message` és en català i es pot mostrar a l'operador.
 
 - `cueSource`: d'on surten els punts d'encadenament: `radiodj`, `analyzer`, `manual` o `null` (encara no n'hi ha).
 - `fileState`: `ok`, `missing` (el fitxer falta) o `retired` (ha sortit d'una bossa renovable).
+
+- Pista (fase 3, pas 3a): també `album`, `lastPlayed` (l'última vegada que ha sonat, hora ISO, o `null`) i `playCount`.
 
 ### 4.5. AutoDJ i rotacions (D-049)
 
