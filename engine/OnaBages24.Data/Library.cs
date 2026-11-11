@@ -346,6 +346,21 @@ public sealed class Library(Database database)
     }
 
     /// <summary>Tanca una entrada de l'historial: quant ha sonat i si ha arribat al final previst.</summary>
+    /// <summary>
+    /// Tanca les entrades de l'historial que es van quedar obertes (el motor es va aturar de cop mentre sonaven): com a
+    /// tallades i amb durada 0, que vol dir «no se sap quant va sonar» (entremig el motor pot haver estat aturat una
+    /// estona: el temps fins a l'entrada següent no serviria). Retorna quantes (fase 3, pas 2a).
+    /// </summary>
+    public int CloseOpenHistory()
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "UPDATE historial SET sencera = 0, durada_ms = 0 WHERE durada_ms IS NULL;");
+            return command.ExecuteNonQuery();
+        }
+    }
+
     public void FinishHistory(long entryId, TimeSpan played, bool complete)
     {
         lock (database.Sync)

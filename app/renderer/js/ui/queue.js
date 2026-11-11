@@ -47,6 +47,8 @@ export class QueueView {
    */
   render(queue, events) {
     const upcoming = queue.upcoming;
+    this.#items = upcoming;
+    this.#count = upcoming.length;
     const forecast = forecastQueue(queue, events, Date.now());
     const list = $('queue-list');
     const rows = upcoming.map((/** @type {any} */ item, /** @type {number} */ index) => this.#row(item, index, forecast.items[index], forecast.cut));
@@ -137,14 +139,68 @@ export class QueueView {
       mark.append(icon('bi-hourglass-split'), ' ', el('span', '', 'Després del Talla'));
     }
 
-    const remove = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-danger queue-remove'));
-    remove.type = 'button';
-    remove.title = 'Treu aquesta pista de la cua';
-    remove.append(icon('bi-x-lg'), ' ', el('span', '', 'Treu'));
-    remove.addEventListener('click', () => this.#remove(item, remove));
+    // Eines (fase 3, pas 2a): reprodueix ara, amunt, avall i treu. Sempre amb icona, i el text al títol del botó
+    const tools = el('div', 'queue-tools');
+    const tool = (/** @type {string} */ css, /** @type {string} */ iconName, /** @type {string} */ title, /** @type {string | null} */ label,
+      /** @type {(b: HTMLButtonElement) => void} */ run, disabled = false) => {
+      const b = /** @type {HTMLButtonElement} */ (el('button', `btn btn-sm ${css}`));
+      b.type = 'button';
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.disabled = disabled;
+      b.append(icon(iconName));
+      if (label) b.append(' ', el('span', '', label));
+      b.addEventListener('click', () => run(b));
+      tools.append(b);
+    };
+    tool('btn-outline-success', 'bi-play-fill', 'Reprodueix ara: la que sona baixa amb un fos i aquesta comença de seguida', null,
+      () => this.#playNow(item, index));
+    tool('btn-outline-secondary', 'bi-arrow-up', 'Puja (sonarà abans)', null, (b) => this.#move(item, -1, b), index === 0);
+    tool('btn-outline-secondary', 'bi-arrow-down', 'Baixa (sonarà després)', null, (b) => this.#move(item, 1, b), index === this.#count - 1);
+    tool('btn-outline-danger queue-remove', 'bi-x-lg', 'Treu aquesta pista de la cua', 'Treu', (b) => this.#remove(item, b));
 
-    row.append(number, time, text, typeBadge(item.type), mark, origin, duration, remove);
+    row.append(number, time, text, typeBadge(item.type), mark, origin, duration, tools);
     return row;
+  }
+
+  /** Quantes pistes té la cua que es mostra (per desactivar «Baixa» a l'última). */
+  #count = 0;
+  /** La cua que es mostra (per dir quines pistes se saltaran). @type {any[]} */
+  #items = [];
+
+  /**
+   * «Reprodueix ara» (D-073): demana confirmació dient quines pistes se saltaran.
+   * @param {any} item  @param {number} index
+   */
+  async #playNow(item, index) {
+    const name = item.artist ? `«${item.title}» (${item.artist})` : `«${item.title}»`;
+    const skipped = this.#items.slice(0, index);
+    let message = `La pista que sona baixarà amb un fos d'1 segon i començarà ${name}.`;
+    if (skipped.length > 0) {
+      const titles = skipped.slice(0, 5).map((/** @type {any} */ i) => `«${i.title}»`).join(', ');
+      message += `\n\nSe ${skipped.length === 1 ? 'saltarà 1 pista' : `saltaran ${skipped.length} pistes`}: ${titles}${skipped.length > 5 ? '…' : ''}.`;
+      if (skipped.some((/** @type {any} */ i) => i.origin === 'event'))
+        message += '\nLes que venen d\'un esdeveniment quedaran anotades com a no emeses.';
+    }
+    const ok = await confirmAction({ title: 'Reproduir ara', message, confirm: 'Reprodueix ara' });
+    if (!ok) return;
+    try {
+      await this.#send('player.playItem', { itemId: item.id, fadeMs: 1000 });
+    } catch (err) {
+      await confirmAction({ title: 'No s\'ha pogut reproduir', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+    }
+  }
+
+  /** Mou una pista una posició (no demana confirmació: no interromp res). @param {any} item @param {number} delta @param {HTMLButtonElement} button */
+  async #move(item, delta, button) {
+    button.disabled = true;
+    try {
+      await this.#send('queue.move', { itemId: item.id, delta });
+      // La cua nova arriba amb queue.changed
+    } catch (err) {
+      button.disabled = false;
+      await confirmAction({ title: 'No s\'ha pogut moure', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+    }
   }
 
   /** @param {any} item  @param {HTMLButtonElement} button */
@@ -218,7 +274,8 @@ export class HistoryView {
         duration = el('span', 'history-duration text-success');
         duration.append(icon('bi-volume-up-fill'), ' ', el('span', '', 'Sona'));
       } else {
-        duration = el('span', 'history-duration', formatDuration(e.playedMs));
+        // 0 i no sencera: el motor es va aturar de cop mentre sonava i no se sap quant va sonar (fase 3, pas 2a)
+        duration = el('span', 'history-duration', e.playedMs === 0 && e.complete === false ? '–' : formatDuration(e.playedMs));
         if (e.complete === false) {
           duration.prepend(el('span', 'history-cut', 'tallada · '));
         }

@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 1 (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 2a (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -81,7 +81,9 @@ El `message` és en català i es pot mostrar a l'operador.
 | `output.set` | `deviceId` | `{ output }`. Desa la sortida a la configuració (id i nom) i hi passa de seguida. Si no existeix, `bad_params` | fase 1, pas 7c |
 | `queue.get` | — | `{ queue }` (vegeu 4.2) | fase 1, pas 7c |
 | `queue.insert` | `items`: llista de `{ "trackId": 12 }` (de la biblioteca) o `{ "path": "D:\\…" }` (un fitxer qualsevol), **o bé** `folder` (carpeta de la biblioteca: pistes barrejades, sense les que falten) i `limit` (per defecte 10); `position`: `"end"` (per defecte), `"next"` o un índex (0 = la primera que sonarà). Origen: `manual` | `{ queue }` | fase 1, pas 7c |
-| `queue.remove` | `itemId` | `{ queue }`. Només les que encara no han començat; si no, `bad_params` | fase 1, pas 7c |
+| `queue.remove` | `itemId` | `{ queue }`. Només les que encara no han començat; si no, `bad_params`. Si venia d'un esdeveniment, queda al registre com a `NO_EMES` (fase 3, pas 2a) | fase 1, pas 7c |
+| `queue.move` | `itemId`, `delta` (−1 = amunt, 1 = avall) | `{ queue }`. La pista que s'estava preparant torna a la cua si cal. No es pot moure el principi de la cua quan la següent comença d'aquí a menys de 3 s, ni quan hi ha un tall programat d'aquí a uns segons: `bad_params` amb el motiu | fase 3, pas 2a |
+| `player.playItem` | `itemId`, `fadeMs` (de 0 a 10.000; per defecte 1.000) | `{ skipped, queue }`. «Reprodueix ara» (D-073): la que sona baixa amb un fos i la triada comença de seguida; les d'entremig es treuen de la cua (`skipped`) i, si venien d'un esdeveniment, queden com a `NO_EMES`. Si la pista ja no hi és o hi ha un tall programat d'aquí a uns segons, `bad_params` | fase 3, pas 2a |
 | `player.next` | `fadeMs` (de 0 a 10.000; per defecte 1.000) | `{ queue }`. La que sona baixa amb un fos i la següent comença de seguida | fase 1, pas 7c |
 | `aux.get` | — | `{ aux }` (vegeu 4.8) | fase 2, pas 5a |
 | `aux.play` | `trackId` (de la biblioteca) **o bé** `path` (un fitxer qualsevol); `player` (1–3, per defecte 1); `duckingDb` (atenuació de la música mentre sona, de −60 a 0; per defecte, cap) | `{ player, item }`. Sona per sobre del que soni, sencer i des del principi; si el reproductor ja sonava, el substitueix. Si no queden veus lliures, `bad_params` | fase 2, pas 5a |

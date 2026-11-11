@@ -255,4 +255,36 @@ public sealed class SchedulerCommandsTests : IDisposable
         Assert.Equal(2, limited["tracks"]!.AsArray().Count);
         Assert.True(limited["more"]!.GetValue<bool>());
     }
+
+    // --- Cua editable (fase 3, pas 2a) ---
+
+    [Fact]
+    public void Treure_a_ma_o_saltar_pistes_d_un_esdeveniment_les_anota_com_a_no_emeses()
+    {
+        var at = new DateTimeOffset(2026, 11, 20, 10, 30, 0, TimeSpan.FromHours(1));
+        long eventId = _events.Save(new ScheduledEvent { Name = "Promos", Mode = EventMode.Queue, StartTime = new TimeOnly(10, 30) });
+        QueueItem Promo(string title) => new() { Path = _temp.File(title + ".mp3"), Title = title, Origin = QueueOrigin.Event,
+            EventId = eventId, EventName = "Promos", EventAt = at };
+        _queue.Enqueue(Promo("P1"), Promo("P2"), new QueueItem { Path = _temp.File("m.mp3"), Title = "Música" }, Promo("P3"));
+        var ids = _queue.Upcoming.Select(i => i.Id.ToString()).ToArray();
+
+        Result(Send($$"""{ "v": 1, "id": 1, "cmd": "queue.remove", "itemId": "{{ids[0]}}" }"""));
+        var played = Result(Send($$"""{ "v": 1, "id": 2, "cmd": "player.playItem", "itemId": "{{ids[3]}}", "fadeMs": 0 }"""));
+
+        Assert.Equal(["P2", "Música"], played["skipped"]!.AsArray().Select(i => i!["title"]!.GetValue<string>()));
+        var notPlayed = _events.Executions(at.AddHours(-1), at.AddHours(1)).Where(r => r.Result == ExecutionResult.NotPlayed).ToList();
+        Assert.Equal(2, notPlayed.Count);
+        Assert.Contains(notPlayed, r => r.Detail.Contains("1 pista treta de la cua abans de sonar (treta a mà)"));
+        Assert.Contains(notPlayed, r => r.Detail.Contains("saltades amb «Reprodueix ara»"));
+    }
+
+    [Fact]
+    public void Moure_amb_un_delta_incorrecte_respon_bad_params()
+    {
+        _queue.Enqueue(new QueueItem { Path = _temp.File("a.mp3"), Title = "A" });
+        string id = _queue.Upcoming[0].Id.ToString();
+
+        Assert.Equal("bad_params", ErrorCode(Send($$"""{ "v": 1, "id": 1, "cmd": "queue.move", "itemId": "{{id}}", "delta": 3 }""")));
+        Result(Send($$"""{ "v": 1, "id": 2, "cmd": "queue.move", "itemId": "{{id}}", "delta": 1 }"""));
+    }
 }

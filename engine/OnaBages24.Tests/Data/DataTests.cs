@@ -205,6 +205,26 @@ public class LibraryTests : IDisposable
     }
 
     [Fact]
+    public void Les_entrades_que_es_van_quedar_obertes_es_tanquen_com_a_tallades()
+    {
+        // El motor es va aturar de cop mentre sonava B (fase 3, pas 2a): B es queda «Sona» per sempre si no es tanca
+        var track = _library.GetTrack(_library.AddTrack(new Track { Path = @"D:\EMISSIO\a.mp3", Title = "A" }))!;
+        var t0 = new DateTimeOffset(2026, 11, 11, 10, 0, 0, TimeSpan.Zero);
+        long a = _library.AddHistory(track, t0, QueueOrigin.AutoDj);                       // oberta, i després en va sonar una altra
+        _library.AddHistory(track, t0.AddMinutes(3), QueueOrigin.AutoDj);                   // oberta, i l'última
+        long c = _library.AddHistory(track, t0.AddMinutes(-5), QueueOrigin.AutoDj);
+        _library.FinishHistory(c, TimeSpan.FromSeconds(100), complete: true);              // tancada: no es toca
+
+        Assert.Equal(2, _library.CloseOpenHistory());
+
+        var all = _library.History(t0.AddHours(-1), t0.AddHours(1)).ToDictionary(e => e.Id);
+        Assert.Equal((0L, false), (all[a].PlayedMs!.Value, all[a].Complete!.Value)); // 0 = no se sap quant va sonar
+        Assert.All(all.Values, e => Assert.NotNull(e.PlayedMs));
+        Assert.Equal((100_000L, true), (all[c].PlayedMs!.Value, all[c].Complete!.Value));
+        Assert.Equal(0, _library.CloseOpenHistory());
+    }
+
+    [Fact]
     public void La_configuracio_es_desa_per_clau()
     {
         Assert.Null(_library.GetSetting("sortida"));

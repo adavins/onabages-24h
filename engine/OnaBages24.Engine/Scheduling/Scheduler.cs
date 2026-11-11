@@ -290,6 +290,32 @@ public sealed class Scheduler
     }
 
     /// <summary>
+    /// Pistes d'esdeveniments que s'han tret de la cua a mà sense sonar (treure-les o «Reprodueix ara», fase 3, pas 2a):
+    /// s'anoten com a NO_EMES, com quan les treu un TALLA, perquè no comptin als certificats.
+    /// </summary>
+    public void RecordNotPlayed(IEnumerable<OnaBages24.Engine.Playback.QueueItem> items, string why)
+    {
+        var groups = items
+            .Where(i => i.EventId is not null && i.EventAt is not null)
+            .GroupBy(i => (EventId: i.EventId!.Value, At: i.EventAt!.Value));
+        lock (_sync)
+        {
+            foreach (var g in groups)
+            {
+                int count = g.Count();
+                Write(new ExecutionRecord
+                {
+                    EventId = g.Key.EventId,
+                    Name = g.First().EventName ?? "",
+                    ScheduledFor = g.Key.At,
+                    Result = ExecutionResult.NotPlayed,
+                    Detail = $"{count} {(count == 1 ? "pista treta" : "pistes tretes")} de la cua abans de sonar ({why}).",
+                });
+            }
+        }
+    }
+
+    /// <summary>
     /// El contingut programat a la mostra exacta ha començat (la primera pista d'un TALLA o un auxiliar; el primer que
     /// arribi): es completa la línia del registre amb l'hora real i la diferència.
     /// </summary>

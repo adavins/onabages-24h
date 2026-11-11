@@ -324,4 +324,60 @@ public class QueuePlayerTests : IDisposable
 
         Assert.Equal(9 - 0.5, player.Forecast().Starts[0].StartsIn!.Value.TotalSeconds, tolerance: 0.1);
     }
+
+    // --- Cua editable (fase 3, pas 2a) ---
+
+    [Fact]
+    public void Moure_canvia_l_ordre_i_torna_a_preparar_la_seguent()
+    {
+        var player = NewPlayer();
+        player.Enqueue(Item(Wav("a", (30, 0.1f)), title: "A"));
+        Run(player, Rate / 2);
+        player.Enqueue(Item(Wav("b", (5, 0.2f)), title: "B"), Item(Wav("c", (5, 0.3f)), title: "C"), Item(Wav("d", (5, 0.4f)), title: "D"));
+        Run(player, Rate / 10); // B es prepara (A té 30 s: encara falta molt per a la mescla)
+
+        Assert.Null(player.Move(player.Upcoming[2].Id, -1)); // D puja per sobre de C
+        Assert.Equal(["B", "D", "C"], player.Upcoming.Select(i => i.Title));
+        Assert.Null(player.Move(player.Upcoming[0].Id, 1));  // B baixa
+        Assert.Equal(["D", "B", "C"], player.Upcoming.Select(i => i.Title));
+        Assert.Null(player.Move(player.Upcoming[0].Id, -1)); // ja és la primera: no passa res
+        Assert.Equal("Aquesta pista ja no és a la cua.", player.Move(Guid.NewGuid(), 1));
+
+        // Quan A acaba, sona D (la nova primera), i després B
+        Run(player, 37 * Rate);
+        Assert.Equal(["A", "D", "B"], _started.Select(s => s.Item.Title).Take(3));
+    }
+
+    [Fact]
+    public void La_seguent_a_punt_de_començar_ja_no_es_pot_moure()
+    {
+        var player = NewPlayer();
+        player.Enqueue(Item(Wav("a", (2, 0.1f)), title: "A"), Item(Wav("b", (5, 0.2f)), title: "B"), Item(Wav("c", (5, 0.3f)), title: "C"));
+        Run(player, Rate); // A s'acaba d'aquí a 1 s: B ja està programada
+
+        Assert.NotNull(player.Move(player.Upcoming[0].Id, 1));
+        Assert.NotNull(player.Move(player.Upcoming[1].Id, -1));
+        Assert.Equal(["B", "C"], player.Upcoming.Select(i => i.Title));
+    }
+
+    [Fact]
+    public void Reprodueix_ara_salta_fins_a_la_triada_i_retorna_les_d_entremig()
+    {
+        var player = NewPlayer();
+        player.Enqueue(Item(Wav("a", (30, 0.1f)), title: "A"));
+        Run(player, Rate / 2);
+        player.Enqueue(Item(Wav("b", (5, 0.2f)), title: "B"), Item(Wav("c", (5, 0.3f)), title: "C"), Item(Wav("d", (5, 0.4f)), title: "D"));
+        Run(player, Rate / 10);
+
+        var skipped = player.PlayNow(player.Upcoming[2].Id, TimeSpan.FromMilliseconds(200));
+
+        Assert.Equal(["B", "C"], skipped!.Select(i => i.Title));
+        var output = Run(player, Rate);
+        Assert.Equal("D", _started.Last().Item.Title);                       // D ja sona
+        Assert.True(_started.Last().StartFrame - _started[0].StartFrame < Rate);  // al cap de poc, no als 30 s
+        Assert.Empty(player.Upcoming);
+        Assert.Contains(_ended, e => e.Item.Title == "A" && !e.Complete);     // A s'ha tallat amb el fos
+        Assert.Null(player.PlayNow(Guid.NewGuid(), TimeSpan.Zero));          // una que no hi és
+        Assert.True(output.Length > 0);
+    }
 }

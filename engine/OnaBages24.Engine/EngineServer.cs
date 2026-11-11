@@ -111,6 +111,9 @@ public static class EngineServer
         var autoDj = new AutoDj(library, rotations, queue);
         var playback = new PlaybackEvents(queue, outputs, log, Broadcast, autoDj, sampleClock, aux);
         var history = new PlayHistory(queue, library, log);
+        // Les pistes que sonaven si el motor es va aturar de cop (fase 3, pas 2a): es tanquen com a tallades
+        if (library.CloseOpenHistory() is var closed and > 0)
+            log.LogInformation("Historial: {Count} pistes que sonaven quan el motor es va aturar, tancades com a tallades", closed);
         ConfigureAutoDj(autoDj, library, log);
 
         // Títol per a BUTT (fase 1, pas 9; D-009): per defecte, <dades>\NowPlaying.txt
@@ -204,6 +207,7 @@ public static class EngineServer
             recalculator.Dispose();
             deviceWatcher.Dispose();
             control.Dispose();
+            history.CloseAll(); // abans d'aturar la cua: les que sonen es tanquen amb el temps que han sonat
             queue.Dispose();
             aux.Dispose();
             outputs.Dispose();

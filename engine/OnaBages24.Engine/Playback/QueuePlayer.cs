@@ -228,26 +228,90 @@ public sealed class QueuePlayer : IDisposable
     }
 
     /// <summary>Treu de la cua una pista que encara no ha començat. Retorna false si no hi és (o ja sona).</summary>
-    public bool Remove(Guid itemId)
+    public bool Remove(Guid itemId) => Take(itemId) is not null;
+
+    /// <summary>Com <see cref="Remove"/>, però retorna la pista treta (per anotar-la com a no emesa si venia d'un esdeveniment).</summary>
+    public QueueItem? Take(Guid itemId)
     {
+        QueueItem? taken = null;
         var events = new List<Action>();
-        bool removed;
         lock (_sync)
         {
             if (_next?.Item.Id == itemId && !_next.HasStarted)
             {
+                taken = _next.Item;
                 UnprepareNext(events);
                 _upcoming.RemoveAt(0); // UnprepareNext l'ha tornada al principi de la cua
-                removed = true;
             }
-            else
+            else if (_upcoming.FindIndex(i => i.Id == itemId) is var index and >= 0)
             {
-                removed = _upcoming.RemoveAll(i => i.Id == itemId) > 0;
+                taken = _upcoming[index];
+                _upcoming.RemoveAt(index);
             }
         }
         Raise(events);
-        if (removed) Changed?.Invoke();
-        return removed;
+        if (taken is not null) Changed?.Invoke();
+        return taken;
+    }
+
+    /// <summary>Quant abans de començar una pista ja preparada no es pot moure (tornar-la a obrir podria fer un buit).</summary>
+    private static readonly TimeSpan LockedBeforeStart = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Mou una pista de la cua una posició amunt (−1) o avall (+1) (fase 3, pas 2a). Si cal, la que s'estava preparant torna
+    /// a la cua i es prepara la que toqui. Retorna el motiu si no es pot (en català), o null si s'ha mogut.
+    /// </summary>
+    public string? Move(Guid itemId, int delta)
+    {
+        var events = new List<Action>();
+        string? problem = null;
+        lock (_sync)
+        {
+            if (_cut is not null) problem = "Hi ha un tall programat d'aquí a uns segons: espera que comenci.";
+            else if (_next is { HasStarted: true }) problem = "La pista següent ja ha començat a sonar.";
+            else if (_next is { Scheduled: true } n && FramesToTime(n.StartFrame - _mixer.FramesRendered) < LockedBeforeStart
+                     && (n.Item.Id == itemId || delta < 0))
+                problem = "La pista següent està a punt de començar: ja no es pot canviar l'ordre del principi de la cua.";
+            else
+            {
+                if (_next is not null) UnprepareNext(events); // torna al principi de la cua: tot es mou en una sola llista
+                int index = _upcoming.FindIndex(i => i.Id == itemId);
+                int target = index + Math.Sign(delta);
+                if (index < 0) problem = "Aquesta pista ja no és a la cua.";
+                else if (target < 0 || target >= _upcoming.Count) problem = null; // ja és a la punta: no cal fer res
+                else (_upcoming[index], _upcoming[target]) = (_upcoming[target], _upcoming[index]);
+            }
+        }
+        Raise(events);
+        if (problem is null) Changed?.Invoke();
+        return problem;
+    }
+
+    /// <summary>
+    /// «Reprodueix ara» (fase 3, pas 2a; D-073): la que sona baixa amb un fos i la pista triada comença de seguida. Les
+    /// que hi havia entremig es treuen de la cua i es retornen (per anotar com a no emeses les dels esdeveniments).
+    /// Retorna null si la pista no és a la cua, o si hi ha un tall programat d'aquí a uns segons.
+    /// </summary>
+    public IReadOnlyList<QueueItem>? PlayNow(Guid itemId, TimeSpan fade)
+    {
+        var events = new List<Action>();
+        var skipped = new List<QueueItem>();
+        lock (_sync)
+        {
+            if (_cut is not null || _next is { HasStarted: true }) return null;
+            if (_next?.Item.Id != itemId)
+            {
+                if (_next is not null) UnprepareNext(events);
+                int index = _upcoming.FindIndex(i => i.Id == itemId);
+                if (index < 0) return null;
+                skipped.AddRange(_upcoming.Take(index));
+                _upcoming.RemoveRange(0, index);
+            }
+            Skip(fade); // la que sona fa el fos; la triada és ara la primera de la cua i es prepara de seguida
+        }
+        Raise(events);
+        Changed?.Invoke();
+        return skipped;
     }
 
     /// <summary>Treu de la cua les pistes que encara no han començat i compleixen la condició (p. ex. totes les de l'AutoDJ, D-034).</summary>

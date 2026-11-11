@@ -9,18 +9,23 @@ namespace OnaBages24.Engine.Playback;
 /// </summary>
 public sealed class PlayHistory
 {
-    private readonly Dictionary<Guid, long> _open = [];
+    private readonly Dictionary<Guid, (long Entry, DateTimeOffset Started)> _open = [];
+    private readonly Library _library;
+    private readonly ILogger _log;
 
     public PlayHistory(QueuePlayer queue, Library library, ILogger log)
     {
+        _library = library;
+        _log = log;
         queue.Started += e =>
         {
             try
             {
                 var track = (e.Item.TrackId is { } id ? library.GetTrack(id) : null)
                             ?? new Track { Path = e.Item.Path, Artist = e.Item.Artist, Title = e.Item.Title };
-                long entry = library.AddHistory(track, DateTimeOffset.UtcNow, e.Item.Origin);
-                lock (_open) _open[e.Item.Id] = entry;
+                var started = DateTimeOffset.UtcNow;
+                long entry = library.AddHistory(track, started, e.Item.Origin);
+                lock (_open) _open[e.Item.Id] = (entry, started);
             }
             catch (Exception ex) when (ex is DatabaseException or Microsoft.Data.Sqlite.SqliteException)
             {
@@ -33,7 +38,8 @@ public sealed class PlayHistory
             long entry;
             lock (_open)
             {
-                if (!_open.Remove(e.Item.Id, out entry)) return;
+                if (!_open.Remove(e.Item.Id, out var open)) return;
+                entry = open.Entry;
             }
             try
             {
@@ -44,5 +50,30 @@ public sealed class PlayHistory
                 log.LogWarning("No s'ha pogut tancar {Track} a l'historial: {Message}", e.Item, ex.Message);
             }
         };
+    }
+
+    /// <summary>
+    /// El motor s'atura (fase 3, pas 2a): les pistes que sonen es tanquen a l'historial com a tallades, amb el temps que
+    /// han sonat. Si no, quedarien com a «Sona» per sempre.
+    /// </summary>
+    public void CloseAll()
+    {
+        List<(long Entry, DateTimeOffset Started)> open;
+        lock (_open)
+        {
+            open = [.. _open.Values];
+            _open.Clear();
+        }
+        foreach (var (entry, started) in open)
+        {
+            try
+            {
+                _library.FinishHistory(entry, DateTimeOffset.UtcNow - started, complete: false);
+            }
+            catch (Exception ex) when (ex is DatabaseException or Microsoft.Data.Sqlite.SqliteException)
+            {
+                _log.LogWarning("No s'ha pogut tancar l'historial en aturar el motor: {Message}", ex.Message);
+            }
+        }
     }
 }

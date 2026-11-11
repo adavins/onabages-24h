@@ -1322,3 +1322,9 @@ button.pl-chip.is-off {
   color: inherit;
   width: auto;
 }
+
+.queue-tools {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}

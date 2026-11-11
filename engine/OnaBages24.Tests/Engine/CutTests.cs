@@ -322,7 +322,9 @@ public sealed class CutTests : IDisposable
         var started = _started.Last();
         Assert.StartsWith("Cançó", started.Item.Title);
         Assert.Equal(started.CutFrame, started.StartFrame); // al fotograma exacte del tall
-        Assert.InRange(started.StartFrame, cutFrame!.Value - Rate / 100, cutFrame.Value + Rate / 100);
+        // L'estimació de la prova surt del rellotge real, i les pauses per deixar llegir els fitxers la desplacen uns ms:
+        // ±40 ms. El que compta és la línia d'abans (el fotograma exacte del tall)
+        Assert.InRange(started.StartFrame, cutFrame!.Value - Rate / 25, cutFrame.Value + Rate / 25);
         // I no hi ha cap mostra en silenci: ni abans, ni durant el fos, ni després de l'hora
         int from = (int)(Rate / 2), to = (int)(cutFrame.Value - first) + Rate;
         float quietest = Enumerable.Range(from, to - from).Min(f => output[f * 2]);

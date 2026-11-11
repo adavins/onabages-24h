@@ -106,6 +106,8 @@ public sealed class CommandRouter
                 "queue.get" => new JsonObject { ["queue"] = QueueJson.Queue(Queue()) },
                 "queue.insert" => QueueInsert(msg),
                 "queue.remove" => QueueRemove(msg),
+                "queue.move" => QueueMove(msg),
+                "player.playItem" => PlayerPlayItem(msg),
                 "player.next" => PlayerNext(msg),
                 "aux.get" => new JsonObject { ["aux"] = QueueJson.Aux(Aux()) },
                 "aux.play" => AuxPlay(msg),
@@ -282,9 +284,41 @@ public sealed class CommandRouter
     private JsonObject QueueRemove(JsonObject msg)
     {
         var queue = Queue();
-        if (!Guid.TryParse(RequireString(msg, "itemId"), out var itemId) || !queue.Remove(itemId))
+        if (!Guid.TryParse(RequireString(msg, "itemId"), out var itemId) || queue.Take(itemId) is not { } taken)
             throw new BadParamsException("Aquest element no és a la cua o ja ha començat a sonar.");
+        _scheduler?.RecordNotPlayed([taken], "treta a mà"); // si venia d'un esdeveniment: NO_EMES
         return new JsonObject { ["queue"] = QueueJson.Queue(queue) };
+    }
+
+    /// <summary>Mou una pista de la cua una posició amunt o avall (fase 3, pas 2a): <c>itemId</c> i <c>delta</c> (−1 o +1).</summary>
+    private JsonObject QueueMove(JsonObject msg)
+    {
+        var queue = Queue();
+        if (!Guid.TryParse(RequireString(msg, "itemId"), out var itemId)) throw new BadParamsException("El camp 'itemId' no és vàlid.");
+        int delta = ReadInt(msg["delta"]) ?? 0;
+        if (delta is not (-1 or 1)) throw new BadParamsException("El camp 'delta' ha de ser −1 (amunt) o 1 (avall).");
+        if (queue.Move(itemId, delta) is { } problem) throw new BadParamsException(problem);
+        return new JsonObject { ["queue"] = QueueJson.Queue(queue) };
+    }
+
+    /// <summary>
+    /// «Reprodueix ara» (fase 3, pas 2a; D-073): <c>itemId</c> i <c>fadeMs</c> (per defecte 1.000). La que sona baixa amb un
+    /// fos, la triada comença de seguida i les d'entremig es treuen (NO_EMES si venien d'un esdeveniment).
+    /// </summary>
+    private JsonObject PlayerPlayItem(JsonObject msg)
+    {
+        var queue = Queue();
+        if (!Guid.TryParse(RequireString(msg, "itemId"), out var itemId)) throw new BadParamsException("El camp 'itemId' no és vàlid.");
+        int fadeMs = ReadInt(msg["fadeMs"]) ?? 1000;
+        if (fadeMs is < 0 or > 10_000) throw new BadParamsException("El camp 'fadeMs' ha de ser entre 0 i 10.000.");
+        var skipped = queue.PlayNow(itemId, TimeSpan.FromMilliseconds(fadeMs))
+            ?? throw new BadParamsException("Ara no es pot: la pista ja no és a la cua o hi ha un tall programat d'aquí a uns segons.");
+        _scheduler?.RecordNotPlayed(skipped, "saltades amb «Reprodueix ara»");
+        return new JsonObject
+        {
+            ["skipped"] = new JsonArray(skipped.Select(i => (JsonNode)QueueJson.Item(i)).ToArray()),
+            ["queue"] = QueueJson.Queue(queue),
+        };
     }
 
     private JsonObject PlayerNext(JsonObject msg)
