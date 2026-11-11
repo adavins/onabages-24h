@@ -54,7 +54,7 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
    Fora d'abast fins a les fases 2 i 3: esdeveniments, cerca a la biblioteca, cartutxeres, auxiliars, inserir a la cua i hora prevista de cada pista.
 11. Prova de 48 hores: primer a l'ordinador del desenvolupador, després a un altre ordinador de proves. **Posposada** pel desenvolupador (2026-11-10); la fase 1 no es tanca fins que es faci.
 
-## Fase 2 — Planificador i puntualitat
+## Fase 2 — Planificador i puntualitat · feta excepte els passos 7 i 9, posposats (D-072)
 
 - Esdeveniments amb modes, accions i recurrències (`docs/planificador.md`, seccions 2–4 i 12).
 - Preparació anticipada i disparament a l'hora exacta (secció 7).
@@ -75,12 +75,12 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
    - 5a. ✔ Reproductors auxiliars (3) i atenuació de la música al mesclador, a la mostra exacta; ordres `aux.*`.
    - 5b. ✔ Mode SUPERPOSA i acció `AUXILIAR` al planificador (oberta 30 s abans i a la mostra de l'hora), i `retard --auxiliar` per mesurar-ho amb el so real (D-065). Primera mesura: +4,9 ms; un SUPERPOSA amb els senyals horaris ha començat a la mostra prevista.
 6. ✔ Migració dels esdeveniments de RadioDJ a `importa-radiodj` (secció 6), amb informe (D-066). Provada amb el fitxer de referència i una còpia de la base de dades: 195 franges → 84 esdeveniments (35 TALLA, 31 ENCUA, 18 SUPERPOSA). L'escolta amb els fitxers de debò es farà a l'ordinador de proves (pas 9).
-7. Acció `STREAM` (D-010, D-030, D-031), amb un servidor de proves local. Es fa després del pas 8 (D-068).
+7. Acció `STREAM` (D-010, D-030, D-031), amb un servidor de proves local. **Posposat** fins després de la fase 3 (D-072).
 8. Interfície (abans del pas 7, D-068):
    - 8a. ✔ Pestanyes Emissió | Planificador; graella per setmanes reals i setmana tipus (lectura), amb zoom, filtres per mode, desactivats, fila dels que es repeteixen cada hora i detall amb les 10 pròximes emissions i les accions.
    - 8b. ✔ Editor d'esdeveniments al panell de la dreta: tots els camps, accions (afegir, treure, reordenar, dies propis), cercador de pistes (`library.search`), pròximes emissions mentre s'edita (`scheduler.preview`), Desa, Duplica i Esborra amb confirmació (D-070).
    - 8c. ✔ Avisos a l'editor, mentre s'edita i en desar (franja massa llarga, ENCUA que no sonarà o es tallarà, durada màxima superada, emissions perdudes pel canvi d'hora, pistes que falten) (D-071). Els avisos en emissió (en preparar l'esdeveniment i quan canvia un fitxer de durada variable) queden per a la fase 4, amb la detecció de canvis als fitxers.
-9. Prova de tancament (criteri de sota).
+9. Prova de tancament (criteri de sota). **Posposat**: necessita el pas 7 i l'ordinador de proves amb els fitxers (D-072).
 
 Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al 6, segons el que demani la migració. Fora d'aquesta fase: `CAMPANYA` i detecció de canvis als fitxers (fase 4), `SWEEPERS` (fase 3, amb el trepitjador) i `ENTRADA` (encara no hi ha entrada).
 
@@ -88,13 +88,24 @@ Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al
 
 ## Fase 3 — Pantalla d'emissió completa
 
-- Pantalla Emissió segons la maqueta: previsió fins al pròxim esdeveniment, franja de pròxims esdeveniments, modes AutoDJ / Assistit / Manual, entrada de línia.
+- Pantalla Emissió segons la maqueta: previsió fins al pròxim esdeveniment, franja de pròxims esdeveniments. Sense modes Assistit / Manual (D-073); l'entrada de línia passa a la fase 7 (D-073).
 - Biblioteca amb cerca contínua, cartutxeres, notes i reproductors auxiliars.
 - Processador d'àudio (compressor i volum).
 - Gestor de pistes: importació de carpetes amb informe, carpetes vigilades per subcategoria (D-026), bosses renovables i assistent «Renova la bossa» (D-033), fitxa de pista, etiquetes, editor senzill de punts i canvi d'arrel de les rutes (D-025).
 - Rotacions: editor, separació real, previsualització i bosses amb nom (D-014).
 - **Rotació de reserva** (a decidir): ara, si cap pas de la rotació té pistes, l'AutoDJ agafa música de tota la biblioteca, la que fa més temps que no sona; a la prova de la 10c, amb Dance90 buida, van sortir cançons de Nadal (no havien sonat mai). Proposta: una rotació de reserva configurable (rotació triada → reserva → tota la biblioteca, sense les categories marcades com a «no de reserva»), sempre amb avís.
 - Botó «Regenera la cua» (D-034).
+
+**Passos** (D-073)
+1. ✔ Previsió a la cua (D-074): hora prevista de cada pista; si el pròxim esdeveniment talla, les pistes que no arribaran a sonar i quant es tallarà de la que soni; franja dels pròxims esdeveniments i compte enrere a la barra d'estat.
+2. Cua i control: afegir, treure i reordenar; botó de reproduir a cada pista (salta fins allà; les d'entremig es treuen, NO_EMES si venien d'un esdeveniment); «Regenera la cua» (D-034); AutoDJ protegit (es reactiva sol al cap d'un temps i, si la cua s'acaba amb l'AutoDJ aturat, es torna a activar amb avís); «Atura els esdeveniments» amb temps límit (resultat `OMES_ATURAT`); rotació i sweepers actius visibles; l'historial tanca la pista que sonava en aturar el motor.
+3. Biblioteca: cerca a mesura que s'escriu (també sense accents), filtres per categoria, subcategoria i etiqueta, i afegir a la cua.
+4. Reproductors auxiliars, cartutxeres i notes a la interfície.
+5. Trepitjador: sweepers a sobre de la intro, amb atenuació, i acció SWEEPERS.
+6. Processador d'àudio (compressor i volum) a la sortida.
+7. Gestor de pistes: fitxa editable i etiquetes, editor senzill de punts, importació de carpetes amb informe, carpetes vigilades (D-026), bosses renovables (D-033) i canvi d'arrel (D-025).
+8. Rotacions: editor, separació real, previsualització, bosses amb nom (D-014) i rotació de reserva.
+9. Prova de tancament (criteri de sota).
 
 **Criteri de tancament:** un operador pot fer servir l'aplicació un dia sencer sense obrir RadioDJ.
 

@@ -1217,3 +1217,108 @@ button.pl-chip.is-off {
   color: var(--bs-warning);
   text-decoration: none;
 }
+
+/* --- Previsió i pròxims esdeveniments (fase 3, pas 1) --- */
+
+.upcoming {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.upcoming-title {
+  color: var(--ob-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.upcoming-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.upcoming-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.7rem;
+  border-radius: 0.375rem;
+  background: var(--mode-bg);
+  color: var(--mode-fg);
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+
+.upcoming-time {
+  font-family: var(--ob-mono);
+  font-weight: 600;
+}
+
+.upcoming-mode {
+  opacity: 0.85;
+}
+
+.upcoming-until {
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--mode-fg);
+  color: var(--mode-bg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.upcoming-until:empty {
+  display: none;
+}
+
+.queue-warning {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--ob-border);
+  background: rgba(255, 193, 7, 0.1);
+  color: var(--bs-warning);
+}
+
+.queue-time {
+  font-family: var(--ob-mono);
+  color: var(--ob-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-mark {
+  white-space: nowrap;
+  font-size: 0.88rem;
+}
+
+.queue-row.is-cut {
+  background: rgba(255, 193, 7, 0.07);
+}
+
+.queue-row.is-lost .queue-title,
+.queue-row.is-lost .queue-artist {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.queue-event-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--mode-bg);
+  color: var(--mode-fg);
+  font-weight: 600;
+}
+
+.queue-event-row .queue-time {
+  color: inherit;
+  width: auto;
+}

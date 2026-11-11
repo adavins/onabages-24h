@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 2, pas 8c (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 1 (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -122,6 +122,8 @@ El `message` és en català i es pot mostrar a l'operador.
 - `connector`: tipus de connector segons Windows: `analog`, `digital`, `hdmi`, `remote` o `unknown`. Serveix per triar la sortida d'emergència (D-038).
 
 ### 4.2. Cua
+
+- Previsió (fase 3, pas 1, D-074): `queue` porta `currentEndsAt` (quan s'acaba la que sona; `null` si no sona res) i cada element de `upcoming` porta `plannedAt` (hora prevista d'inici; `null` si no se sap, perquè d'alguna pista d'abans no se sap quant dura). Hores locals amb zona (ISO 8601). Es calculen amb els fotogrames del mesclador, els punts de mescla i el solapament màxim, com l'encadenament; la pista ja programada, amb el seu fotograma exacte. No compten els esdeveniments que encara no s'han disparat: la interfície ho compara amb `scheduler.occurrences`.
 
 ```json
 { "current": { "id": "6f0c…", "trackId": 23977, "path": "O:\\musica\\…\\The Kooks - Bad Habit.mp3",
@@ -250,7 +252,7 @@ Ocurrència (`scheduler.occurrences`):
   "date": "2026-11-20", "time": "10:00:00", "at": "2026-11-20T10:00:00.0000000+01:00", "skippedClockChange": false }
 ```
 
-- `enabled`, `repeat` i `maxDurationSeconds` (pas 8a): els de l'esdeveniment, per dibuixar l'emissió a la graella sense haver de buscar-lo.
+- `enabled`, `repeat` i `maxDurationSeconds` (pas 8a) i `clearQueue` (fase 3, pas 1): els de l'esdeveniment, per dibuixar l'emissió a la graella i fer la previsió de la cua sense haver de buscar-lo.
 
 - `date` i `time`: dia i hora locals programats. `at`: l'instant. `skippedClockChange`: aquella hora no existeix pel canvi d'hora i no sonarà (D-057); `at` és llavors el moment del salt.
 

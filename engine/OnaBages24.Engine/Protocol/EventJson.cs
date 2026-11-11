@@ -120,6 +120,8 @@ public static class EventJson
         ["enabled"] = occurrence.Event.Enabled,
         ["repeat"] = Events.RepeatText(occurrence.Event.Repeat),
         ["maxDurationSeconds"] = occurrence.Event.MaxDurationSeconds,
+        // Per a la previsió de la cua (fase 3, pas 1): si esborra la cua
+        ["clearQueue"] = occurrence.Event.ClearQueue,
         ["date"] = DbTime.ToText(occurrence.Date),
         ["time"] = occurrence.LocalTime.ToString("HH:mm:ss", CultureInfo.InvariantCulture),
         ["at"] = occurrence.At.ToString("O", CultureInfo.InvariantCulture),

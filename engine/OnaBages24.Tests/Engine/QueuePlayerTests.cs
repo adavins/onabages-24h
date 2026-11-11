@@ -286,4 +286,42 @@ public class QueuePlayerTests : IDisposable
         var json = OnaBages24.Engine.Protocol.QueueJson.Item(QueueItem.FromTrack(track, QueueOrigin.AutoDj));
         Assert.Equal(193_500, json["durationMs"]!.GetValue<long>());
     }
+
+    // --- Previsió (fase 3, pas 1) ---
+
+    // La primera pista comença 50 ms després (el marge d'inici): les hores es comparen amb una dècima de marge
+    [Fact]
+    public void La_previsio_encadena_les_pistes_pels_punts_de_mescla()
+    {
+        var player = NewPlayer();
+        // A: 10 s, mescla als 8 s. B: inici 1 s, mescla 4 s (3 s fins a la mescla). C: sense punts, 2 s. D: durada desconeguda.
+        player.Enqueue(Item(Wav("a", (10, 0.1f)), startMs: 0, mixMs: 8000, endMs: 10000, title: "A"));
+        Run(player, Rate); // A sona des de fa 1 s; B ja s'està preparant
+        player.Enqueue(
+            Item(Wav("b", (6, 0.2f)), startMs: 1000, mixMs: 4000, endMs: 5000, title: "B"),
+            Item(Wav("c", (2, 0.3f)), title: "C") with { FileDurationMs = 2000 },
+            Item(_temp.File("d.mp3"), title: "D"),
+            Item(_temp.File("e.mp3"), title: "E"));
+
+        var forecast = player.Forecast();
+        var starts = forecast.Starts.Select(s => s.StartsIn?.TotalSeconds).ToArray();
+
+        Assert.Equal(10 - 1, forecast.CurrentEndsIn!.Value.TotalSeconds, tolerance: 0.1);   // A s'acaba d'aquí a 9 s
+        Assert.Equal(8 - 1, starts[0]!.Value, tolerance: 0.1);                                  // B, al punt de mescla d'A
+        Assert.Equal(7 + 3, starts[1]!.Value, tolerance: 0.1);                                  // C, 3 s després (de l'inici a la mescla de B)
+        Assert.Equal(10 + 2, starts[2]!.Value, tolerance: 0.1);                                 // D, quan s'acaba C (sense punts: el final)
+        Assert.Null(starts[3]);                                                    // E: no se sap quant dura D
+    }
+
+    [Fact]
+    public void La_previsio_te_en_compte_el_solapament_maxim()
+    {
+        var player = NewPlayer(new QueueSettings { MaxOverlap = TimeSpan.FromSeconds(1) });
+        // A s'apaga lentament: mescla als 4 s però final als 10 s; amb 1 s de solapament màxim, la següent entra als 9 s
+        player.Enqueue(Item(Wav("a", (10, 0.1f)), startMs: 0, mixMs: 4000, endMs: 10000));
+        Run(player, Rate / 2);
+        player.Enqueue(Item(Wav("b", (2, 0.2f)), startMs: 0, mixMs: 2000, endMs: 2000));
+
+        Assert.Equal(9 - 0.5, player.Forecast().Starts[0].StartsIn!.Value.TotalSeconds, tolerance: 0.1);
+    }
 }

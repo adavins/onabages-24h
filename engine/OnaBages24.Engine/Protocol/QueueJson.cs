@@ -20,11 +20,28 @@ public static class QueueJson
         ["durationMs"] = item.PlannedMs,
     };
 
-    public static JsonObject Queue(QueuePlayer player) => new()
+    /// <summary>
+    /// La cua (docs/protocol.md, 4.2). Fase 3, pas 1: cada pista que espera porta <c>plannedAt</c> (hora prevista d'inici,
+    /// o null si no se sap) i la cua porta <c>currentEndsAt</c> (quan s'acaba la que sona). Hores locals amb zona.
+    /// </summary>
+    public static JsonObject Queue(QueuePlayer player)
     {
-        ["current"] = player.Current is { } current ? Item(current) : null,
-        ["upcoming"] = new JsonArray(player.Upcoming.Select(i => (JsonNode)Item(i)).ToArray()),
-    };
+        var now = DateTimeOffset.Now;
+        var upcoming = player.Upcoming;
+        var forecast = player.Forecast();
+        var starts = forecast.Starts.ToDictionary(s => s.Id, s => s.StartsIn);
+        return new JsonObject
+        {
+            ["current"] = player.Current is { } current ? Item(current) : null,
+            ["currentEndsAt"] = forecast.CurrentEndsIn is { } ends ? (now + ends).ToString("O") : null,
+            ["upcoming"] = new JsonArray(upcoming.Select(i =>
+            {
+                var json = Item(i);
+                json["plannedAt"] = starts.GetValueOrDefault(i.Id) is { } inTime ? (now + inTime).ToString("O") : null;
+                return (JsonNode)json;
+            }).ToArray()),
+        };
+    }
 
     public static JsonObject Track(Track track) => new()
     {

@@ -28,6 +28,9 @@ public sealed record QueueEnded(QueueItem Item, TimeSpan Played, bool Complete);
 public sealed record QueueFailed(QueueItem Item, string Message);
 
 /// <summary>Posició de la pista que sona: quant ha sonat, quant falta per al final i per al punt de mescla, i quant dura en total.</summary>
+/// <summary>Previsió de la cua: d'aquí a quant s'acaba la que sona i d'aquí a quant comença cada pista que espera (null = no se sap).</summary>
+public sealed record QueueForecast(TimeSpan? CurrentEndsIn, IReadOnlyList<(Guid Id, TimeSpan? StartsIn)> Starts);
+
 public sealed record QueuePosition(Guid ItemId, TimeSpan Elapsed, TimeSpan Remaining, TimeSpan UntilMix, TimeSpan Duration);
 
 /// <summary>
@@ -123,6 +126,71 @@ public sealed class QueuePlayer : IDisposable
                     Duration: FramesToTime(Math.Max(0, c.EndFrame - c.StartFrame)));
             }
         }
+    }
+
+    /// <summary>
+    /// Previsió de la cua (fase 3, pas 1): d'aquí a quant començarà cada pista que espera, en l'ordre de <see cref="Upcoming"/>,
+    /// i d'aquí a quant s'acaba la que sona. Amb els mateixos punts de mescla i el mateix solapament màxim que
+    /// l'encadenament; la que ja està programada, amb els seus fotogrames exactes. Si d'una pista no se sap quant dura, les
+    /// de després ja no tenen hora (null).
+    /// </summary>
+    public QueueForecast Forecast()
+    {
+        lock (_sync)
+        {
+            long now = _mixer.FramesRendered;
+            var starts = new List<(Guid Id, TimeSpan? StartsIn)>();
+
+            // On comença la següent: al punt de mescla de la que sona, o de seguida si no sona res
+            long? nextStart = _current is { Scheduled: true } c ? Math.Max(now, c.MixFrame) : now;
+            TimeSpan? currentEndsIn = _current is { Scheduled: true } cur ? FramesToTime(Math.Max(0, cur.EndFrame - now)) : null;
+
+            // Les pistes en l'ordre de Upcoming, amb el fotograma on han de començar si ja se sap (la preparada o la d'un tall)
+            var entries = new List<(QueueItem Item, Playing? Prepared, long? FixedStart)>();
+            if (_next is not null) entries.Add((_next.Item, _next, _cutFrame > 0 ? _cutFrame : null));
+            long? cutStart = _next is null && _cutFrame > 0 ? _cutFrame : null; // tall aplicat: la pròxima que es prepari hi comença
+            if (_cut is { } pending)
+            {
+                if (pending.First is { } first) entries.Add((first.Item, first, pending.Frame));
+                else cutStart = pending.Frame; // tall sense pista oberta: la primera de la cua comença al fotograma del tall
+            }
+            foreach (var item in _upcoming)
+            {
+                entries.Add((item, null, cutStart));
+                cutStart = null;
+            }
+
+            foreach (var (item, prepared, fixedStart) in entries)
+            {
+                long? start;
+                long? mix;
+                if (prepared is { Scheduled: true })
+                {
+                    start = prepared.StartFrame;
+                    mix = prepared.MixFrame;
+                }
+                else
+                {
+                    start = fixedStart is { } f ? Math.Max(f, now) : nextStart;
+                    mix = start is { } s && MixDurationFrames(item) is { } m ? s + m : null;
+                }
+                starts.Add((item.Id, start is { } st ? FramesToTime(Math.Max(0, st - now)) : null));
+                nextStart = mix;
+            }
+            return new QueueForecast(currentEndsIn, starts);
+        }
+    }
+
+    /// <summary>De l'inici al punt de mescla d'una pista (on entra la següent), en fotogrames, o null si no se sap quant dura.</summary>
+    private long? MixDurationFrames(QueueItem item)
+    {
+        long startMs = item.StartMs ?? 0;
+        if ((item.EndMs ?? item.FileDurationMs) is not { } endMs) return null;
+        endMs = Math.Max(endMs, startMs);
+        long mixMs = Math.Clamp(item.MixMs ?? endMs, startMs, endMs);
+        long maxOverlapMs = (long)_settings.MaxOverlap.TotalMilliseconds;
+        if (endMs - mixMs > maxOverlapMs) mixMs = endMs - maxOverlapMs;
+        return FramesFromMs(mixMs - startMs);
     }
 
     /// <summary>Hi ha una pista preparant-se que encara no s'ha pogut programar (el fitxer s'està obrint). Per a les proves.</summary>

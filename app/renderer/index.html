@@ -85,6 +85,13 @@
     </div>
   </section>
 
+  <!-- Pròxims esdeveniments (fase 3, pas 1) -->
+  <section class="upcoming" aria-label="Pròxims esdeveniments">
+    <span class="upcoming-title">Pròxims esdeveniments</span>
+    <div id="upcoming-list" class="upcoming-list"></div>
+    <span id="upcoming-empty" class="text-body-secondary d-none">Cap en les pròximes 48 hores.</span>
+  </section>
+
   <main class="workspace">
     <div class="column-main">
       <!-- Cua d'emissió -->
@@ -94,6 +101,7 @@
           <span id="queue-rotation" class="text-body-secondary"></span>
           <span id="queue-summary" class="ms-auto text-body-secondary"></span>
         </div>
+        <div id="queue-warning" class="queue-warning d-none" role="status"></div>
         <ul id="queue-list" class="list-group list-group-flush"></ul>
         <div id="queue-empty" class="empty-note d-none">
           <i class="bi bi-inbox" aria-hidden="true"></i> La cua és buida.
@@ -171,6 +179,7 @@
   </div>
 
   <footer class="statusbar">
+    <span id="status-next"></span>
     <span id="status-output"></span>
     <span id="status-butt"></span>
     <button id="status-warnings" class="btn btn-link statusbar-button" type="button"></button>

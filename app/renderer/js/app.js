@@ -12,6 +12,7 @@ import { QueueView, HistoryView } from './ui/queue.js';
 import { AutoDjView } from './ui/autodj.js';
 import { renderOutput, renderNowPlaying, renderWarnings } from './ui/statusbar.js';
 import { PlannerView } from './ui/planner.js';
+import { UpcomingEvents } from './ui/upcoming.js';
 
 /**
  * @typedef {{
@@ -85,13 +86,17 @@ const queueView = new QueueView(send);
 const historyView = new HistoryView(send);
 const autoDjView = new AutoDjView(send);
 const planner = new PlannerView(send);
+/** L'última cua rebuda: la previsió es torna a calcular quan canvien els pròxims esdeveniments. @type {any} */
+let lastQueue = { current: null, currentEndsAt: null, upcoming: [] };
+const upcoming = new UpcomingEvents(send, () => queueView.render(lastQueue, upcoming.events));
 const problems = { autodj: /** @type {string | null} */ (null), output: /** @type {string | null} */ (null) };
 renderWarnings(problems);
 
 /** @param {any} queue  docs/protocol.md, 4.2 */
 function showQueue(queue) {
   nowPlaying.setCurrent(queue.current);
-  queueView.render(queue.upcoming);
+  lastQueue = queue;
+  queueView.render(queue, upcoming.events);
   /** @type {HTMLButtonElement} */ ($('btn-skip')).disabled = !queue.current;
 }
 
@@ -231,7 +236,11 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
     setTimeout(refreshNowPlayingStatus, 500); // el fitxer s'escriu en un fil a part
   });
   client.addEventListener('ev:player.trackEnded', () => historyView.refresh());
-  client.addEventListener('ev:scheduler.changed', () => planner.refresh());
+  client.addEventListener('ev:scheduler.changed', () => {
+    planner.refresh();
+    upcoming.refresh();
+  });
+  client.addEventListener('ev:scheduler.fired', () => upcoming.refresh());
   client.addEventListener('ev:meters', (e) => {
     const ev = detail(e);
     meters.set(ev.output);
@@ -253,6 +262,7 @@ async function loadState() {
     showOutput(output.output);
     await Promise.all([historyView.refresh(), refreshNowPlayingStatus()]);
     planner.refresh(); // només si es mostra
+    upcoming.refresh();
   } catch (err) {
     console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }
