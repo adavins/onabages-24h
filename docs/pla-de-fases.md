@@ -95,6 +95,8 @@ Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al
 - Rotacions: editor, separació real, previsualització i bosses amb nom (D-014).
 - **Rotació de reserva** (a decidir): ara, si cap pas de la rotació té pistes, l'AutoDJ agafa música de tota la biblioteca, la que fa més temps que no sona; a la prova de la 10c, amb Dance90 buida, van sortir cançons de Nadal (no havien sonat mai). Proposta: una rotació de reserva configurable (rotació triada → reserva → tota la biblioteca, sense les categories marcades com a «no de reserva»), sempre amb avís.
 - Botó «Regenera la cua» (D-034).
+- **Clonar esdeveniments al planificador** (a decidir, D-080): una utilitat per facilitar la planificació, més enllà del botó «Duplica» de l'editor (que fa una còpia idèntica). Per concretar amb el desenvolupador: copiar a altres dies o hores, diverses còpies de cop, copiar una franja o un dia sencer…
+- **Migració d'altres emissores amb RadioDJ** (D-080): els ajustos de la importació per a Ràdio 010, Sant Fruitós i Sallent, amb el pas 7 de la fase 2 (STREAM).
 
 **Passos** (D-073)
 1. ✔ Previsió a la cua (D-074): hora prevista de cada pista; si el pròxim esdeveniment talla, les pistes que no arribaran a sonar i quant es tallarà de la que soni; franja dels pròxims esdeveniments i compte enrere a la barra d'estat.
