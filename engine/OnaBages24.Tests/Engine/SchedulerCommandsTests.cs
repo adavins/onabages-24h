@@ -167,4 +167,39 @@ public sealed class SchedulerCommandsTests : IDisposable
 
         Assert.Equal("bad_params", ErrorCode(router.Handle("""{ "v": 1, "id": 1, "cmd": "scheduler.list" }""")));
     }
+
+    [Fact]
+    public void Les_accions_porten_com_es_mostren_a_la_interficie()
+    {
+        long track = _library.AddTrack(new Track { Path = _temp.File("no-hi-es.mp3"), Artist = "Ona Bages", Title = "El Magazín",
+            Type = TrackType.Program, DurationMs = 3_540_000, FileState = FileState.Missing });
+        string json = $$"""
+            { "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "Magazín", "mode": "TALLA", "startTime": "10:00:00",
+              "actions": [ { "type": "PISTA", "params": { "songId": {{track}} } }, { "type": "PISTA", "params": { "songId": 999 } },
+                           { "type": "AUXILIAR", "params": { "songId": {{track}}, "player": 2, "duckingDb": -12 } } ] } }
+            """;
+        var actions = Result(Send(json))["event"]!["actions"]!.AsArray();
+
+        Assert.Equal("Ona Bages - El Magazín", actions[0]!["label"]!.GetValue<string>());
+        Assert.Equal("Programa · 59:00 · el fitxer falta", actions[0]!["detail"]!.GetValue<string>());
+        Assert.True(actions[0]!["missing"]!.GetValue<bool>());
+        Assert.Equal(3_540_000, actions[0]!["durationMs"]!.GetValue<long>());
+        Assert.Equal("Pista 999 (no existeix)", actions[1]!["label"]!.GetValue<string>());
+        Assert.Contains("reproductor auxiliar 2 · música a -12 dB", actions[2]!["detail"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Les_emissions_dels_desactivats_nomes_surten_si_es_demanen()
+    {
+        _events.Save(new ScheduledEvent { Name = "Desactivat", Mode = EventMode.Overlay, StartTime = new TimeOnly(10, 0), Enabled = false,
+            MaxDurationSeconds = 600 });
+        const string Ask = """{ "v": 1, "id": 1, "cmd": "scheduler.occurrences", "from": "2026-11-16", "to": "2026-11-22"INCLUDE }""";
+
+        Assert.Empty(Result(Send(Ask.Replace("INCLUDE", "")))["occurrences"]!.AsArray());
+        var all = Result(Send(Ask.Replace("INCLUDE", ", \"includeDisabled\": true")))["occurrences"]!.AsArray();
+        Assert.Equal(7, all.Count);
+        Assert.False(all[0]!["enabled"]!.GetValue<bool>());
+        Assert.Equal("CAP", all[0]!["repeat"]!.GetValue<string>());
+        Assert.Equal(600, all[0]!["maxDurationSeconds"]!.GetValue<int>());
+    }
 }

@@ -528,3 +528,442 @@ body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ===================================================================================================
+   Pantalles i planificador (fase 2, pas 8a). Colors dels modes: docs/maquetes/Main.dc.html.
+   Sempre color + icona + text. Sense animacions ni ombres (escriptori remot).
+   =================================================================================================== */
+
+button.section {
+  border: 0;
+  background: none;
+  font: inherit;
+}
+
+button.section:hover {
+  color: var(--bs-body-color);
+}
+
+/* Cada pantalla ocupa l'espai entre la capçalera i la barra d'estat */
+.view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.view.d-none {
+  display: none !important;
+}
+
+/* Modes */
+.mode-talla { --mode-bg: #5a2913; --mode-fg: #ffd8c2; --mode-line: #a65a2e; }
+.mode-encua { --mode-bg: #173a66; --mode-fg: #cfe2ff; --mode-line: #3f74b8; }
+.mode-superposa { --mode-bg: #3b2b64; --mode-fg: #e2d5ff; --mode-line: #7a5fc0; }
+.mode-sistema { --mode-bg: #30353e; --mode-fg: #d9dee5; --mode-line: #6b737f; }
+
+.planner-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.pl-nav,
+.pl-zoom-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pl-title {
+  font-weight: 600;
+  min-width: 22rem;
+  text-align: center;
+}
+
+.planner-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.pl-legend-title {
+  color: var(--ob-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pl-legend-sep {
+  width: 1px;
+  height: 1.4rem;
+  background: var(--ob-border);
+}
+
+.pl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--mode-bg);
+  color: var(--mode-fg);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+button.pl-chip.is-off {
+  background: transparent;
+  border-color: var(--mode-line);
+  color: var(--ob-muted);
+  text-decoration: line-through;
+}
+
+.pl-repeat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--mode-line);
+  background: transparent;
+  color: var(--mode-fg);
+  font-size: 0.8rem;
+}
+
+.pl-repeat.is-disabled {
+  border-style: dashed;
+}
+
+.pl-repeat.is-selected {
+  outline: 2px solid #ffffff;
+}
+
+.planner-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22rem;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.planner-grid-wrap {
+  overflow: auto;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.5rem;
+  background: var(--ob-panel);
+}
+
+.planner-grid {
+  min-width: 46rem;
+}
+
+.pl-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: 4rem repeat(7, minmax(0, 1fr));
+  background: var(--ob-panel);
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.pl-dayhead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.35rem 0;
+  border-left: 1px solid var(--ob-border);
+}
+
+.pl-dayname {
+  color: var(--ob-muted);
+  font-size: 0.75rem;
+}
+
+.pl-daynum {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.pl-dayhead.is-today .pl-daynum {
+  color: var(--ob-mix);
+}
+
+.pl-body {
+  position: relative;
+  display: grid;
+  grid-template-columns: 4rem repeat(7, minmax(0, 1fr));
+}
+
+.pl-times {
+  position: relative;
+}
+
+.pl-timelabel {
+  position: absolute;
+  left: 0.4rem;
+  color: var(--ob-muted);
+  font-family: var(--ob-mono);
+  font-size: 0.72rem;
+}
+
+.pl-column {
+  position: relative;
+  border-left: 1px solid var(--ob-border);
+  background-image: linear-gradient(var(--ob-border) 1px, transparent 1px);
+}
+
+.pl-column.is-today {
+  background-color: #1d2127;
+}
+
+.pl-item {
+  position: absolute;
+  z-index: 1;
+  overflow: hidden;
+  /* Un botó centra el contingut verticalment: aquí ha d'anar a dalt */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--mode-line);
+  border-radius: 0.3rem;
+  background: var(--mode-bg);
+  color: var(--mode-fg);
+  text-align: left;
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.pl-item:hover {
+  z-index: 2;
+  border-color: var(--mode-fg);
+}
+
+.pl-item.is-disabled {
+  background: repeating-linear-gradient(135deg, var(--mode-bg) 0 10px, color-mix(in srgb, var(--mode-bg) 55%, transparent) 10px 20px);
+  border-style: dashed;
+}
+
+.pl-item.is-skipped {
+  border-style: dotted;
+  text-decoration: line-through;
+}
+
+.pl-item.is-selected {
+  z-index: 2;
+  outline: 2px solid #ffffff;
+}
+
+.pl-item-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.pl-item-time {
+  font-family: var(--ob-mono);
+}
+
+.pl-item-sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pl-item-badge {
+  align-self: flex-start;
+  margin-top: 0.2rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #000000;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.pl-now {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: 2px;
+  background: var(--bs-danger);
+  pointer-events: none;
+}
+
+.planner-others {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  border-top: 1px solid var(--ob-border);
+}
+
+.pl-others-title {
+  color: var(--ob-muted);
+  font-size: 0.8rem;
+}
+
+.pl-other {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--mode-line);
+  border-radius: 0.375rem;
+  background: var(--mode-bg);
+  color: var(--mode-fg);
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.pl-other.is-disabled {
+  border-style: dashed;
+}
+
+.planner-detail {
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.5rem;
+  background: var(--ob-panel);
+  user-select: text;
+}
+
+.pl-detail-empty,
+.pl-detail-foot {
+  color: var(--ob-muted);
+}
+
+.pl-detail-foot {
+  margin: 1rem 0 0;
+  font-size: 0.8rem;
+}
+
+.pl-detail-name {
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.pl-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.88rem;
+}
+
+.pl-facts dt {
+  color: var(--ob-muted);
+  font-weight: normal;
+}
+
+.pl-facts dd {
+  margin: 0;
+}
+
+.pl-exceptions {
+  color: var(--bs-warning);
+  font-size: 0.88rem;
+  margin-bottom: 0.5rem;
+}
+
+.pl-detail-title {
+  margin: 1rem 0 0.4rem;
+  color: var(--ob-muted);
+  font-size: 0.85rem;
+  font-weight: normal;
+}
+
+.pl-next {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.pl-next-chip {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.3rem;
+  font-family: var(--ob-mono);
+  font-size: 0.8rem;
+}
+
+.pl-next-chip.is-skipped {
+  color: var(--bs-warning);
+  text-decoration: line-through;
+}
+
+.pl-actions {
+  list-style: none;
+  counter-reset: action;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pl-action {
+  counter-increment: action;
+  position: relative;
+  padding: 0.45rem 0.6rem 0.45rem 2.2rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.375rem;
+}
+
+.pl-action::before {
+  content: counter(action);
+  position: absolute;
+  left: 0.6rem;
+  top: 0.45rem;
+  color: var(--ob-muted);
+  font-weight: 600;
+}
+
+.pl-action.is-missing {
+  border-color: var(--bs-warning);
+}
+
+.pl-action-label {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pl-action-detail,
+.pl-action-days {
+  color: var(--ob-muted);
+  font-size: 0.8rem;
+}
+
+.pl-action-warning {
+  color: var(--bs-warning);
+  font-size: 0.8rem;
+}
+
+.pl-action-empty {
+  color: var(--ob-muted);
+}
+
+.pl-notes {
+  margin-top: 0.75rem;
+  color: var(--ob-muted);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 1100px) {
+  .planner-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
+  }
+}

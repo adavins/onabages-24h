@@ -506,16 +506,20 @@ public sealed class CommandRouter
 
     private TimeZoneInfo Zone => _scheduler?.Zone ?? TimeZoneInfo.Local;
 
-    private JsonObject SchedulerList() => new()
+    private JsonObject SchedulerList()
     {
-        ["events"] = new JsonArray(EventsOrError().List().Select(e => (JsonNode)EventJson.Event(e)).ToArray()),
-    };
+        var describer = Describer(); // un de sol per a tots: les rotacions es llegeixen una vegada
+        return new JsonObject
+        {
+            ["events"] = new JsonArray(EventsOrError().List().Select(e => (JsonNode)EventJson.Event(e, describer)).ToArray()),
+        };
+    }
 
     private JsonObject SchedulerGet(JsonObject msg)
     {
         long id = RequireId(msg);
         var ev = EventsOrError().Get(id) ?? throw new BadParamsException($"No existeix l'esdeveniment {id}.");
-        return new JsonObject { ["event"] = EventJson.Event(ev) };
+        return new JsonObject { ["event"] = EventJson.Event(ev, Describer()) };
     }
 
     /// <summary>
@@ -536,7 +540,7 @@ public sealed class CommandRouter
             throw new BadParamsException(ex.Message);
         }
         _scheduler?.Reload();
-        return new JsonObject { ["event"] = EventJson.Event(events.Get(id)!) };
+        return new JsonObject { ["event"] = EventJson.Event(events.Get(id)!, Describer()) };
     }
 
     private JsonObject SchedulerDelete(JsonObject msg)
@@ -568,7 +572,9 @@ public sealed class CommandRouter
         }
         else
         {
-            selected = events.List().Where(e => e.Enabled && !e.IsTemplate);
+            // includeDisabled (fase 2, pas 8a): també els desactivats, per veure'ls a la graella (p. ex. els importats de RadioDJ)
+            bool includeDisabled = msg["includeDisabled"] is JsonValue v && v.TryGetValue(out bool b) && b;
+            selected = events.List().Where(e => (e.Enabled || includeDisabled) && !e.IsTemplate);
         }
 
         var list = selected.SelectMany(e => Recurrences.Between(e, from, to, Zone))
@@ -598,6 +604,9 @@ public sealed class CommandRouter
             ["more"] = records.Count > limit,
         };
     }
+
+    /// <summary>Per descriure les accions dels esdeveniments (títols de les pistes, rotacions…).</summary>
+    private ActionDescriber Describer() => new(_library, _rotations);
 
     private static long RequireId(JsonObject msg) =>
         msg["eventId"] is JsonValue v && v.TryGetValue(out long id) ? id : throw new BadParamsException("Falta el camp 'eventId' (un nombre).");

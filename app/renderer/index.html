@@ -14,7 +14,8 @@
   <header class="topbar">
     <div class="brand"><i class="bi bi-broadcast-pin"></i> Ona Bages 24h</div>
     <nav class="sections" aria-label="Pantalles">
-      <span class="section active" aria-current="page">Emissió</span>
+      <button id="nav-emissio" class="section active" type="button" aria-current="page"><i class="bi bi-broadcast" aria-hidden="true"></i> Emissió</button>
+      <button id="nav-planificador" class="section" type="button"><i class="bi bi-calendar-week" aria-hidden="true"></i> Planificador</button>
     </nav>
     <span id="engine-status" class="engine-status status-connecting" role="status">
       <i class="bi bi-hourglass-split"></i>
@@ -33,6 +34,9 @@
       <i class="bi bi-play-circle"></i> Arrenca el motor
     </button>
   </div>
+
+  <!-- Pantalla d'emissió -->
+  <div id="view-emissio" class="view">
 
   <!-- Pista que sona, comptadors, vúmetres i rellotge -->
   <section class="onair" aria-label="En antena">
@@ -124,6 +128,48 @@
       </section>
     </div>
   </main>
+  </div>
+
+  <!-- Planificador (fase 2, pas 8a): graella per setmanes reals o setmana tipus, i detall de l'esdeveniment -->
+  <div id="view-planificador" class="view planner d-none">
+    <div class="planner-toolbar">
+      <div class="btn-group" role="group" aria-label="Què es mostra">
+        <button id="pl-view-week" class="btn btn-sm btn-outline-secondary" type="button">Setmana real</button>
+        <button id="pl-view-template" class="btn btn-sm btn-outline-secondary" type="button">Setmana tipus</button>
+      </div>
+      <div class="pl-nav">
+        <button id="pl-prev" class="btn btn-sm btn-outline-secondary" type="button" title="Setmana anterior" aria-label="Setmana anterior"><i class="bi bi-chevron-left"></i></button>
+        <span id="pl-title" class="pl-title"></span>
+        <button id="pl-next" class="btn btn-sm btn-outline-secondary" type="button" title="Setmana següent" aria-label="Setmana següent"><i class="bi bi-chevron-right"></i></button>
+        <button id="pl-today" class="btn btn-sm btn-outline-secondary" type="button">Avui</button>
+      </div>
+      <div class="pl-zoom-group">
+        <span class="text-body-secondary">Zoom</span>
+        <div id="pl-zoom" class="btn-group" role="group" aria-label="Zoom">
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-zoom="30">30 min</button>
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-zoom="15">15 min</button>
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-zoom="5">5 min</button>
+        </div>
+      </div>
+      <div class="form-check form-switch mb-0">
+        <input id="pl-show-disabled" class="form-check-input" type="checkbox" role="switch" checked>
+        <label class="form-check-label" for="pl-show-disabled">Mostra els desactivats</label>
+      </div>
+    </div>
+    <div id="pl-legend" class="planner-legend"></div>
+    <div id="pl-error" class="alert alert-danger d-flex gap-2 m-2 mb-0 d-none" role="alert">
+      <i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i><span id="pl-error-text"></span>
+    </div>
+    <div class="planner-main">
+      <div id="pl-grid-wrap" class="planner-grid-wrap">
+        <div id="pl-grid" class="planner-grid"></div>
+        <div id="pl-others" class="planner-others d-none"></div>
+      </div>
+      <aside id="pl-detail" class="planner-detail" aria-label="Detall de l'esdeveniment">
+        <p class="pl-detail-empty">Tria un esdeveniment de la graella per veure'n el detall.</p>
+      </aside>
+    </div>
+  </div>
 
   <footer class="statusbar">
     <span id="status-output"></span>

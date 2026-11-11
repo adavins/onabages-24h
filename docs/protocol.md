@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 2, pas 5b (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 2, pas 8a (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -97,7 +97,7 @@ El `message` és en català i es pot mostrar a l'operador.
 | `scheduler.get` | `eventId` | `{ event }` | fase 2, pas 3 |
 | `scheduler.save` | `event` (4.7). Sense `id` (o 0), en crea un de nou; amb `id`, el substitueix sencer (els camps que no s'envien prenen el valor per defecte) | `{ event }` tal com s'ha desat. El planificador el té en compte de seguida. Si no és coherent (p. ex. «cada N setmanes» sense dia de referència), `bad_params` amb el motiu en català | fase 2, pas 3 |
 | `scheduler.delete` | `eventId` | `{ deleted: <id> }`. El registre d'execució es conserva | fase 2, pas 3 |
-| `scheduler.occurrences` | `from`, `to` (com a `history.list`; per defecte, d'ara a 24 h; com a molt 400 dies), `eventId` (només aquest, encara que estigui desactivat), `limit` (per defecte 200, com a molt 2.000) | `{ occurrences: [ … ], more }` (4.7), per ordre. Sense `eventId`, només els actius que no són plantilles | fase 2, pas 3 |
+| `scheduler.occurrences` | `from`, `to` (com a `history.list`; per defecte, d'ara a 24 h; com a molt 400 dies), `eventId` (només aquest, encara que estigui desactivat), `includeDisabled` (també els desactivats; per defecte, no), `limit` (per defecte 200, com a molt 2.000) | `{ occurrences: [ … ], more }` (4.7), per ordre. Sense `eventId`, només els actius que no són plantilles (amb `includeDisabled`, també els desactivats) | fase 2, pas 3; `includeDisabled`, pas 8a |
 | `scheduler.log` | `from`, `to` (per defecte, avui), `eventId`, `limit` (per defecte 500) | `{ entries: [ … ], more }` (4.7): el registre d'execució, per hora prevista | fase 2, pas 3 |
 
 **Atenció:** el camp `id` del missatge és el número de l'ordre (2): per dir de quin esdeveniment es tracta, `eventId`.
@@ -235,6 +235,7 @@ Exportació del títol:
 - `daysMask`: bit 0 = dilluns (1) … bit 6 = diumenge (64); `127` = tots. `hoursMask`: bit 0 = 00 h … bit 23 = 23 h; `null` = totes.
 - `ordinals`: 1 = primer … 5 = cinquè, `-1` = l'últim. `monthDays`: 1–31, `-1` = l'últim dia del mes.
 - `params` de les accions disponibles ara: `PISTA` `{ songId }` (id de la pista a la biblioteca, el `trackId` de la cua), `AUXILIAR` `{ songId, player, duckingDb }` (`player` 1–3, per defecte 1; `duckingDb` opcional: si no hi és, el de l'esdeveniment), `ROTACIO` `{ rotacioId }`, `AUTODJ` `{ actiu }`. Les altres es poden desar, però encara no fan res (el registre ho diu).
+- Accions a les respostes de `scheduler.list`, `scheduler.get` i `scheduler.save` (pas 8a): a més de `type`, `params` i `daysMask`, porten com es mostren: `label` (el títol de la pista amb l'artista, «Rotació OnaBages»…), `detail` (una línia més petita: tipus de pista i durada, reproductor auxiliar…), `missing` (la pista no existeix o el fitxer falta: no sonarà) i `durationMs` (quant sona la pista, si se sap). Són només per mostrar: en desar, el motor no els llegeix.
 - Modes disponibles: `ENCUA` (el contingut va al davant de la cua; amb `clearQueue`, abans s'esborra la cua), `TALLA`, `SUPERPOSA` i `SISTEMA`.
 - `SUPERPOSA` i acció `AUXILIAR` (pas 5b, D-064 i D-065): el fitxer s'obre uns 30 s abans en un reproductor auxiliar i sona a la mostra exacta de l'hora, per sobre del que soni, sense tocar la cua. L'acció `AUXILIAR` també serveix en un `ENCUA` o un `TALLA` (p. ex. senyals horaris i un informatiu a la cua). En un `SUPERPOSA`, les accions `PISTA` no sonen (avís al registre). Una acció `AUXILIAR` per reproductor i esdeveniment. Els esdeveniments amb contingut a la mostra exacta (`TALLA`, `SUPERPOSA` o amb accions `AUXILIAR`) es programen uns 2 s abans i la línia del registre es completa quan comencen a sonar, com el `TALLA`.
 - `TALLA` (pas 4, D-061): es programa uns 2 s abans, a la mostra exacta de l'hora. La pista que sona comença el fos (`fadeMs`; si és `null`, 1.000 ms) en aquell instant i la primera pista de l'esdeveniment comença alhora; la resta va darrere. Amb `clearQueue`, abans s'esborra la cua.
@@ -242,9 +243,11 @@ Exportació del títol:
 Ocurrència (`scheduler.occurrences`):
 
 ```json
-{ "eventId": 12, "name": "El Magazín", "mode": "TALLA", "date": "2026-11-20", "time": "10:00:00",
-  "at": "2026-11-20T10:00:00.0000000+01:00", "skippedClockChange": false }
+{ "eventId": 12, "name": "El Magazín", "mode": "TALLA", "enabled": true, "repeat": "CAP", "maxDurationSeconds": 3600,
+  "date": "2026-11-20", "time": "10:00:00", "at": "2026-11-20T10:00:00.0000000+01:00", "skippedClockChange": false }
 ```
+
+- `enabled`, `repeat` i `maxDurationSeconds` (pas 8a): els de l'esdeveniment, per dibuixar l'emissió a la graella sense haver de buscar-lo.
 
 - `date` i `time`: dia i hora locals programats. `at`: l'instant. `skippedClockChange`: aquella hora no existeix pel canvi d'hora i no sonarà (D-057); `at` és llavors el moment del salt.
 

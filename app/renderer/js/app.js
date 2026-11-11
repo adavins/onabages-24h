@@ -11,6 +11,7 @@ import { NowPlaying } from './ui/now-playing.js';
 import { QueueView, HistoryView } from './ui/queue.js';
 import { AutoDjView } from './ui/autodj.js';
 import { renderOutput, renderNowPlaying, renderWarnings } from './ui/statusbar.js';
+import { PlannerView } from './ui/planner.js';
 
 /**
  * @typedef {{
@@ -83,6 +84,7 @@ const nowPlaying = new NowPlaying();
 const queueView = new QueueView(send);
 const historyView = new HistoryView(send);
 const autoDjView = new AutoDjView(send);
+const planner = new PlannerView(send);
 const problems = { autodj: /** @type {string | null} */ (null), output: /** @type {string | null} */ (null) };
 renderWarnings(problems);
 
@@ -112,6 +114,24 @@ async function refreshNowPlayingStatus() {
     renderNowPlaying((await send('nowplaying.get')).nowPlaying);
   } catch { /* sense connexió: ja ho diu la capçalera */ }
 }
+
+// --- Pantalles: Emissió i Planificador (fase 2, pas 8a). L'emissió continua igual, es mostri la que es mostri. ---
+
+/** @param {'emissio' | 'planificador'} name */
+function showView(name) {
+  for (const view of /** @type {const} */ (['emissio', 'planificador'])) {
+    const active = view === name;
+    $(`view-${view}`).classList.toggle('d-none', !active);
+    const tab = $(`nav-${view}`);
+    tab.classList.toggle('active', active);
+    if (active) tab.setAttribute('aria-current', 'page');
+    else tab.removeAttribute('aria-current');
+  }
+  if (name === 'planificador') planner.show();
+  else planner.hide();
+}
+$('nav-emissio').addEventListener('click', () => showView('emissio'));
+$('nav-planificador').addEventListener('click', () => showView('planificador'));
 
 // Saltar a la següent: interromp la cançó, per tant demana confirmació
 $('btn-skip').addEventListener('click', async () => {
@@ -211,6 +231,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
     setTimeout(refreshNowPlayingStatus, 500); // el fitxer s'escriu en un fil a part
   });
   client.addEventListener('ev:player.trackEnded', () => historyView.refresh());
+  client.addEventListener('ev:scheduler.changed', () => planner.refresh());
   client.addEventListener('ev:meters', (e) => {
     const ev = detail(e);
     meters.set(ev.output);
@@ -231,6 +252,7 @@ async function loadState() {
     showAutoDj(autodj.autodj);
     showOutput(output.output);
     await Promise.all([historyView.refresh(), refreshNowPlayingStatus()]);
+    planner.refresh(); // només si es mostra
   } catch (err) {
     console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }

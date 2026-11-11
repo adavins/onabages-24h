@@ -12,7 +12,8 @@ namespace OnaBages24.Engine.Protocol;
 /// </summary>
 public static class EventJson
 {
-    public static JsonObject Event(ScheduledEvent ev) => new()
+    /// <param name="describer">Si n'hi ha, cada acció porta també com es mostra (`label`, `detail`, `missing`, `durationMs`; fase 2, pas 8a).</param>
+    public static JsonObject Event(ScheduledEvent ev, ActionDescriber? describer = null) => new()
     {
         ["id"] = ev.Id,
         ["name"] = ev.Name,
@@ -43,12 +44,7 @@ public static class EventJson
         ["enabled"] = ev.Enabled,
         ["notes"] = ev.Notes,
         ["modified"] = ev.Modified.ToString("O", CultureInfo.InvariantCulture),
-        ["actions"] = new JsonArray(ev.Actions.Select(a => (JsonNode)new JsonObject
-        {
-            ["type"] = Events.ActionTypeText(a.Type),
-            ["params"] = JsonNode.Parse(a.Params),
-            ["daysMask"] = a.DaysMask,
-        }).ToArray()),
+        ["actions"] = new JsonArray(ev.Actions.Select(a => (JsonNode)Action(a, describer)).ToArray()),
         ["includedDates"] = new JsonArray(ev.IncludedDates.Select(d => (JsonNode)DbTime.ToText(d)).ToArray()),
         ["excludedDates"] = new JsonArray(ev.ExcludedDates.Select(d => (JsonNode)DbTime.ToText(d)).ToArray()),
     };
@@ -97,11 +93,33 @@ public static class EventJson
         };
     }
 
+    private static JsonObject Action(EventAction a, ActionDescriber? describer)
+    {
+        var o = new JsonObject
+        {
+            ["type"] = Events.ActionTypeText(a.Type),
+            ["params"] = JsonNode.Parse(a.Params),
+            ["daysMask"] = a.DaysMask,
+        };
+        if (describer?.Describe(a) is { } info)
+        {
+            o["label"] = info.Label;
+            o["detail"] = info.Detail;
+            o["missing"] = info.Missing;
+            o["durationMs"] = info.DurationMs;
+        }
+        return o;
+    }
+
     public static JsonObject Occurrence(Occurrence occurrence) => new()
     {
         ["eventId"] = occurrence.Event.Id,
         ["name"] = occurrence.Event.Name,
         ["mode"] = Events.ModeText(occurrence.Event.Mode),
+        // Per dibuixar-la a la graella (fase 2, pas 8a)
+        ["enabled"] = occurrence.Event.Enabled,
+        ["repeat"] = Events.RepeatText(occurrence.Event.Repeat),
+        ["maxDurationSeconds"] = occurrence.Event.MaxDurationSeconds,
         ["date"] = DbTime.ToText(occurrence.Date),
         ["time"] = occurrence.LocalTime.ToString("HH:mm:ss", CultureInfo.InvariantCulture),
         ["at"] = occurrence.At.ToString("O", CultureInfo.InvariantCulture),

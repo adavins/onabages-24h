@@ -75,8 +75,11 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
    - 5a. ✔ Reproductors auxiliars (3) i atenuació de la música al mesclador, a la mostra exacta; ordres `aux.*`.
    - 5b. ✔ Mode SUPERPOSA i acció `AUXILIAR` al planificador (oberta 30 s abans i a la mostra de l'hora), i `retard --auxiliar` per mesurar-ho amb el so real (D-065). Primera mesura: +4,9 ms; un SUPERPOSA amb els senyals horaris ha començat a la mostra prevista.
 6. ✔ Migració dels esdeveniments de RadioDJ a `importa-radiodj` (secció 6), amb informe (D-066). Provada amb el fitxer de referència i una còpia de la base de dades: 195 franges → 84 esdeveniments (35 TALLA, 31 ENCUA, 18 SUPERPOSA). L'escolta amb els fitxers de debò es farà a l'ordinador de proves (pas 9).
-7. Acció `STREAM` (D-010, D-030, D-031), amb un servidor de proves local.
-8. Interfície: 8a graella per setmanes reals i plantilla (lectura); 8b editor d'esdeveniments amb les 10 pròximes emissions; 8c avisos en desar (franja massa llarga, ENCUA que no sonarà, emissions perdudes pel canvi d'hora).
+7. Acció `STREAM` (D-010, D-030, D-031), amb un servidor de proves local. Es fa després del pas 8 (D-068).
+8. Interfície (abans del pas 7, D-068):
+   - 8a. ✔ Pestanyes Emissió | Planificador; graella per setmanes reals i setmana tipus (lectura), amb zoom, filtres per mode, desactivats, fila dels que es repeteixen cada hora i detall amb les 10 pròximes emissions i les accions.
+   - 8b. Editor d'esdeveniments: tots els camps, accions (afegir, treure, reordenar), cercador de pistes (`library.search`) i pròximes emissions abans de desar (`scheduler.preview`).
+   - 8c. Avisos en desar (franja massa llarga, ENCUA que no sonarà, emissions perdudes pel canvi d'hora).
 9. Prova de tancament (criteri de sota).
 
 Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al 6, segons el que demani la migració. Fora d'aquesta fase: `CAMPANYA` i detecció de canvis als fitxers (fase 4), `SWEEPERS` (fase 3, amb el trepitjador) i `ENTRADA` (encara no hi ha entrada).

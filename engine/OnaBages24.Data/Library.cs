@@ -103,6 +103,18 @@ public sealed class Library(Database database)
         }
     }
 
+    /// <summary>«Categoria / Subcategoria» d'una subcategoria (per descriure-la a la interfície), o null si no existeix.</summary>
+    public string? SubcategoryName(long subcategoryId)
+    {
+        lock (database.Sync)
+        {
+            using var select = database.Command(
+                "SELECT c.nom || ' / ' || s.nom FROM subcategoria s JOIN categoria c ON c.id = s.categoria_id WHERE s.id = $id;");
+            select.Parameters.AddWithValue("$id", subcategoryId);
+            return select.ExecuteScalar() as string;
+        }
+    }
+
     // --- Pistes ---
 
     private const string TrackColumns =
