@@ -101,7 +101,7 @@ Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al
 2. ✔ Cua i control (en tres parts: 2a ✔ cua editable i historial, D-075; 2b ✔ AutoDJ protegit, «Regenera la cua» i d'on ve la rotació, D-076 (els sweepers actius, amb el pas 5); 2c ✔ «Atura els esdeveniments», D-077): afegir (amb la biblioteca, pas 3), treure i reordenar; botó de reproduir a cada pista (salta fins allà; les d'entremig es treuen, NO_EMES si venien d'un esdeveniment); «Regenera la cua» (D-034); AutoDJ protegit (es reactiva sol al cap d'un temps i, si la cua s'acaba amb l'AutoDJ aturat, es torna a activar amb avís); «Atura els esdeveniments» amb temps límit (resultat `OMES_ATURAT`); rotació i sweepers actius visibles; l'historial tanca la pista que sonava en aturar el motor.
 3. Biblioteca: cerca a mesura que s'escriu (també sense accents), filtres per categoria, subcategoria i etiqueta, i afegir a la cua.
 4. Reproductors auxiliars, cartutxeres i notes a la interfície.
-5. Trepitjador: sweepers a sobre de la intro, amb atenuació, i acció SWEEPERS.
+5. Trepitjador: sweepers a sobre de la intro, amb atenuació, i acció SWEEPERS. Amb l'**atenuació per defecte** de D-078 (auxiliars −10 dB, sweepers −8 dB), configurable.
 6. Processador d'àudio (compressor i volum) a la sortida.
 7. Gestor de pistes: fitxa editable i etiquetes, editor senzill de punts, importació de carpetes amb informe, carpetes vigilades (D-026), bosses renovables (D-033) i canvi d'arrel (D-025).
 8. Rotacions: editor, separació real, previsualització, bosses amb nom (D-014) i rotació de reserva.
