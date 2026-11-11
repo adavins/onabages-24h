@@ -117,6 +117,8 @@ public sealed class CommandRouter
                 "ducking.get" => DuckingGet(),
                 "ducking.set" => DuckingSet(msg),
                 "notes.set" => NotesSet(msg),
+                "ui.get" => UiGet(),
+                "ui.set" => UiSet(msg),
                 "aux.play" => AuxPlay(msg),
                 "aux.stop" => AuxStop(msg),
                 "library.list" => LibraryList(msg),
@@ -540,6 +542,59 @@ public sealed class CommandRouter
         (_library ?? throw new BadParamsException("El motor no té biblioteca.")).SetSetting(NotesSettingKey, text);
         NotesChanged?.Invoke(text);
         return new JsonObject { ["text"] = text };
+    }
+
+    // --- Preferències de la interfície (fase 3): zoom i requadres plegats ---
+
+    /// <summary>Clau de la configuració: <c>{ "zoom": 1, "collapsed": { "aux": true } }</c>.</summary>
+    public const string UiSettingKey = "interficie";
+
+    /// <summary>Les preferències desades, o les per defecte (zoom 1, cap requadre plegat).</summary>
+    private (double Zoom, JsonObject Collapsed) ReadUi()
+    {
+        try
+        {
+            if (_library?.GetSetting(UiSettingKey) is { } json && JsonNode.Parse(json) is JsonObject saved)
+                return (saved["zoom"]?.GetValue<double>() ?? 1, saved["collapsed"] as JsonObject ?? []);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException) { }
+        return (1, []);
+    }
+
+    private JsonObject UiGet()
+    {
+        var (zoom, collapsed) = ReadUi();
+        return new JsonObject { ["zoom"] = zoom, ["collapsed"] = collapsed.DeepClone() };
+    }
+
+    /// <summary>
+    /// <c>zoom</c> (de 0,5 a 1,5) i <c>collapsed</c> (nom del requadre → plegat o no; els que no s'envien es queden
+    /// com estan), tots dos opcionals.
+    /// </summary>
+    private JsonObject UiSet(JsonObject msg)
+    {
+        var library = _library ?? throw new BadParamsException("El motor no té biblioteca.");
+        var (zoom, collapsed) = ReadUi();
+        if (msg["zoom"] is { } zoomNode)
+        {
+            if (zoomNode is not JsonValue v || !v.TryGetValue(out double z) || z is < 0.5 or > 1.5)
+                throw new BadParamsException("El camp 'zoom' ha de ser un nombre entre 0,5 i 1,5.");
+            zoom = z;
+        }
+        if (msg["collapsed"] is { } collapsedNode)
+        {
+            if (collapsedNode is not JsonObject changes)
+                throw new BadParamsException("El camp 'collapsed' ha de ser un objecte (nom del requadre → true o false).");
+            foreach (var (name, value) in changes)
+            {
+                if (name.Length is 0 or > 40 || value is not JsonValue b || !b.TryGetValue(out bool isCollapsed))
+                    throw new BadParamsException("El camp 'collapsed' ha de ser un objecte (nom del requadre → true o false).");
+                collapsed[name] = isCollapsed;
+            }
+            if (collapsed.Count > 50) throw new BadParamsException("Massa requadres a 'collapsed'.");
+        }
+        library.SetSetting(UiSettingKey, new JsonObject { ["zoom"] = zoom, ["collapsed"] = collapsed.DeepClone() }.ToJsonString());
+        return new JsonObject { ["zoom"] = zoom, ["collapsed"] = collapsed.DeepClone() };
     }
 
     /// <summary>Atura un reproductor auxiliar (<c>player</c>, per defecte 1) amb un fos (<c>fadeMs</c>, per defecte 500).</summary>

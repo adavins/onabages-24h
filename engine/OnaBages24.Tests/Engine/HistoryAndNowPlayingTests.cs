@@ -312,4 +312,34 @@ public class HistoryAndNowPlayingTests : IDisposable
         var tooLong = new JsonObject { ["v"] = 1, ["id"] = 3, ["cmd"] = "notes.set", ["text"] = new string('a', CommandRouter.NotesMaxLength + 1) };
         Assert.Equal("bad_params", Send(tooLong.ToJsonString())["error"]!["code"]!.GetValue<string>());
     }
+
+    // --- Preferències de la interfície (fase 3): zoom i requadres plegats ---
+
+    [Fact]
+    public void El_zoom_i_els_requadres_plegats_es_desen()
+    {
+        var get = Send("""{ "v": 1, "id": 1, "cmd": "ui.get" }""")["result"]!;
+        Assert.Equal(1, get["zoom"]!.GetValue<double>());
+        Assert.Empty(get["collapsed"]!.AsObject());
+
+        Send("""{ "v": 1, "id": 2, "cmd": "ui.set", "zoom": 0.8 }""");
+        Send("""{ "v": 1, "id": 3, "cmd": "ui.set", "collapsed": { "aux": true, "autodj": false } }""");
+        var set = Send("""{ "v": 1, "id": 4, "cmd": "ui.set", "collapsed": { "aux": false } }""")["result"]!;
+        Assert.Equal(0.8, set["zoom"]!.GetValue<double>()); // el que no s'envia es queda com està
+        Assert.False(set["collapsed"]!["aux"]!.GetValue<bool>());
+
+        var again = Send("""{ "v": 1, "id": 5, "cmd": "ui.get" }""")["result"]!;
+        Assert.Equal(0.8, again["zoom"]!.GetValue<double>());
+        Assert.False(again["collapsed"]!["autodj"]!.GetValue<bool>());
+    }
+
+    [Theory]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "ui.set", "zoom": 3 }""")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "ui.set", "zoom": "gran" }""")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "ui.set", "collapsed": true }""")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "ui.set", "collapsed": { "aux": "sí" } }""")]
+    public void Unes_preferencies_incorrectes_responen_bad_params(string json)
+    {
+        Assert.Equal("bad_params", Send(json)["error"]!["code"]!.GetValue<string>());
+    }
 }

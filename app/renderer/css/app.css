@@ -32,6 +32,29 @@ body {
   gap: 1.5rem;
   padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--ob-border);
+  white-space: nowrap;
+  /* Fa de barra de títol (js/ui/window-frame.js): s'hi arrossega la finestra (doble clic = maximitzar),
+     i a la dreta es deixa lloc als botons de Windows. Els botons de dins s'han de poder clicar. */
+  -webkit-app-region: drag;
+  padding-right: calc(var(--ob-window-controls, 0px) + 1rem);
+}
+
+.topbar button,
+.topbar a,
+.topbar input,
+.topbar select {
+  -webkit-app-region: no-drag;
+}
+
+/* «Zoom 80 %»: es veu un moment quan es canvia el zoom */
+.zoom-indicator {
+  color: var(--ob-muted);
+  font-size: 0.85rem;
+  visibility: hidden;
+}
+
+.zoom-indicator.visible {
+  visibility: visible;
 }
 
 .brand {
@@ -335,16 +358,19 @@ body {
   font-size: 0.8rem;
 }
 
-/* --- Zona de treball: cua i historial a l'esquerra, AutoDJ a la dreta --- */
+/* --- Zona de treball (D-083): cua i historial a l'esquerra; cerca, notes i auxiliars a la dreta ---
+   Ocupa l'alçada que queda de la finestra; cada llista es desplaça per dins del seu requadre. Si la finestra és
+   tan baixa que els requadres no hi caben ni a la mida mínima, es desplaça la columna sencera. */
 
 .workspace {
-  flex-grow: 1;
-  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
   padding: 1rem;
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 1rem;
-  align-items: start;
 }
 
 .column-main,
@@ -353,6 +379,103 @@ body {
   flex-direction: column;
   gap: 1rem;
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Requadre que s'estira per omplir la columna; la llista de dins (.card-scroll) es desplaça */
+.ob-card-fill {
+  flex: 1 1 0;
+  min-height: 12rem;
+}
+
+.queue-card { flex-grow: 3; }
+.history-card { flex-grow: 2; min-height: 9rem; }
+.library-card { min-height: 16rem; }
+
+.card-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Requadres plegables (js/ui/collapsible.js): plegats, només la capçalera */
+.ob-card.is-collapsed {
+  flex: none;
+  min-height: 0;
+}
+
+.ob-card.is-collapsed > :not(.card-header) {
+  display: none !important;
+}
+
+.ob-card.is-collapsed > .card-header {
+  border-bottom: 0;
+}
+
+.collapse-toggle {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+.collapse-toggle .bi {
+  color: var(--ob-muted);
+  font-size: 0.8rem;
+}
+
+.aux-summary {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+/* AutoDJ, a la capçalera de la cua (D-083) */
+.autodj-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 1rem;
+  border-bottom: 1px solid var(--ob-border);
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.autodj-state {
+  flex: none;
+}
+
+.autodj-rotation {
+  width: auto;
+  max-width: 16rem;
+  flex: none; /* qui s'encongeix és el text del proper pas */
+}
+
+.autodj-next {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ob-muted);
+  font-size: 0.88rem;
+}
+
+.autodj-bar .btn {
+  flex: none;
+}
+
+/* Avisos de l'AutoDJ dins el requadre de la cua (color + icona + text) */
+.card-alert {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.45rem 1rem;
+  border-bottom: 1px solid var(--ob-border);
+  font-size: 0.9rem;
 }
 
 .ob-card {
@@ -523,10 +646,34 @@ body {
   white-space: pre-line;
 }
 
+/* Finestres estretes: una sola columna que es desplaça sencera, i cada llista amb una alçada fixa */
 @media (max-width: 1000px) {
+  /* Una columna sota l'altra (amb una graella, s'encabirien totes dues a l'alçada de la finestra i es trepitjarien) */
   .workspace {
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
   }
+
+  .column-main,
+  .column-side {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .ob-card-fill {
+    flex: none;
+    min-height: 0;
+  }
+
+  .queue-card .card-scroll { max-height: 28rem; }
+  .history-card .card-scroll { max-height: 18rem; }
+  /* Amb .library-card davant: les regles generals són més avall al fitxer i, si no, guanyarien */
+  .library-card .library-results { height: 22rem; flex: none; }
+  .library-card .notes-text { height: 22rem; flex: none; }
+
+  .autodj-bar { flex-wrap: wrap; white-space: normal; }
 }
 
 /* ===================================================================================================
@@ -1356,6 +1503,8 @@ button.pl-chip.is-off {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .library-filters {
@@ -1365,7 +1514,8 @@ button.pl-chip.is-off {
 }
 
 .library-results {
-  height: 22rem;
+  flex: 1 1 auto; /* tota l'alçada que queda al requadre (D-083) */
+  min-height: 6rem;
   overflow: auto;
   border: 1px solid var(--ob-border);
   border-radius: 0.375rem;
@@ -1560,7 +1710,8 @@ button.pl-chip.is-off {
 /* --- Notes (fase 3, pas 4b) --- */
 
 .notes-text {
-  height: 22rem;
+  flex: 1 1 auto; /* tota l'alçada que queda al requadre (D-083) */
+  min-height: 6rem;
   resize: none;
   font-size: 0.92rem;
 }

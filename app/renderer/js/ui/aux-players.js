@@ -155,7 +155,29 @@ export class AuxPlayersView {
       r.unload.classList.toggle('invisible', !loaded);
       r.row.classList.toggle('is-playing', !!playing?.started);
     }
+    this.#renderSummary();
     this.#renderTimes();
+  }
+
+  /** Resum a la capçalera del requadre, que es veu encara que estigui plegat (D-083): color + icona + text. */
+  #renderSummary() {
+    const sounding = PLAYERS.filter((p) => this.#playing.get(p)?.started);
+    const prepared = PLAYERS.filter((p) => this.#playing.get(p) && !this.#playing.get(p).started);
+    const loaded = PLAYERS.filter((p) => this.#loaded.get(p));
+    const errors = PLAYERS.filter((p) => this.#errors.has(p));
+    const numbers = (/** @type {number[]} */ list) => list.join(', ');
+
+    /** @type {[string, string, string]} */
+    let summary;
+    if (sounding.length > 0) summary = ['text-success', 'bi-volume-up-fill', `Sona el ${numbers(sounding)}`];
+    else if (errors.length > 0) summary = ['text-warning', 'bi-exclamation-triangle-fill', `Error al ${numbers(errors)}`];
+    else if (prepared.length > 0) summary = ['text-info', 'bi-hourglass-split', `Preparat el ${numbers(prepared)}`];
+    else if (loaded.length > 0) summary = ['text-body-secondary', 'bi-disc', loaded.length === 1 ? `Carregat el ${loaded[0]}` : `Carregats ${numbers(loaded)}`];
+    else summary = ['text-body-secondary', 'bi-box-arrow-in-down', 'Buits'];
+
+    const target = $('aux-summary');
+    target.className = `aux-summary ms-auto ${summary[0]}`;
+    target.replaceChildren(icon(summary[1]), ' ', el('span', '', summary[2]));
   }
 
   /** Temps que queda del que sona; si no sona res, la durada de la carregada. */

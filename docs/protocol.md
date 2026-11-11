@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 4a (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, notes, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 4c (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -94,6 +94,8 @@ El `message` és en català i es pot mostrar a l'operador.
 | `ducking.get` | — | `{ auxiliary, sweepers }`: l'atenuació per defecte de la música (en dB; 0 = cap) quan un auxiliar o un sweeper no en diuen cap (D-078). Si no s'ha canviat mai, −10 i −8 | fase 3, pas 4b |
 | `ducking.set` | `auxiliary`, `sweepers` (de −60 a 0; 0 = sense atenuació). Tots dos opcionals: el que no s'envia es queda com està | `{ auxiliary, sweepers }`. Es desa a la configuració i s'aplica de seguida (el que ja sona o ja està preparat no canvia) | fase 3, pas 4b |
 | `notes.get` | — | `{ text }`: el bloc de notes compartit de la pestanya «Notes» (buit si no n'hi ha) | fase 3, pas 4a |
+| `ui.get` | — | `{ zoom, collapsed }`: preferències de la interfície desades al motor (D-083). `zoom`: de 0,5 a 1,5 (per defecte 1). `collapsed`: requadres plegats, `{ "aux": true, … }` (per defecte, cap) | fase 3, pas 4c |
+| `ui.set` | `zoom` (de 0,5 a 1,5) i `collapsed` (nom del requadre → `true`/`false`; els que no s'envien es queden com estan), tots dos opcionals | `{ zoom, collapsed }`. Es desa a la configuració. No avisa les altres interfícies: cadascuna l'aplica en connectar-se | fase 3, pas 4c |
 | `notes.set` | `text` (pot ser buit; com a molt 20.000 caràcters) | `{ text }`. Es desa a la configuració (es conserva en reiniciar) i s'avisa les altres interfícies amb `notes.changed` | fase 3, pas 4a |
 | `library.list` | `folder`, `limit` (per defecte 100, com a molt 1.000) | `{ tracks: [ … ] }` (vegeu 4.4): pistes de la carpeta i subcarpetes. De moment, per a les proves | fase 1, pas 7c |
 | `library.search` | `text` (paraules que han de sortir totes a l'artista, al títol, a l'àlbum o a la ruta; **sense distingir accents ni majúscules**: «magazin» troba «Magazín»; buit = totes), `categoryId`, `subcategoryId`, `tagId` (filtres, opcionals), `offset` (per anar carregant; per defecte 0), `limit` (per defecte 50, com a molt 200) | `{ tracks: [ … ], more }` (vegeu 4.4), per artista i títol. `more`: n'hi ha més que les retornades | fase 2, pas 8b; filtres, `offset` i sense accents, fase 3, pas 3a |

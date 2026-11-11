@@ -17,6 +17,9 @@ import { EventsPause } from './ui/events-pause.js';
 import { LibraryView, TRACK_DRAG_TYPE } from './ui/library.js';
 import { AuxPlayersView } from './ui/aux-players.js';
 import { NotesView } from './ui/notes.js';
+import { setupZoom, applyZoom } from './ui/zoom.js';
+import { setupWindowFrame } from './ui/window-frame.js';
+import { CollapsibleCards } from './ui/collapsible.js';
 
 /**
  * @typedef {{
@@ -110,6 +113,40 @@ function showSideTab(name) {
     button.setAttribute('aria-selected', String(active));
   }
 }
+// --- Capçalera com a barra de títol, i zoom (desat al motor, ui.set) ---
+
+setupWindowFrame();
+
+/** @type {number | undefined} */
+let zoomIndicatorTimer;
+setupZoom(async (zoom) => {
+  const indicator = $('zoom-indicator');
+  indicator.textContent = `Zoom ${Math.round(zoom * 100)} %`;
+  indicator.classList.add('visible');
+  clearTimeout(zoomIndicatorTimer);
+  zoomIndicatorTimer = window.setTimeout(() => indicator.classList.remove('visible'), 1500);
+  try {
+    await send('ui.set', { zoom });
+  } catch (err) {
+    console.warn('No s\'ha pogut desar el zoom', err); // sense motor: es queda aplicat fins que es tanqui
+  }
+});
+
+// Requadres plegables (D-083): l'estat es desa al motor
+const cards = new CollapsibleCards((name, collapsed) => {
+  send('ui.set', { collapsed: { [name]: collapsed } })
+    .catch((err) => console.warn('No s\'ha pogut desar el requadre plegat', err));
+});
+
+/** El zoom i els requadres plegats desats al motor (en connectar-s'hi). */
+async function loadUiSettings() {
+  try {
+    const ui = await send('ui.get');
+    applyZoom(ui.zoom);
+    cards.apply(ui.collapsed);
+  } catch { /* motor antic o sense connexió: es queda com està */ }
+}
+
 $('tab-search').addEventListener('click', () => showSideTab('search'));
 $('tab-notes').addEventListener('click', () => showSideTab('notes'));
 const problems = { autodj: /** @type {string | null} */ (null), output: /** @type {string | null} */ (null) };
@@ -300,6 +337,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
 
 /** En connectar-se (o tornar-s'hi a connectar): tot l'estat actual. */
 async function loadState() {
+  loadUiSettings();
   try {
     const [queue, autodj, rotations, output] = await Promise.all([
       send('queue.get'), send('autodj.get'), send('rotations.list'), send('output.get'),

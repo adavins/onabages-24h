@@ -17,6 +17,7 @@
       <button id="nav-emissio" class="section active" type="button" aria-current="page"><i class="bi bi-broadcast" aria-hidden="true"></i> Emissió</button>
       <button id="nav-planificador" class="section" type="button"><i class="bi bi-calendar-week" aria-hidden="true"></i> Planificador</button>
     </nav>
+    <span id="zoom-indicator" class="zoom-indicator" aria-live="polite"></span>
     <span id="engine-status" class="engine-status status-connecting" role="status">
       <i class="bi bi-hourglass-split"></i>
       <span class="label">Connectant amb el motor…</span>
@@ -96,31 +97,51 @@
   <main class="workspace">
     <div class="column-main">
       <!-- Cua d'emissió -->
-      <section id="queue-card" class="card ob-card">
+      <section id="queue-card" class="card ob-card ob-card-fill queue-card">
         <div class="card-header ob-card-header">
           <strong>Cua</strong>
-          <span id="queue-rotation" class="text-body-secondary"></span>
           <span id="queue-summary" class="ms-auto text-body-secondary"></span>
           <button id="btn-regenerate" class="btn btn-sm btn-outline-secondary" type="button" title="Treu les pistes que ha posat l'AutoDJ i les torna a triar amb la rotació actual (no toca la que sona, ni les manuals, ni les dels esdeveniments)"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Regenera la cua</button>
         </div>
+        <!-- AutoDJ (D-083): a la capçalera de la cua, en una sola línia -->
+        <div class="autodj-bar" aria-label="AutoDJ">
+          <span id="autodj-state" class="autodj-state"></span>
+          <select id="autodj-rotation" class="form-select form-select-sm autodj-rotation" aria-label="Rotació de l'AutoDJ"></select>
+          <span id="autodj-next" class="autodj-next"></span>
+          <button id="btn-autodj-toggle" class="btn btn-sm btn-outline-warning ms-auto" type="button">Atura l'AutoDJ</button>
+        </div>
+        <div id="autodj-notice" class="card-alert text-info d-none" role="status">
+          <i class="bi bi-info-circle-fill" aria-hidden="true"></i>
+          <span id="autodj-notice-text"></span>
+        </div>
+        <div id="autodj-problem" class="card-alert text-warning d-none" role="status">
+          <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+          <span id="autodj-problem-text"></span>
+        </div>
         <div id="queue-warning" class="queue-warning d-none" role="status"></div>
-        <ul id="queue-list" class="list-group list-group-flush"></ul>
-        <div id="queue-empty" class="empty-note d-none">
-          <i class="bi bi-inbox" aria-hidden="true"></i> La cua és buida.
+        <div class="card-scroll">
+          <ul id="queue-list" class="list-group list-group-flush"></ul>
+          <div id="queue-empty" class="empty-note d-none">
+            <i class="bi bi-inbox" aria-hidden="true"></i> La cua és buida.
+          </div>
         </div>
       </section>
 
-      <!-- Últimes pistes -->
-      <section class="card ob-card">
-        <div class="card-header ob-card-header"><strong>Últimes pistes</strong></div>
-        <ul id="history-list" class="list-group list-group-flush"></ul>
-        <div id="history-empty" class="empty-note d-none">Encara no ha sonat res.</div>
+      <!-- Últimes pistes (plegable) -->
+      <section class="card ob-card ob-card-fill history-card" data-collapse="history">
+        <div class="card-header ob-card-header">
+          <button class="collapse-toggle" type="button"><i class="bi bi-chevron-down" aria-hidden="true"></i> <strong>Últimes pistes</strong></button>
+        </div>
+        <div class="card-scroll">
+          <ul id="history-list" class="list-group list-group-flush"></ul>
+          <div id="history-empty" class="empty-note d-none">Encara no ha sonat res.</div>
+        </div>
       </section>
     </div>
 
     <div class="column-side">
       <!-- Biblioteca (fase 3, pas 3b; D-079): cerca i afegir a la cua. Notes al pas 4b (D-081); cartutxeres, més endavant -->
-      <section class="card ob-card library-card">
+      <section class="card ob-card ob-card-fill library-card">
         <div class="card-header ob-card-header p-0">
           <ul class="nav nav-tabs card-header-tabs m-0" role="tablist">
             <li class="nav-item" role="presentation"><button id="tab-search" class="nav-link active" type="button" role="tab" aria-selected="true" aria-controls="pane-search"><i class="bi bi-search" aria-hidden="true"></i> Cerca</button></li>
@@ -151,36 +172,14 @@
         </div>
       </section>
 
-      <!-- Reproductors auxiliars (fase 3, pas 4b; D-081): sonen per sobre de la música; el 1 és el dels senyals horaris -->
-      <section class="card ob-card">
+      <!-- Reproductors auxiliars (fase 3, pas 4b; D-081): sonen per sobre de la música; el 1 és el dels senyals horaris.
+           Plegat per defecte (D-083): la capçalera diu si n'hi ha cap que soni o carregat; en arrossegar-hi una pista, s'obre -->
+      <section id="aux-card" class="card ob-card aux-card" data-collapse="aux" data-expand-on-drag>
         <div class="card-header ob-card-header">
-          <strong>Reproductors auxiliars</strong>
-          <span class="ms-auto text-body-secondary small">Arrossega-hi una pista i prem ▶</span>
+          <button class="collapse-toggle" type="button"><i class="bi bi-chevron-down" aria-hidden="true"></i> <strong>Reproductors auxiliars</strong></button>
+          <span id="aux-summary" class="aux-summary ms-auto"></span>
         </div>
         <ul id="aux-list" class="aux-list"></ul>
-      </section>
-
-      <!-- AutoDJ -->
-      <section class="card ob-card">
-        <div class="card-header ob-card-header"><strong>AutoDJ</strong></div>
-        <div class="card-body">
-          <div class="d-flex align-items-center gap-3 mb-3">
-            <span id="autodj-state"></span>
-            <button id="btn-autodj-toggle" class="btn btn-sm btn-outline-warning ms-auto" type="button">Atura l'AutoDJ</button>
-          </div>
-          <label for="autodj-rotation" class="form-label">Rotació</label>
-          <select id="autodj-rotation" class="form-select"></select>
-          <div id="autodj-origin" class="form-text"></div>
-          <div id="autodj-next" class="form-text"></div>
-          <div id="autodj-notice" class="alert alert-info d-flex gap-2 mt-3 mb-0 d-none" role="status">
-            <i class="bi bi-info-circle-fill" aria-hidden="true"></i>
-            <span id="autodj-notice-text"></span>
-          </div>
-          <div id="autodj-problem" class="alert alert-warning d-flex gap-2 mt-3 mb-0 d-none" role="status">
-            <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
-            <span id="autodj-problem-text"></span>
-          </div>
-        </div>
       </section>
     </div>
   </main>

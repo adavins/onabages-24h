@@ -17,4 +17,10 @@ contextBridge.exposeInMainWorld('onabages', {
 
   /** Tanca la finestra (el motor no s'atura si no se li ha demanat abans). */
   closeWindow: () => ipcRenderer.invoke('app:close'),
+
+  /** Zoom de la finestra (de 0,7 a 1,5; js/ui/zoom.js). */
+  setZoom: (factor) => ipcRenderer.invoke('ui:set-zoom', factor),
+
+  /** Alçada de la capçalera en píxels CSS: els botons de la finestra hi fan la mateixa alçada. */
+  setTopbarHeight: (cssHeight) => ipcRenderer.send('ui:topbar-height', cssHeight),
 });

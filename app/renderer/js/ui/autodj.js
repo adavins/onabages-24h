@@ -50,10 +50,14 @@ export class AutoDjView {
   render(state) {
     this.#state = state;
 
+    // A la barra de la cua (D-083): curt; l'explicació, en passar-hi el ratolí
     $('autodj-state').replaceChildren(state.enabled
       ? statusLabel('text-success', 'bi-check-circle-fill', 'AutoDJ actiu')
       : statusLabel('text-warning', 'bi-pause-circle-fill',
-        `AutoDJ aturat${state.disabledUntil ? ` fins a les ${hhmm(state.disabledUntil)}` : ''}: no afegeix música a la cua`));
+        `AutoDJ aturat${state.disabledUntil ? ` fins a les ${hhmm(state.disabledUntil)}` : ''}`));
+    $('autodj-state').title = state.enabled
+      ? 'L\'AutoDJ afegeix música a la cua amb la rotació triada'
+      : 'L\'AutoDJ no afegeix música a la cua. Si la cua s\'acaba, es torna a activar sol.';
 
     const toggle = $('btn-autodj-toggle');
     toggle.className = `btn btn-sm ${state.enabled ? 'btn-outline-warning' : 'btn-success'}`;
@@ -62,22 +66,19 @@ export class AutoDjView {
     const select = /** @type {HTMLSelectElement} */ ($('autodj-rotation'));
     select.value = state.rotation ? String(state.rotation.id) : '';
 
-    // Proper pas de la rotació (també a la capçalera de la cua)
+    // Proper pas de la rotació i d'on ve (pantalla-principal-i-encadenament.md, millora 6).
+    // Si no hi cap a la barra, es talla: el text sencer surt en passar-hi el ratolí.
     const rotation = this.#rotations.find((r) => r.id === state.rotation?.id);
     const step = rotation?.steps[state.nextStep];
-    const stepLine = rotation && step ? `Proper pas: ${state.nextStep + 1} de ${rotation.steps.length} · ${stepText(step)}` : '';
-    $('autodj-next').textContent = stepLine;
-    // D'on ve la rotació (pantalla-principal-i-encadenament.md, millora 6)
+    const stepLine = !state.rotation
+      ? 'Sense rotació: música de tota la biblioteca'
+      : rotation && step ? `Proper pas ${state.nextStep + 1} de ${rotation.steps.length} · ${stepText(step)}` : '';
     const origin = state.rotation && state.rotationChangedAt
-      ? `Des de les ${hhmm(state.rotationChangedAt)}${state.rotationChangedBy ? `, ${state.rotationChangedBy}` : ''}`
+      ? `Rotació des de les ${hhmm(state.rotationChangedAt)}${state.rotationChangedBy ? `, ${state.rotationChangedBy}` : ''}`
       : '';
-    $('autodj-origin').textContent = origin;
-    $('queue-rotation').title = origin;
-    $('queue-rotation').textContent = !state.enabled
-      ? `AutoDJ aturat${state.disabledUntil ? ` fins a les ${hhmm(state.disabledUntil)}` : ''}`
-      : state.rotation
-        ? `Rotació ${state.rotation.name}${rotation ? ` · proper pas ${state.nextStep + 1} de ${rotation.steps.length}` : ''}`
-        : 'Sense rotació: música de tota la biblioteca';
+    $('autodj-next').textContent = stepLine;
+    $('autodj-next').title = [stepLine, origin].filter(Boolean).join('\n');
+    select.title = origin || 'Rotació de l\'AutoDJ';
 
     const problem = $('autodj-problem');
     problem.classList.toggle('d-none', !state.problem);

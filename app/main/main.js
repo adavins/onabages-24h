@@ -5,7 +5,7 @@
 // el port i el testimoni a la interfície. Aquí NO hi ha àudio ni base de dades: tot és al motor.
 // Tancar la finestra no atura el motor si l'operador no ho tria al diàleg de tancar (D-035, D-054).
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -48,14 +48,18 @@ if (!app.requestSingleInstanceLock()) {
 app.on('window-all-closed', () => app.quit());
 
 function createWindow() {
+  // On era la finestra l'última vegada (o la mida per defecte).
+  const { bounds, maximized } = savedWindowBounds({ width: 1600, height: 900, minWidth: 800, minHeight: 500 });
   mainWindow = new BrowserWindow({
-    width: 1600,
-    height: 900,
-    minWidth: 800,
-    minHeight: 500,
+    ...bounds,
+    show: false,
     title: 'Ona Bages 24h',
     backgroundColor: '#121417',
     autoHideMenuBar: true,
+    // Sense la barra de títol de Windows (com a Ona Bages Play): la capçalera de l'aplicació en fa la feina
+    // (s'hi pot arrossegar la finestra) i els botons de minimitzar, maximitzar i tancar es dibuixen a sobre, a la dreta.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { ...TITLE_BAR_COLORS, height: titleBarHeight() },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -63,6 +67,9 @@ function createWindow() {
       sandbox: true,
     },
   });
+  if (maximized) mainWindow.maximize();
+  mainWindow.show();
+  // Sense el menú d'Electron: les seves dreceres de zoom passarien per davant de les de l'aplicació (js/ui/zoom.js).
   mainWindow.removeMenu();
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
@@ -82,7 +89,10 @@ function createWindow() {
   // En clicar la X, la interfície pregunta si es tanca només la finestra o també s'atura l'emissió (D-054).
   // Si la interfície està penjada o s'ha tancat, no pot preguntar: es tanca només la finestra.
   mainWindow.on('close', (event) => {
-    if (allowClose || rendererUnresponsive || mainWindow?.webContents.isCrashed()) return;
+    if (allowClose || rendererUnresponsive || mainWindow?.webContents.isCrashed()) {
+      if (mainWindow) saveWindowBounds(mainWindow);
+      return;
+    }
     event.preventDefault();
     mainWindow?.webContents.send('app:close-requested');
   });
@@ -199,3 +209,97 @@ ipcMain.handle('app:close', () => {
   allowClose = true;
   mainWindow?.close();
 });
+
+// ---------------------------------------------------------------------------
+// Zoom i capçalera com a barra de títol
+// ---------------------------------------------------------------------------
+
+/** Zoom d'Electron (de 0,7 a 1,5). Per sota de 0,7 la interfície no fa més petita la lletra (js/ui/zoom.js). */
+ipcMain.handle('ui:set-zoom', (_event, factor) => {
+  if (typeof factor === 'number' && factor >= 0.7 && factor <= 1.5) {
+    mainWindow?.webContents.setZoomFactor(factor);
+    updateTitleBarOverlay(); // la capçalera ha canviat d'alçada en píxels de pantalla
+  }
+});
+
+/** Colors dels botons de la finestra: el fons de la capçalera (--ob-bg) i el text. */
+const TITLE_BAR_COLORS = { color: '#121417', symbolColor: '#dee2e6' };
+
+/** Alçada de la capçalera en píxels CSS (la diu la interfície; fins llavors, una aproximació). */
+let topbarCssHeight = 48;
+
+/** Alçada dels botons de la finestra: la de la capçalera, en píxels de pantalla (amb el zoom). */
+function titleBarHeight() {
+  const zoom = mainWindow?.webContents.getZoomFactor() ?? 1;
+  // Arrodonit avall: mai més alts que la capçalera, perquè no tapin la vora de sota.
+  return Math.max(24, Math.floor(topbarCssHeight * zoom));
+}
+
+function updateTitleBarOverlay() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.setTitleBarOverlay({ ...TITLE_BAR_COLORS, height: titleBarHeight() });
+}
+
+/** La interfície diu l'alçada de la capçalera (canvia amb el zoom i amb l'amplada de la finestra). */
+ipcMain.on('ui:topbar-height', (_event, cssHeight) => {
+  if (typeof cssHeight !== 'number' || !(cssHeight > 0 && cssHeight < 400)) return;
+  topbarCssHeight = cssHeight;
+  updateTitleBarOverlay();
+});
+
+// ---------------------------------------------------------------------------
+// Posició i mida de la finestra
+// ---------------------------------------------------------------------------
+// Es desen a «finestra.json», a la carpeta d'Electron (dades\electron). No és configuració de l'aplicació
+// (que és al motor): és només on era la finestra en aquest ordinador. Si el fitxer falta o està malmès,
+// la finestra surt a la mida per defecte.
+
+function windowFile() {
+  return path.join(app.getPath('userData'), 'finestra.json');
+}
+
+/**
+ * Mida i posició desades, si encara es veuen en alguna pantalla (potser s'ha desconnectat un monitor);
+ * si no, les per defecte.
+ * @param {{ width: number, height: number, minWidth: number, minHeight: number }} defaults
+ */
+function savedWindowBounds(defaults) {
+  try {
+    const saved = JSON.parse(fs.readFileSync(windowFile(), 'utf8'));
+    const valid = saved && ['x', 'y', 'width', 'height'].every((k) => Number.isFinite(saved[k]));
+    if (valid && isOnSomeDisplay(saved)) {
+      return {
+        bounds: {
+          ...defaults,
+          x: Math.round(saved.x),
+          y: Math.round(saved.y),
+          width: Math.max(Math.round(saved.width), defaults.minWidth),
+          height: Math.max(Math.round(saved.height), defaults.minHeight),
+        },
+        maximized: saved.maximized === true,
+      };
+    }
+  } catch { /* encara no n'hi ha, o està malmès */ }
+  return { bounds: { ...defaults }, maximized: false };
+}
+
+/** La part de dalt de la finestra (almenys 100 × 30 píxels) es veu en alguna pantalla: així sempre es pot moure. */
+function isOnSomeDisplay(/** @type {{ x: number, y: number, width: number }} */ b) {
+  return screen.getAllDisplays().some(({ workArea: a }) => {
+    const width = Math.min(b.x + b.width, a.x + a.width) - Math.max(b.x, a.x);
+    const height = Math.min(b.y + 30, a.y + a.height) - Math.max(b.y, a.y);
+    return width >= 100 && height >= 30;
+  });
+}
+
+/** Desa on és la finestra (si està maximitzada, la mida que tenia abans, i que ho estava). */
+function saveWindowBounds(/** @type {BrowserWindow} */ win) {
+  try {
+    const state = { ...win.getNormalBounds(), maximized: win.isMaximized() };
+    const file = windowFile();
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify(state, null, 2), 'utf8');
+    fs.renameSync(`${file}.tmp`, file); // escriptura atòmica
+  } catch (err) {
+    console.warn('No s\'ha pogut desar la posició de la finestra', err);
+  }
+}
