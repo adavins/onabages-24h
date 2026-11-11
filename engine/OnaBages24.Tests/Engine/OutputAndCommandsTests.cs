@@ -273,6 +273,18 @@ public class CueRecalculatorTests : IDisposable
         Assert.Equal((1, 1), (recalculator.Done, recalculator.Failed));
         Assert.Equal([missing], _library.TracksNeedingCueAnalysis(0, 10).Select(t => t.Id));
     }
+
+    [Fact]
+    public void Despres_de_cada_pista_descansa_el_triple_del_que_ha_tardat()
+    {
+        // D-069: perquè el recàlcul no ocupi un nucli sencer durant hores
+        var recalculator = new CueRecalculator(_library, pause: TimeSpan.FromMilliseconds(200));
+        Assert.Equal(TimeSpan.FromSeconds(6), recalculator.RestAfter(TimeSpan.FromSeconds(2)));
+        Assert.Equal(TimeSpan.FromMilliseconds(200), recalculator.RestAfter(TimeSpan.FromMilliseconds(10))); // com a mínim, la pausa
+
+        var noRest = new CueRecalculator(_library, pause: TimeSpan.Zero, restFactor: 0);
+        Assert.Equal(TimeSpan.Zero, noRest.RestAfter(TimeSpan.FromSeconds(2)));
+    }
 }
 
 /// <summary>Ordres de la cua i de la sortida (docs/protocol.md, 4.2 a 4.4).</summary>

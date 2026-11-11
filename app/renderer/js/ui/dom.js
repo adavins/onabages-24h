@@ -38,3 +38,20 @@ export function statusLabel(className, iconName, text) {
   span.append(icon(iconName), ' ', el('span', '', text));
   return span;
 }
+
+/**
+ * Posa el text només si ha canviat. Les dades arriben 20 vegades per segon i gairebé sempre són iguals: sense tocar
+ * la pàgina no cal tornar-la a pintar (sense acceleració gràfica, pintar ho fa tot el processador; D-069).
+ * @param {HTMLElement} node  @param {string} text
+ */
+export function setText(node, text) {
+  if (node.textContent !== text) node.textContent = text;
+}
+
+/**
+ * Posa una propietat d'estil només si ha canviat (vegeu {@link setText}).
+ * @param {HTMLElement} node  @param {string} property  p. ex. «width»  @param {string} value
+ */
+export function setStyle(node, property, value) {
+  if (node.style.getPropertyValue(property) !== value) node.style.setProperty(property, value);
+}

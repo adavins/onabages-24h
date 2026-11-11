@@ -28,6 +28,8 @@ public sealed class RadioDjImportReport
     public int FilesLost { get; set; }
     public List<string> LostExamples { get; } = [];
     public int WithoutCuePoints { get; set; }
+    /// <summary>Pistes que ja tenien punts de l'analitzador o manuals i els han conservat.</summary>
+    public int CuePointsKept { get; set; }
     public int WithDates { get; set; }
     public Dictionary<TrackType, int> ByType { get; } = [];
     /// <summary>Pistes que no s'han importat, amb el motiu.</summary>
@@ -48,6 +50,8 @@ public sealed class RadioDjImportReport
             $"Fitxers que falten: {FilesMissing} · sense punts d'encadenament: {WithoutCuePoints} · amb dates de vigència: {WithDates}",
             "Per tipus: " + string.Join(", ", ByType.OrderByDescending(t => t.Value).Select(t => $"{t.Key} {t.Value}")),
         };
+        if (CuePointsKept > 0)
+            lines.Add($"Punts d'encadenament conservats (ja calculats amb l'analitzador o ajustats a mà): {CuePointsKept}");
         if (FilesLost > 0)
             lines.Add($"ATENCIÓ: {FilesLost} pistes que abans tenien el fitxer ara no el troben. Potser falta un canvi d'arrel " +
                 "(--arrel) o el que s'ha aplicat no és el bo. Si cal, es pot restaurar la còpia de seguretat d'abans d'importar. " +
@@ -74,6 +78,24 @@ public static class RadioDjImporter
 
     /// <summary>Gènere de RadioDJ que no es converteix en etiqueta (D-027).</summary>
     private const string NoGenre = "Other";
+
+    /// <summary>
+    /// En tornar a importar una pista: si es conserven els punts d'encadenament que ja té, en lloc de posar-hi els de
+    /// RadioDJ (D-069). Els ajustats a mà, sempre. Els de l'analitzador, si el fitxer no ha canviat (mateixa mida i data;
+    /// si d'algun dels dos no se sap, es dona per bo): si ha canviat, es tornen a posar els de RadioDJ i el recàlcul en
+    /// segon pla el tornarà a analitzar.
+    /// </summary>
+    private static bool KeepsCuePoints(Track existing, Track imported)
+    {
+        if (existing.CueSource == CueSource.Manual) return true;
+        if (existing.CueSource != CueSource.Analyzer) return false;
+        bool known = existing.FileSize is not null && imported.FileSize is not null;
+        if (!known) return true;
+        // La data desada té menys precisió que la del disc: es compara amb un marge
+        bool sameDate = existing.FileModified is not { } before || imported.FileModified is not { } now
+            || (before - now).Duration() <= TimeSpan.FromSeconds(2);
+        return existing.FileSize == imported.FileSize && sameDate;
+    }
 
     /// <summary>Clau de la configuració on es recorden els canvis d'arrel de l'última importació (D-067).</summary>
     public const string RootChangesSettingKey = "importacio_arrels";
@@ -158,6 +180,12 @@ public static class RadioDjImporter
                     {
                         report.FilesLost++;
                         if (report.LostExamples.Count < 3) report.LostExamples.Add($"{existing.Path} → {track.Path}");
+                    }
+                    // Els punts ja calculats amb l'analitzador o ajustats a mà no es trepitgen amb els de RadioDJ (D-069)
+                    if (KeepsCuePoints(existing, track))
+                    {
+                        track = track with { StartMs = existing.StartMs, MixMs = existing.MixMs, EndMs = existing.EndMs, CueSource = existing.CueSource };
+                        report.CuePointsKept++;
                     }
                     library.UpdateTrack(track with { Id = id });
                     report.TracksUpdated++;

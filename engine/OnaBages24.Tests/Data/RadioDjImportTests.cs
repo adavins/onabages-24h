@@ -234,6 +234,48 @@ public class RadioDjImportTests : IDisposable
     }
 
     [Fact]
+    public void Tornar_a_importar_conserva_els_punts_de_l_analitzador_i_els_manuals()
+    {
+        // D-069: abans, cada importació hi tornava a posar els de RadioDJ i el recàlcul en segon pla començava de zero
+        string music = Path.Combine(_temp.Path, "musica", "BOSSA 9");
+        Directory.CreateDirectory(music);
+        foreach (string name in new[] { "analitzada.mp3", "manual.mp3", "canviada.mp3", "radiodj.mp3" })
+            File.WriteAllBytes(Path.Combine(music, name), [1, 2, 3]);
+        const string Song = "',1,'2026-01-08 10:00:00',0,'2002-01-01 00:00:01','2002-01-01 00:00:01',0,5,96,50.0,200.5,'&sta=0.1&xta=195.2&end=199.9&fin=0&fou=4.7','A','T','','1900')";
+        var dump = MySqlDump.FromText(FullSchema + """
+            INSERT INTO `category` VALUES (1,'Music');
+            INSERT INTO `subcategory` VALUES (5,1,'Ona Bages Adult 9');
+            INSERT INTO `genre` VALUES (96,'Other');
+            INSERT INTO `songs` VALUES
+              (10,'D:\\M\\BOSSA 9\\analitzada.mp3SONG,
+              (11,'D:\\M\\BOSSA 9\\manual.mp3SONG,
+              (12,'D:\\M\\BOSSA 9\\canviada.mp3SONG,
+              (13,'D:\\M\\BOSSA 9\\radiodj.mp3SONG;
+            """.Replace("SONG", Song));
+        var options = new RadioDjImportOptions { RootChanges = [new RootChange(@"D:\M\", Path.Combine(_temp.Path, "musica") + @"\")] };
+        RadioDjImporter.ImportLibrary(dump, _library, options);
+
+        // El que fan després el recàlcul en segon pla i (més endavant) l'editor de punts
+        void SetCues(long radioDjId, CueSource source) =>
+            _library.UpdateTrack(_library.FindByRadioDjId(radioDjId)! with { StartMs = 50, MixMs = 190_000, EndMs = 199_000, CueSource = source });
+        SetCues(10, CueSource.Analyzer);
+        SetCues(11, CueSource.Manual);
+        SetCues(12, CueSource.Analyzer);
+        File.WriteAllBytes(Path.Combine(music, "canviada.mp3"), [1, 2, 3, 4, 5]); // el fitxer s'ha substituït per un altre
+
+        var report = RadioDjImporter.ImportLibrary(dump, _library, options);
+
+        (long?, CueSource?) Cues(long radioDjId) => (_library.FindByRadioDjId(radioDjId)!.MixMs, _library.FindByRadioDjId(radioDjId)!.CueSource);
+        Assert.Equal((190_000, CueSource.Analyzer), Cues(10));
+        Assert.Equal((190_000, CueSource.Manual), Cues(11));
+        Assert.Equal((195_200, CueSource.RadioDj), Cues(12)); // fitxer diferent: els de RadioDJ, i es tornarà a analitzar
+        Assert.Equal((195_200, CueSource.RadioDj), Cues(13));
+        Assert.Equal(2, report.CuePointsKept);
+        Assert.Contains("Punts d'encadenament conservats", report.ToString());
+        Assert.Equal([12L, 13L], _library.TracksNeedingCueAnalysis(0, 10).Select(t => t.RadioDjId!.Value));
+    }
+
+    [Fact]
     public void Els_canvis_d_arrel_es_recorden_a_la_base_de_dades()
     {
         Assert.Empty(RadioDjImporter.RememberedRootChanges(_library));

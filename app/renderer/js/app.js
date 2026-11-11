@@ -4,7 +4,7 @@
 
 import { EngineClient } from './engine-client.js';
 import { formatClock, formatLongDate } from './format.js';
-import { $ } from './ui/dom.js';
+import { $, setText } from './ui/dom.js';
 import { confirmAction } from './ui/confirm.js';
 import { OutputMeters } from './ui/meters.js';
 import { NowPlaying } from './ui/now-playing.js';
@@ -27,8 +27,8 @@ const bridge = /** @type {Bridge} */ (/** @type {any} */ (window).onabages);
 
 function tickClock() {
   const now = new Date();
-  $('clock').textContent = formatClock(now);
-  $('clock-date').textContent = formatLongDate(now);
+  setText($('clock'), formatClock(now));
+  setText($('clock-date'), formatLongDate(now));
 }
 tickClock();
 setInterval(tickClock, 250);

@@ -1,8 +1,14 @@
 // @ts-check
 // Vúmetre d'un canal: el motor envia el pic cada 50 ms (esdeveniment «meters»); aquí es fa la caiguda suau
 // i la retenció del pic. Es dibuixa movent dues capes (sense canvas ni efectes): va bé per escriptori remot.
+//
+// Consum (D-069): sense acceleració gràfica, cada canvi el pinta el processador. Per això es dibuixa 20 vegades per
+// segon (com arriben les dades, no 60), en passos de mig punt percentual, i només es toca la pàgina si el valor canvia.
 
 import { meterFraction } from '../format.js';
+import { setStyle } from './dom.js';
+
+const DRAW_EVERY_MS = 50;        // 20 vegades per segon, com l'esdeveniment «meters»
 
 const FALL_DB_PER_SECOND = 24;   // velocitat de caiguda de la barra
 const PEAK_HOLD_MS = 1500;       // quant es queda quiet el marcador de pic
@@ -30,7 +36,7 @@ export class ChannelMeter {
     this.#levelAt = performance.now();
   }
 
-  /** Es crida a cada fotograma. @param {number} now  @param {number} elapsedMs */
+  /** Es crida a cada dibuix. @param {number} now  @param {number} elapsedMs */
   draw(now, elapsedMs) {
     const target = now - this.#levelAt > STALE_MS ? SILENCE_DB : this.#level;
 
@@ -41,12 +47,13 @@ export class ChannelMeter {
       this.#peakAt = now;
     }
 
-    const fraction = meterFraction(this.#shown);
-    this.#cover.style.width = `${(1 - fraction) * 100}%`;
+    // En passos de mig punt percentual (a la barra, 1 o 2 píxels): si no canvia, no es toca la pàgina
+    const percent = (/** @type {number} */ fraction) => (Math.round(fraction * 200) / 2).toFixed(1);
+    setStyle(this.#cover, 'width', `${percent(1 - meterFraction(this.#shown))}%`);
 
     const peakFraction = meterFraction(this.#peak);
-    this.#peakMark.style.display = peakFraction > 0 ? 'block' : 'none';
-    this.#peakMark.style.left = `calc(${peakFraction * 100}% - 2px)`;
+    setStyle(this.#peakMark, 'display', peakFraction > 0 ? 'block' : 'none');
+    setStyle(this.#peakMark, 'left', `calc(${percent(peakFraction)}% - 2px)`);
   }
 }
 
@@ -60,14 +67,15 @@ export class OutputMeters {
   constructor(left, right) {
     this.#left = new ChannelMeter(left);
     this.#right = new ChannelMeter(right);
-    const frame = (/** @type {number} */ now) => {
+    setInterval(() => {
+      const now = performance.now();
       const elapsed = Math.min(200, now - this.#last);
       this.#last = now;
+      // Si no es veuen (finestra minimitzada o una altra pantalla), no es dibuixen
+      if (document.hidden || left.offsetParent === null) return;
       this.#left.draw(now, elapsed);
       this.#right.draw(now, elapsed);
-      requestAnimationFrame(frame);
-    };
-    requestAnimationFrame(frame);
+    }, DRAW_EVERY_MS);
   }
 
   /** @param {[number, number]} output  [esquerre, dret] en dBFS */

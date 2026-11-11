@@ -38,7 +38,7 @@ Electron (app/) ── WebSocket 127.0.0.1 + testimoni ── Motor .NET (engine
 
 - **Motor** (`engine/`, C# / .NET 10): procés independent. Té l'àudio, la cua, l'AutoDJ, el **planificador**, la base de dades i tot l'estat. És la **font de veritat**. Si la interfície es tanca o es penja, l'emissió i la programació continuen.
 - **Interfície** (`app/`, Electron): només mostra l'estat i envia ordres. **Mai no reprodueix ni processa àudio, ni accedeix a la base de dades.**
-- **Àudio:** `OnaBages.Audio` és una còpia del d'Ona Bages Play, feta una sola vegada (D-019). Aquí és **propi**: es canvia lliurement i no s'ha de mantenir el comportament de Play. Mai no es modifica el repositori de Play des d'aquí. Si una correcció també li convindria, anota-ho i digues-ho al desenvolupador.
+- **Àudio:** `OnaBages.Audio` és una còpia del d'Ona Bages Play, feta una sola vegada (D-019). Aquí és **propi**: es canvia lliurement i no s'ha de mantenir el comportament de Play. Mai no es modifica el repositori de Play des d'aquí, amb una sola excepció: si es troba un error que també pot afectar Play, s'anota a `docs/pendent-detectat-a-ona-bages-24h.md` del repositori de Play (una secció per problema: on, què passa, correcció feta aquí i com provar-ho) i es diu al desenvolupador. No s'hi toca cap altre fitxer.
 - **Vigilant:** un procés separat comprova que el motor respon i el reinicia si cal (fase 5).
 
 ## Regles del motor
@@ -109,6 +109,6 @@ Llegeix la secció corresponent abans de començar cada tasca nova.
 
 ## Projectes relacionats
 
-- **Ona Bages Play** (`adavins/onabages-play`): motor i interfície de directe, a `D:\apps\onabages-play` a l'ordinador del desenvolupador. D'aquí es copia `OnaBages.Audio` (D-019). Només es llegeix: no s'hi fan canvis des d'aquest projecte.
+- **Ona Bages Play** (`adavins/onabages-play`): motor i interfície de directe, a `D:\apps\onabages-play` a l'ordinador del desenvolupador. D'aquí es copia `OnaBages.Audio` (D-019). Només es llegeix: no s'hi fan canvis des d'aquest projecte, excepte anotar a `docs/pendent-detectat-a-ona-bages-24h.md` els errors trobats aquí que també el poden afectar.
 - **Programador del RadioDJ** (`adavins/programador`): graella setmanal i informes de falques que aquesta aplicació substitueix.
 - **Automatitzador** (`adavins/automatitzador`): actualitza els fitxers dels programes. Continua funcionant; vegeu `docs/context-operatiu.md` (2.7) i `docs/planificador.md` (12).

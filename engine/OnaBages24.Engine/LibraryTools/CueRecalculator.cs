@@ -7,6 +7,8 @@ namespace OnaBages24.Engine.LibraryTools;
 /// Torna a calcular en segon pla els punts d'encadenament amb el nostre analitzador (D-042), perquè el que sona i
 /// els punts surtin del mateix descodificador (els de RadioDJ estan desplaçats fins a 39 ms, D-041).
 /// - Una pista a la vegada, amb un fil de prioritat baixa i una pausa entre pistes: l'emissió va primer.
+/// - Després de cada pista descansa el triple del que ha tardat a analitzar-la (D-069): així no ocupa un nucli sencer
+///   durant hores (es queda en una quarta part), a canvi de tardar més, cosa que no importa perquè es fa una vegada per pista.
 /// - Mentre una pista no s'ha recalculat, es fan servir els punts de RadioDJ. Els manuals no es toquen mai.
 /// - Si el fitxer no es pot llegir, es deixa com estava i es torna a provar a la volta següent.
 /// - Quan ha acabat totes, espera una estona i torna a mirar si n'hi ha de noves.
@@ -17,6 +19,7 @@ public sealed class CueRecalculator : IDisposable
     private readonly CueThresholds _thresholds;
     private readonly TimeSpan _pause;
     private readonly TimeSpan _idleWait;
+    private readonly double _restFactor;
     private readonly Action<string>? _log;
     private readonly CancellationTokenSource _stop = new();
     private readonly Thread _thread;
@@ -24,8 +27,11 @@ public sealed class CueRecalculator : IDisposable
 
     /// <param name="pause">Pausa entre pistes (per no carregar el disc).</param>
     /// <param name="idleWait">Espera quan no queda cap pista per analitzar.</param>
-    public CueRecalculator(Library library, CueThresholds? thresholds = null, TimeSpan? pause = null, TimeSpan? idleWait = null, Action<string>? log = null)
+    /// <param name="restFactor">Descans després de cada pista, en vegades el temps que ha tardat l'anàlisi (3 = treballa una quarta part del temps; 0 = sense descans).</param>
+    public CueRecalculator(Library library, CueThresholds? thresholds = null, TimeSpan? pause = null, TimeSpan? idleWait = null, Action<string>? log = null,
+        double restFactor = 3)
     {
+        _restFactor = Math.Max(0, restFactor);
         _library = library;
         _thresholds = thresholds ?? CueThresholds.Default;
         _pause = pause ?? TimeSpan.FromMilliseconds(200);
@@ -87,9 +93,10 @@ public sealed class CueRecalculator : IDisposable
                 foreach (var track in batch)
                 {
                     if (token.IsCancellationRequested) return;
+                    long started = System.Diagnostics.Stopwatch.GetTimestamp();
                     Recalculate(track, token);
                     afterId = track.Id;
-                    token.WaitHandle.WaitOne(_pause);
+                    token.WaitHandle.WaitOne(RestAfter(System.Diagnostics.Stopwatch.GetElapsedTime(started)));
                 }
             }
         }
@@ -99,6 +106,13 @@ public sealed class CueRecalculator : IDisposable
             // Un error inesperat no pot afectar l'emissió: s'atura el recàlcul i queda al registre.
             _log?.Invoke($"Recàlcul de punts aturat per un error: {ex.Message}");
         }
+    }
+
+    /// <summary>Quant es descansa després d'una anàlisi que ha tardat <paramref name="elapsed"/>: com a mínim, la pausa entre pistes.</summary>
+    public TimeSpan RestAfter(TimeSpan elapsed)
+    {
+        var rest = elapsed * _restFactor;
+        return rest > _pause ? rest : _pause;
     }
 
     public void Dispose()

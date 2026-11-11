@@ -3,6 +3,7 @@
 // La pista surt de la cua (queue.get / queue.changed) i la posició, de l'esdeveniment «meters» (cada 50 ms).
 
 import { formatDuration, formatRemaining, typeName, originName } from '../format.js';
+import { setText, setStyle } from './dom.js';
 
 const ENDING_MS = 10_000; // els últims 10 s, el temps que falta es marca en vermell (amb icona)
 
@@ -66,17 +67,18 @@ export class NowPlaying {
     const fraction = durationMs > 0 ? Math.min(1, elapsedMs / durationMs) : 0;
     const mixFraction = durationMs > 0 ? Math.min(1, mixAtMs / durationMs) : 1;
 
-    $('np-bar').style.width = `${fraction * 100}%`;
+    // Només es toca la pàgina quan el que es veu canvia (la barra, a dècimes de percentatge): D-069
+    setStyle($('np-bar'), 'width', `${(fraction * 100).toFixed(1)}%`);
     const marker = $('np-mix-marker');
     marker.classList.toggle('d-none', mixFraction >= 1);
-    marker.style.left = `${mixFraction * 100}%`;
+    setStyle(marker, 'left', `${(mixFraction * 100).toFixed(1)}%`);
 
-    $('np-elapsed').textContent = `${formatDuration(elapsedMs)} sonats de ${formatDuration(durationMs)}`;
-    $('np-mix-note').textContent = overlapMs > 0
+    setText($('np-elapsed'), `${formatDuration(elapsedMs)} sonats de ${formatDuration(durationMs)}`);
+    setText($('np-mix-note'), overlapMs > 0
       ? `Mescla amb la següent a ${formatDuration(mixAtMs)} · solapament ${(overlapMs / 1000).toLocaleString('ca', { maximumFractionDigits: 1 })} s`
-      : '';
-    $('np-mix-in').textContent = formatRemaining(mixInMs);
-    $('np-remaining').textContent = formatRemaining(remainingMs);
+      : '');
+    setText($('np-mix-in'), formatRemaining(mixInMs));
+    setText($('np-remaining'), formatRemaining(remainingMs));
     $('np-remaining').classList.toggle('ending', remainingMs <= ENDING_MS);
   }
 }
