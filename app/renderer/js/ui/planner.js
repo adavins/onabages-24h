@@ -1,18 +1,18 @@
 // @ts-check
 // Pantalla del planificador (fase 2, pas 8a): graella per setmanes reals o setmana tipus, i detall de l'esdeveniment.
-// Només llegeix: les dades són les del motor (scheduler.list i scheduler.occurrences); l'edició arriba al pas 8b.
+// Les dades són les del motor (scheduler.list i scheduler.occurrences). El panell de la dreta és l'editor (pas 8b).
 
-import { $, el, icon, statusLabel } from './dom.js';
+import { $, el, icon } from './dom.js';
+import { EventEditor } from './event-editor.js';
 import {
-  MODES, modeInfo, WEEKDAYS, weekStart, addDays, isoDate, parseDate, weekTitle, minutesOf, shortTime, shortDate,
-  daysText, hoursText, recurrenceText, durationText, repeatsWithinDay, layoutLanes,
+  MODES, modeInfo, WEEKDAYS, weekStart, addDays, isoDate, parseDate, weekTitle, minutesOf, shortTime,
+  hoursText, recurrenceText, durationText, repeatsWithinDay, layoutLanes,
 } from '../schedule.js';
 
 /** Píxels per minut segons el zoom (com a la maqueta: 30 min = 48 px). */
 const PX_PER_MIN = { 30: 1.6, 15: 3.2, 5: 8 };
 /** Alçada mínima d'un bloc (els esdeveniments sense durada són una marca). */
 const MIN_BLOCK_PX = 22;
-const DAY_NAMES = ['dl', 'dt', 'dc', 'dj', 'dv', 'ds', 'dg'];
 
 /**
  * @typedef {{ eventId: number, name: string, mode: string, date: string, time: string, at: string,
@@ -22,6 +22,8 @@ const DAY_NAMES = ['dl', 'dt', 'dc', 'dj', 'dv', 'ds', 'dg'];
 
 export class PlannerView {
   #send;
+  /** @type {EventEditor} */
+  #editor;
   /** @type {Map<number, any>} */
   #events = new Map();
   /** @type {Occurrence[]} */
@@ -41,6 +43,13 @@ export class PlannerView {
   /** @param {(cmd: string, params?: object) => Promise<any>} send */
   constructor(send) {
     this.#send = send;
+    this.#editor = new EventEditor($('pl-detail'), send, {
+      // En desar o esborrar, el motor avisa (scheduler.changed) i la graella es torna a carregar; aquí només es marca
+      onSaved: (ev) => { this.#selected = ev.id; this.load(); },
+      onDeleted: () => { this.#selected = null; this.load(); },
+      onClosed: () => this.#mark(null),
+    });
+    $('pl-new').addEventListener('click', () => this.#create());
 
     for (const [id, view] of /** @type {const} */ ([['pl-view-week', 'week'], ['pl-view-template', 'template']])) {
       $(id).addEventListener('click', () => {
@@ -100,10 +109,11 @@ export class PlannerView {
           from: isoDate(this.#monday), to: isoDate(addDays(this.#monday, 6)), includeDisabled: true, limit: 2000,
         })
         : Promise.resolve({ occurrences: [] });
-      const [list, occurrences] = await Promise.all([listRequest, occurrencesRequest]);
+      const [list, occurrences, rotations] = await Promise.all([listRequest, occurrencesRequest, this.#send('rotations.list')]);
       if (token !== this.#loadToken) return; // n'hi ha una de més nova
       this.#events = new Map(list.events.map((/** @type {any} */ e) => [e.id, e]));
       this.#occurrences = occurrences.occurrences;
+      this.#editor.setRotations(rotations.rotations);
       $('pl-error').classList.add('d-none');
     } catch (err) {
       if (token !== this.#loadToken) return;
@@ -111,7 +121,9 @@ export class PlannerView {
       $('pl-error-text').textContent = `No s'ha pogut llegir la programació del motor: ${/** @type {Error} */ (err).message}`;
     }
     this.#render();
-    if (this.#selected != null) this.#showDetail(this.#selected);
+    // L'editor: si no té canvis sense desar, mostra l'esdeveniment tal com és ara al motor
+    if (this.#selected != null) this.#editor.refresh(this.#events.get(this.#selected));
+    if (this.#editor.eventId == null) this.#selected = null;
   }
 
   #moveWeek(/** @type {number} */ days) {
@@ -349,101 +361,30 @@ export class PlannerView {
     }
   }
 
-  // --- Detall ---
+  // --- Editor (fase 2, pas 8b) ---
 
-  /** @param {number} id */
-  #select(id) {
-    this.#selected = id;
-    for (const node of document.querySelectorAll('.pl-item.is-selected, .pl-repeat.is-selected')) node.classList.remove('is-selected');
-    for (const node of document.querySelectorAll(`.pl-item[data-event-id="${id}"]`)) node.classList.add('is-selected');
-    this.#renderLegend();
-    this.#showDetail(id);
+  /** Tria un esdeveniment i l'obre a l'editor. Si l'editor té canvis sense desar, abans pregunta. @param {number} id */
+  async #select(id) {
+    if (id === this.#selected && this.#editor.eventId === id) return;
+    if (!(await this.#editor.confirmDiscard())) return;
+    this.#editor.open(this.#events.get(id) ?? null);
+    this.#mark(this.#events.has(id) ? id : null);
   }
 
-  /** @param {number} id */
-  async #showDetail(id) {
-    const panel = $('pl-detail');
-    const ev = this.#events.get(id);
-    panel.replaceChildren();
-    if (!ev) {
-      this.#selected = null;
-      panel.append(el('p', 'pl-detail-empty', 'Tria un esdeveniment de la graella per veure\'n el detall.'));
-      return;
+  /** Marca a la graella l'esdeveniment obert a l'editor (o cap). @param {number | null} id */
+  #mark(id) {
+    this.#selected = id;
+    for (const node of document.querySelectorAll('.pl-item.is-selected')) node.classList.remove('is-selected');
+    if (id != null) {
+      for (const node of document.querySelectorAll(`.pl-item[data-event-id="${id}"]`)) node.classList.add('is-selected');
     }
-    const info = modeInfo(ev.mode);
+    this.#renderLegend();
+  }
 
-    const badges = el('div', 'd-flex flex-wrap gap-2 mb-2');
-    const modeBadge = el('span', `pl-chip ${info.css}`);
-    modeBadge.append(icon(info.icon), ' ', el('span', '', info.label));
-    badges.append(modeBadge, ev.enabled
-      ? statusLabel('text-success', 'bi-check-circle-fill', 'Activat')
-      : statusLabel('text-warning', 'bi-pause-circle-fill', 'Desactivat: no es dispara'));
-    panel.append(badges, el('h2', 'pl-detail-name', ev.name));
-
-    const facts = el('dl', 'pl-facts');
-    const fact = (/** @type {string} */ term, /** @type {string} */ value) => facts.append(el('dt', '', term), el('dd', '', value));
-    fact('Hora d\'inici', ev.startTime);
-    fact('Durada a la graella', ev.maxDurationSeconds ? durationText(ev.maxDurationSeconds) : 'sense durada màxima (es dibuixa com una marca)');
-    fact('Recurrència', recurrenceText(ev));
-    if (ev.mode === 'TALLA' || ev.mode === 'ENCUA') fact('Esborra la cua', ev.clearQueue ? 'sí' : 'no');
-    if (ev.mode === 'TALLA') fact('Fos de la que sona', ev.fadeMs == null ? '1.000 ms (per defecte)' : `${ev.fadeMs} ms`);
-    if (ev.duckingDb != null) fact('Atenuació de la música', `${ev.duckingDb} dB`);
-    fact('Prioritat i tolerància', `${ev.priority} · ${ev.toleranceSeconds} s`);
-    panel.append(facts);
-
-    if (ev.excludedDates?.length) {
-      const exceptions = el('div', 'pl-exceptions');
-      exceptions.append(icon('bi-slash-circle'), ' ', el('span', '', `No s'emet: ${ev.excludedDates.map(shortDate).join(', ')}`));
-      panel.append(exceptions);
-    }
-
-    // Pròximes emissions (les calcula el motor, amb els canvis d'hora)
-    panel.append(el('h3', 'pl-detail-title', 'Pròximes emissions'));
-    const next = el('div', 'pl-next');
-    next.append(el('span', 'text-body-secondary', 'Calculant…'));
-    panel.append(next);
-
-    panel.append(el('h3', 'pl-detail-title', 'Accions, en ordre d\'emissió'));
-    const actions = el('ol', 'pl-actions');
-    if (ev.actions.length === 0) actions.append(el('li', 'pl-action-empty', 'Cap acció.'));
-    for (const action of ev.actions) {
-      const li = el('li', `pl-action${action.missing ? ' is-missing' : ''}`);
-      const main = el('div', 'pl-action-label', action.label ?? action.type);
-      const detail = el('div', 'pl-action-detail', [action.type, action.detail].filter(Boolean).join(' · '));
-      li.append(main, detail);
-      if (action.daysMask != null) li.append(el('div', 'pl-action-days', `Només ${daysText(action.daysMask)}`));
-      if (action.missing) {
-        const warning = el('div', 'pl-action-warning');
-        warning.append(icon('bi-exclamation-triangle-fill'), ' ', el('span', '', 'No sonarà: la pista o el fitxer falta'));
-        li.append(warning);
-      }
-      actions.append(li);
-    }
-    panel.append(actions);
-
-    if (ev.notes) panel.append(el('p', 'pl-notes', ev.notes));
-    panel.append(el('p', 'pl-detail-foot', 'Per ara només es pot consultar: l\'editor arriba al pas 8b.'));
-
-    try {
-      const now = new Date();
-      const result = await this.#send('scheduler.occurrences', {
-        eventId: id, from: now.toISOString(), to: addDays(now, 399).toISOString(), limit: 10,
-      });
-      if (this.#selected !== id) return;
-      next.replaceChildren();
-      if (result.occurrences.length === 0) next.append(el('span', 'text-body-secondary', 'Cap en els pròxims 400 dies.'));
-      for (const o of result.occurrences) {
-        const date = parseDate(o.date);
-        const chip = el('span', `pl-next-chip${o.skippedClockChange ? ' is-skipped' : ''}`,
-          `${DAY_NAMES[(date.getDay() + 6) % 7]} ${date.getDate()}/${date.getMonth() + 1} ${shortTime(o.time)}`);
-        if (o.skippedClockChange) {
-          chip.prepend(icon('bi-clock-history'), ' ');
-          chip.title = 'Aquesta hora no existeix pel canvi d\'hora: no sonarà';
-        }
-        next.append(chip);
-      }
-    } catch (err) {
-      next.replaceChildren(el('span', 'text-danger', `No s'han pogut calcular: ${/** @type {Error} */ (err).message}`));
-    }
+  /** Esdeveniment nou: a la setmana que es mostra, a les 12:00 (l'hora es canvia a l'editor). */
+  async #create() {
+    if (!(await this.#editor.confirmDiscard())) return;
+    this.#editor.create();
+    this.#mark(null);
   }
 }

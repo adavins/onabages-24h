@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 2, pas 8a (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 2, pas 8b (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -87,6 +87,7 @@ El `message` és en català i es pot mostrar a l'operador.
 | `aux.play` | `trackId` (de la biblioteca) **o bé** `path` (un fitxer qualsevol); `player` (1–3, per defecte 1); `duckingDb` (atenuació de la música mentre sona, de −60 a 0; per defecte, cap) | `{ player, item }`. Sona per sobre del que soni, sencer i des del principi; si el reproductor ja sonava, el substitueix. Si no queden veus lliures, `bad_params` | fase 2, pas 5a |
 | `aux.stop` | `player` (per defecte 1), `fadeMs` (de 0 a 10.000; per defecte 500) | `{ stopped, aux }`. `stopped`: fals si no sonava res | fase 2, pas 5a |
 | `library.list` | `folder`, `limit` (per defecte 100, com a molt 1.000) | `{ tracks: [ … ] }` (vegeu 4.4): pistes de la carpeta i subcarpetes. De moment, per a les proves | fase 1, pas 7c |
+| `library.search` | `text` (paraules que han de sortir totes a l'artista, al títol o a la ruta, sense distingir majúscules; buit = totes), `limit` (per defecte 50, com a molt 200) | `{ tracks: [ … ], more }` (vegeu 4.4), per artista i títol. `more`: n'hi ha més que les retornades | fase 2, pas 8b |
 | `autodj.get` | — | `{ autodj }` (vegeu 4.5) | fase 1, pas 8 |
 | `autodj.set` | `enabled` (`true`/`false`), `rotationId`. Tots dos opcionals: el que no s'envia es queda com està | `{ autodj }`. La rotació es desa i es manté en tornar a arrencar; `enabled` no: el motor sempre arrenca amb l'AutoDJ actiu (D-053). Si la rotació no existeix, `bad_params` | fase 1, pas 8 |
 | `rotations.list` | — | `{ rotations: [ … ] }` (vegeu 4.5) | fase 1, pas 8 |
@@ -96,6 +97,7 @@ El `message` és en català i es pot mostrar a l'operador.
 | `scheduler.list` | — | `{ events: [ … ] }` (vegeu 4.7): tots, també els desactivats i les plantilles | fase 2, pas 3 |
 | `scheduler.get` | `eventId` | `{ event }` | fase 2, pas 3 |
 | `scheduler.save` | `event` (4.7). Sense `id` (o 0), en crea un de nou; amb `id`, el substitueix sencer (els camps que no s'envien prenen el valor per defecte) | `{ event }` tal com s'ha desat. El planificador el té en compte de seguida. Si no és coherent (p. ex. «cada N setmanes» sense dia de referència), `bad_params` amb el motiu en català | fase 2, pas 3 |
+| `scheduler.preview` | `event` (4.7), encara que no s'hagi desat; `limit` (per defecte 10, com a molt 100) | `{ occurrences: [ … ] }` (4.7): les pròximes emissions des d'ara (fins a 400 dies), comptant-hi les dates excloses i els canvis d'hora. No desa res. Si l'esdeveniment no és coherent, `bad_params` amb el motiu en català | fase 2, pas 8b |
 | `scheduler.delete` | `eventId` | `{ deleted: <id> }`. El registre d'execució es conserva | fase 2, pas 3 |
 | `scheduler.occurrences` | `from`, `to` (com a `history.list`; per defecte, d'ara a 24 h; com a molt 400 dies), `eventId` (només aquest, encara que estigui desactivat), `includeDisabled` (també els desactivats; per defecte, no), `limit` (per defecte 200, com a molt 2.000) | `{ occurrences: [ … ], more }` (4.7), per ordre. Sense `eventId`, només els actius que no són plantilles (amb `includeDisabled`, també els desactivats) | fase 2, pas 3; `includeDisabled`, pas 8a |
 | `scheduler.log` | `from`, `to` (per defecte, avui), `eventId`, `limit` (per defecte 500) | `{ entries: [ … ], more }` (4.7): el registre d'execució, per hora prevista | fase 2, pas 3 |

@@ -202,4 +202,57 @@ public sealed class SchedulerCommandsTests : IDisposable
         Assert.Equal("CAP", all[0]!["repeat"]!.GetValue<string>());
         Assert.Equal(600, all[0]!["maxDurationSeconds"]!.GetValue<int>());
     }
+
+    // --- Editor (fase 2, pas 8b) ---
+
+    [Fact]
+    public void La_previsualitzacio_calcula_les_properes_emissions_sense_desar_res()
+    {
+        var result = Result(Send("""
+            { "v": 1, "id": 1, "cmd": "scheduler.preview", "limit": 3, "event": {
+                "name": "Encara no existeix", "mode": "ENCUA", "startTime": "10:30:00", "daysMask": 1 } }
+            """));
+
+        var occurrences = result["occurrences"]!.AsArray();
+        Assert.Equal(3, occurrences.Count);
+        Assert.All(occurrences, o => Assert.Equal("10:30:00", o!["time"]!.GetValue<string>()));
+        Assert.All(occurrences, o => Assert.Equal(DayOfWeek.Monday, DateOnly.Parse(o!["date"]!.GetValue<string>()).DayOfWeek));
+        Assert.Empty(_events.List());   // no s'ha desat
+        Assert.Equal(0, _changed);
+    }
+
+    [Fact]
+    public void La_previsualitzacio_d_un_esdeveniment_incoherent_diu_per_que()
+    {
+        var response = Send("""
+            { "v": 1, "id": 1, "cmd": "scheduler.preview", "event": {
+                "name": "Cada 2 setmanes sense dia de referència", "mode": "TALLA", "startTime": "10:00:00",
+                "recurrence": "CADA_N_SETMANES", "intervalWeeks": 2 } }
+            """);
+
+        Assert.Equal("bad_params", ErrorCode(response));
+        Assert.Contains("dia de referència", response["error"]!["message"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void La_cerca_de_pistes_troba_per_paraules_a_l_artista_el_titol_o_la_ruta()
+    {
+        _library.AddTrack(new Track { Path = @"D:\continuitat\magazin.mp3", Artist = "Ona Bages", Title = "El Magazín de la Comarca", Type = TrackType.Program });
+        _library.AddTrack(new Track { Path = @"C:\RadioDJ\hores\SENYALS HORARIS.mp3", Artist = "Senyals horaris", Title = "SENYALS HORARIS", Type = TrackType.TimeSignal });
+        _library.AddTrack(new Track { Path = @"O:\musica\100%_exits\canco.mp3", Artist = "Algú", Title = "Cançó" });
+
+        string[] Search(string text) => Result(Send($$"""{ "v": 1, "id": 1, "cmd": "library.search", "text": "{{text}}" }"""))["tracks"]!
+            .AsArray().Select(t => t!["title"]!.GetValue<string>()).ToArray();
+
+        Assert.Equal(["El Magazín de la Comarca"], Search("magazin comarca"));   // dues paraules, totes dues hi han de ser
+        Assert.Equal(["SENYALS HORARIS"], Search("senyals"));                    // sense distingir majúscules
+        Assert.Equal(["El Magazín de la Comarca"], Search("continuitat"));       // també a la ruta
+        Assert.Equal(["Cançó"], Search("100%"));                                 // «%» és un caràcter normal
+        Assert.Empty(Search("no-hi-es"));
+        Assert.Equal(3, Search("").Length);                                      // sense text, totes
+
+        var limited = Result(Send("""{ "v": 1, "id": 1, "cmd": "library.search", "text": "", "limit": 2 }"""));
+        Assert.Equal(2, limited["tracks"]!.AsArray().Count);
+        Assert.True(limited["more"]!.GetValue<bool>());
+    }
 }

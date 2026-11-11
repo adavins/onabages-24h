@@ -439,6 +439,10 @@ public sealed class Events(Database database)
     // --- Validació ---
 
     /// <summary>Comprova que l'esdeveniment és coherent abans de desar-lo. Els missatges són per a l'operador.</summary>
+    /// <summary>Comprova que l'esdeveniment és coherent, sense desar-lo (per a la previsualització de l'editor).</summary>
+    /// <exception cref="ArgumentException">Amb el motiu en català.</exception>
+    public static void Check(ScheduledEvent ev) => Validate(ev);
+
     private static void Validate(ScheduledEvent ev)
     {
         static void Require(bool ok, string message)

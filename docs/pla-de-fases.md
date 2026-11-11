@@ -78,7 +78,7 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 7. Acció `STREAM` (D-010, D-030, D-031), amb un servidor de proves local. Es fa després del pas 8 (D-068).
 8. Interfície (abans del pas 7, D-068):
    - 8a. ✔ Pestanyes Emissió | Planificador; graella per setmanes reals i setmana tipus (lectura), amb zoom, filtres per mode, desactivats, fila dels que es repeteixen cada hora i detall amb les 10 pròximes emissions i les accions.
-   - 8b. Editor d'esdeveniments: tots els camps, accions (afegir, treure, reordenar), cercador de pistes (`library.search`) i pròximes emissions abans de desar (`scheduler.preview`).
+   - 8b. ✔ Editor d'esdeveniments al panell de la dreta: tots els camps, accions (afegir, treure, reordenar, dies propis), cercador de pistes (`library.search`), pròximes emissions mentre s'edita (`scheduler.preview`), Desa, Duplica i Esborra amb confirmació (D-070).
    - 8c. Avisos en desar (franja massa llarga, ENCUA que no sonarà, emissions perdudes pel canvi d'hora).
 9. Prova de tancament (criteri de sota).
 

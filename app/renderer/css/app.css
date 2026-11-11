@@ -650,7 +650,7 @@ button.pl-chip.is-off {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 22rem;
+  grid-template-columns: minmax(0, 1fr) 27rem;
   gap: 1rem;
   padding: 0.75rem 1rem;
 }
@@ -966,4 +966,214 @@ button.pl-chip.is-off {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
   }
+}
+
+/* --- Editor d'esdeveniments (fase 2, pas 8b) --- */
+
+.ee-field {
+  margin-bottom: 0.6rem;
+}
+
+.ee-field .form-label {
+  margin-bottom: 0.15rem;
+  color: var(--ob-muted);
+  font-size: 0.82rem;
+}
+
+.ee-field .form-text {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+}
+
+.ee-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 0.75rem;
+}
+
+.ee-section {
+  margin: 1rem 0 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--ob-border);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.ee-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+/* Mode sense triar: només la vora; el triat, amb el color del mode i una marca */
+.ee-mode {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--mode-line);
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--mode-fg);
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.ee-mode.is-on {
+  background: var(--mode-bg);
+  border-color: var(--mode-fg);
+  font-weight: 600;
+}
+
+.ee-mode.is-on::after {
+  content: "\F633"; /* bi-check-lg */
+  font-family: "bootstrap-icons";
+  margin-left: auto;
+}
+
+.ee-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.2rem;
+}
+
+.ee-checks .form-check-inline {
+  margin-right: 0.5rem;
+}
+
+.ee-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.3rem;
+}
+
+.ee-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.2rem 0.1rem 0.5rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.3rem;
+  font-family: var(--ob-mono);
+  font-size: 0.8rem;
+}
+
+.ee-chip-remove {
+  border: 0;
+  background: none;
+  color: var(--ob-muted);
+  padding: 0 0.15rem;
+}
+
+.ee-chip-remove:hover {
+  color: var(--bs-danger);
+}
+
+.ee-datelist-add {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.ee-action-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.ee-action-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ee-action-tools {
+  display: flex;
+  gap: 0.2rem;
+  flex-shrink: 0;
+}
+
+.pl-action .ee-field,
+.pl-action .ee-row {
+  margin-top: 0.4rem;
+  margin-bottom: 0;
+}
+
+.ee-add {
+  margin-top: 0.6rem;
+}
+
+.ee-add-title {
+  color: var(--ob-muted);
+  font-size: 0.82rem;
+  margin-bottom: 0.25rem;
+}
+
+.ee-add-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.ee-search {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.375rem;
+}
+
+.ee-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 16rem;
+  overflow: auto;
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.ee-result {
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 0.3rem;
+  background: none;
+  color: var(--bs-body-color);
+  text-align: left;
+}
+
+.ee-result:hover,
+.ee-result:focus-visible {
+  border-color: var(--ob-progress);
+  background: #20252c;
+}
+
+.ee-result-label {
+  overflow-wrap: anywhere;
+}
+
+.ee-result-detail {
+  color: var(--ob-muted);
+  font-size: 0.78rem;
+}
+
+.ee-result.is-missing .ee-result-detail {
+  color: var(--bs-warning);
+}
+
+.ee-buttons {
+  position: sticky;
+  bottom: -1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 1rem -1rem -1rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--ob-border);
+  background: var(--ob-panel);
+}
+
+.ee-datelist-add .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }

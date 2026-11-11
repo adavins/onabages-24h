@@ -111,6 +111,7 @@ public sealed class CommandRouter
                 "aux.play" => AuxPlay(msg),
                 "aux.stop" => AuxStop(msg),
                 "library.list" => LibraryList(msg),
+                "library.search" => LibrarySearch(msg),
                 "autodj.get" => new JsonObject { ["autodj"] = QueueJson.AutoDj(AutoDjOrError()) },
                 "autodj.set" => AutoDjSet(msg),
                 "rotations.list" => RotationsList(),
@@ -120,6 +121,7 @@ public sealed class CommandRouter
                 "scheduler.list" => SchedulerList(),
                 "scheduler.get" => SchedulerGet(msg),
                 "scheduler.save" => SchedulerSave(msg),
+                "scheduler.preview" => SchedulerPreview(msg),
                 "scheduler.delete" => SchedulerDelete(msg),
                 "scheduler.occurrences" => SchedulerOccurrences(msg),
                 "scheduler.log" => SchedulerLog(msg),
@@ -292,6 +294,22 @@ public sealed class CommandRouter
         if (fadeMs is < 0 or > 10_000) throw new BadParamsException("El camp 'fadeMs' ha de ser entre 0 i 10.000.");
         queue.Skip(TimeSpan.FromMilliseconds(fadeMs));
         return new JsonObject { ["queue"] = QueueJson.Queue(queue) };
+    }
+
+    /// <summary>
+    /// Cerca a tota la biblioteca (fase 2, pas 8b): <c>text</c> (paraules que han de sortir a l'artista, al títol o a la
+    /// ruta) i <c>limit</c> (per defecte 50, com a molt 200).
+    /// </summary>
+    private JsonObject LibrarySearch(JsonObject msg)
+    {
+        var library = _library ?? throw new BadParamsException("El motor no té biblioteca.");
+        int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 50, 1, 200);
+        var tracks = library.Search(ReadString(msg["text"]) ?? "", limit + 1);
+        return new JsonObject
+        {
+            ["tracks"] = new JsonArray(tracks.Take(limit).Select(t => (JsonNode)QueueJson.Track(t)).ToArray()),
+            ["more"] = tracks.Count > limit,
+        };
     }
 
     // --- Reproductors auxiliars (fase 2, pas 5) ---
@@ -541,6 +559,29 @@ public sealed class CommandRouter
         }
         _scheduler?.Reload();
         return new JsonObject { ["event"] = EventJson.Event(events.Get(id)!, Describer()) };
+    }
+
+    /// <summary>
+    /// Les pròximes emissions d'un esdeveniment que encara no s'ha desat (fase 2, pas 8b): l'editor les mostra mentre
+    /// s'edita. No desa res. Si l'esdeveniment no és coherent, <c>bad_params</c> amb el motiu.
+    /// </summary>
+    private JsonObject SchedulerPreview(JsonObject msg)
+    {
+        if (msg["event"] is not JsonObject json) throw new BadParamsException("Falta el camp 'event' (un objecte).");
+        ScheduledEvent ev;
+        try
+        {
+            ev = EventJson.FromJson(json);
+            Events.Check(ev);
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException)
+        {
+            throw new BadParamsException(ex.Message);
+        }
+        int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 10, 1, 100);
+        var now = DateTimeOffset.Now;
+        var list = Recurrences.Between(ev, now, now.AddDays(400), Zone).Take(limit).ToList();
+        return new JsonObject { ["occurrences"] = new JsonArray(list.Select(o => (JsonNode)EventJson.Occurrence(o)).ToArray()) };
     }
 
     private JsonObject SchedulerDelete(JsonObject msg)

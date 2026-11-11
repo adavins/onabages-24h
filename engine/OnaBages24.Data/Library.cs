@@ -169,6 +169,26 @@ public sealed class Library(Database database)
         QueryTracks("WHERE subcategoria_id = $v ORDER BY id", subcategoryId);
 
     /// <summary>Pistes la ruta de les quals comença per aquesta carpeta (sense distingir majúscules).</summary>
+    /// <summary>
+    /// Cerca pistes per text (fase 2, pas 8b): totes les paraules han de sortir a l'artista, al títol o a la ruta,
+    /// sense distingir majúscules. Sense text, les primeres per ordre. Com a molt <paramref name="limit"/>.
+    /// </summary>
+    public IReadOnlyList<Track> Search(string text, int limit)
+    {
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(8).ToArray();
+        var conditions = new List<string>();
+        var parameters = new List<(string, object)> { ("$limit", limit) };
+        for (int i = 0; i < words.Length; i++)
+        {
+            // LIKE amb els caràcters especials escapats (%, _ i el mateix caràcter d'escapament)
+            string pattern = "%" + words[i].Replace("!", "!!").Replace("%", "!%").Replace("_", "!_") + "%";
+            conditions.Add($"(artista LIKE $w{i} ESCAPE '!' OR titol LIKE $w{i} ESCAPE '!' OR ruta LIKE $w{i} ESCAPE '!')");
+            parameters.Add(($"$w{i}", pattern));
+        }
+        string where = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
+        return QueryTracks($"{where} ORDER BY artista COLLATE NOCASE, titol COLLATE NOCASE, id LIMIT $limit", parameters.ToArray());
+    }
+
     public IReadOnlyList<Track> TracksInFolder(string folder)
     {
         string prefix = folder.TrimEnd('\\') + "\\";
