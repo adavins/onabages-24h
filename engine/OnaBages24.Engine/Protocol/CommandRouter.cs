@@ -107,6 +107,7 @@ public sealed class CommandRouter
                 "queue.insert" => QueueInsert(msg),
                 "queue.remove" => QueueRemove(msg),
                 "queue.move" => QueueMove(msg),
+                "queue.regenerate" => QueueRegenerate(),
                 "player.playItem" => PlayerPlayItem(msg),
                 "player.next" => PlayerNext(msg),
                 "aux.get" => new JsonObject { ["aux"] = QueueJson.Aux(Aux()) },
@@ -290,6 +291,13 @@ public sealed class CommandRouter
         return new JsonObject { ["queue"] = QueueJson.Queue(queue) };
     }
 
+    /// <summary>«Regenera la cua» (D-034): treu les pistes de l'AutoDJ i les torna a triar amb la rotació actual.</summary>
+    private JsonObject QueueRegenerate()
+    {
+        int removed = AutoDjOrError().Regenerate();
+        return new JsonObject { ["removed"] = removed, ["queue"] = QueueJson.Queue(Queue()) };
+    }
+
     /// <summary>Mou una pista de la cua una posició amunt o avall (fase 3, pas 2a): <c>itemId</c> i <c>delta</c> (−1 o +1).</summary>
     private JsonObject QueueMove(JsonObject msg)
     {
@@ -442,7 +450,15 @@ public sealed class CommandRouter
                 throw new BadParamsException("El camp 'rotationId' ha de ser un número.");
             rotationId = id;
         }
-        if (!autoDj.Configure(enabled, rotationId))
+        // Si s'atura: quant temps (D-073). Per defecte 2 h, com a molt 12 h; després es torna a activar sol
+        TimeSpan? pause = null;
+        if (msg["minutes"] is not null)
+        {
+            if (ReadInt(msg["minutes"]) is not { } minutes || minutes is < 1 or > 720)
+                throw new BadParamsException("El camp 'minutes' ha de ser entre 1 i 720 (12 hores).");
+            pause = TimeSpan.FromMinutes(minutes);
+        }
+        if (!autoDj.Configure(enabled, rotationId, "a mà", pause))
             throw new BadParamsException($"No existeix la rotació {rotationId}.");
         // Només es desa la rotació: en arrencar, el motor sempre activa l'AutoDJ (D-053)
         _library?.SetSetting(AutoDjSettingKey, JsonSerializer.Serialize(new { rotationId = autoDj.Rotation?.Id }));

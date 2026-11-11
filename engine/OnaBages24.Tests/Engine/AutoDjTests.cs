@@ -109,10 +109,96 @@ public class AutoDjTests : IDisposable
         AddTrack(a, "A");
         var autoDj = NewAutoDj();
         autoDj.Configure(false, _rotations.Save("R", [Step(a)]));
+        _queue.Enqueue(new QueueItem { Path = _temp.File("manual.mp3"), Title = "Manual" }); // amb la cua buida es tornaria a activar (D-073)
 
         autoDj.Tick();
 
-        Assert.Empty(_queue.Upcoming);
+        Assert.Equal(["Manual"], _queue.Upcoming.Select(i => i.Title));
+        Assert.False(autoDj.Enabled);
+    }
+
+    // --- AutoDJ protegit i «Regenera la cua» (fase 3, pas 2b; D-073) ---
+
+    private DateTimeOffset _now = new(2026, 11, 20, 10, 0, 0, TimeSpan.FromHours(1));
+
+    private AutoDj NewAutoDjWithClock() =>
+        new(_library, _rotations, _queue, new AutoDjSettings { MinUpcoming = 2 }, clock: () => _now, random: new Random(1));
+
+    [Fact]
+    public void Aturat_es_torna_a_activar_sol_quan_s_acaba_el_temps()
+    {
+        long a = Sub("Adult 5");
+        for (int i = 0; i < 3; i++) AddTrack(a, $"A{i}");
+        var autoDj = NewAutoDjWithClock();
+        autoDj.Configure(false, _rotations.Save("R", [Step(a)]), "a mà", TimeSpan.FromHours(1));
+        _queue.Enqueue(new QueueItem { Path = _temp.File("manual.mp3"), Title = "Manual" });
+
+        Assert.Equal(_now.AddHours(1), autoDj.DisabledUntil);
+        _now = _now.AddMinutes(59);
+        autoDj.Tick();
+        Assert.False(autoDj.Enabled);
+
+        _now = _now.AddMinutes(1);
+        autoDj.Tick();
+        Assert.True(autoDj.Enabled);
+        Assert.Null(autoDj.DisabledUntil);
+        Assert.Equal("L'AutoDJ s'ha tornat a activar sol: s'havia aturat fins a les 11:00.", autoDj.Notice);
+        Assert.Equal(2, _queue.Upcoming.Count); // ja torna a omplir la cua
+    }
+
+    [Fact]
+    public void Aturat_es_torna_a_activar_si_la_cua_s_acaba_i_mai_mes_de_12_hores()
+    {
+        long a = Sub("Adult 5");
+        AddTrack(a, "A");
+        var autoDj = NewAutoDjWithClock();
+        autoDj.Configure(false, _rotations.Save("R", [Step(a)]), "a mà", TimeSpan.FromDays(3));
+        Assert.Equal(_now.AddHours(12), autoDj.DisabledUntil); // mai indefinidament
+
+        autoDj.Tick(); // la cua és buida: mai silenci
+
+        Assert.True(autoDj.Enabled);
+        Assert.Contains("perquè no hi hagi silenci", autoDj.Notice);
+        Assert.Single(_queue.Upcoming);
+    }
+
+    [Fact]
+    public void Es_recorda_qui_ha_canviat_la_rotacio()
+    {
+        long a = Sub("Adult 5");
+        AddTrack(a, "A");
+        long r1 = _rotations.Save("R1", [Step(a)]);
+        long r2 = _rotations.Save("R2", [Step(a)]);
+        var autoDj = NewAutoDjWithClock();
+        autoDj.Configure(true, r1, "en arrencar el motor");
+        _now = _now.AddMinutes(30);
+        autoDj.Configure(true, r2, "esdeveniment «Converses»");
+
+        Assert.Equal(("esdeveniment «Converses»", _now), (autoDj.RotationChangedBy, autoDj.RotationChangedAt));
+        _now = _now.AddMinutes(5);
+        autoDj.Configure(true, r2, "a mà"); // la mateixa rotació: no canvia d'on ve
+        Assert.Equal("esdeveniment «Converses»", autoDj.RotationChangedBy);
+    }
+
+    [Fact]
+    public void Regenera_la_cua_nomes_treu_les_de_l_AutoDJ_i_continua_la_rotacio_on_era()
+    {
+        long a = Sub("A");
+        long b = Sub("B");
+        long c = Sub("C");
+        foreach (long s in new[] { a, b, c }) for (int i = 0; i < 3; i++) AddTrack(s, $"{s}-{i}");
+        var autoDj = NewAutoDjWithClock();
+        autoDj.Configure(true, _rotations.Save("R", [Step(a), Step(b), Step(c)]));
+        autoDj.Tick();
+        autoDj.Tick();                                                     // A i B a la cua; el pas següent és C
+        _queue.Insert(1, new QueueItem { Path = _temp.File("manual.mp3"), Title = "Manual", Origin = QueueOrigin.Manual });
+
+        Assert.Equal(2, autoDj.Regenerate());
+
+        Assert.Equal(["Manual"], _queue.Upcoming.Select(i => i.Title));    // la manual es queda
+        Assert.Equal(0, autoDj.NextStep);                                  // torna al pas d'A
+        autoDj.Tick();
+        Assert.Equal(a, _library.GetTrack(_queue.Upcoming[1].TrackId!.Value)!.SubcategoryId);
     }
 
     [Fact]

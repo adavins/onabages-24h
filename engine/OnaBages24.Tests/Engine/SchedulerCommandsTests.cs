@@ -274,8 +274,8 @@ public sealed class SchedulerCommandsTests : IDisposable
         Assert.Equal(["P2", "Música"], played["skipped"]!.AsArray().Select(i => i!["title"]!.GetValue<string>()));
         var notPlayed = _events.Executions(at.AddHours(-1), at.AddHours(1)).Where(r => r.Result == ExecutionResult.NotPlayed).ToList();
         Assert.Equal(2, notPlayed.Count);
-        Assert.Contains(notPlayed, r => r.Detail.Contains("1 pista treta de la cua abans de sonar (treta a mà)"));
-        Assert.Contains(notPlayed, r => r.Detail.Contains("saltades amb «Reprodueix ara»"));
+        Assert.Contains(notPlayed, r => (r.Detail ?? "").Contains("1 pista treta de la cua abans de sonar (treta a mà)"));
+        Assert.Contains(notPlayed, r => (r.Detail ?? "").Contains("saltades amb «Reprodueix ara»"));
     }
 
     [Fact]

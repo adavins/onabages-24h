@@ -10,6 +10,12 @@ public sealed record AutoDjSettings
 
     /// <summary>Si no ha trobat cap pista, quant espera a tornar-ho a provar (per no consultar la base de dades cada 10 ms).</summary>
     public TimeSpan RetryAfterNothing { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Quant temps es queda aturat l'AutoDJ si no es diu res (D-073): després es torna a activar sol.</summary>
+    public TimeSpan DefaultPause { get; init; } = TimeSpan.FromHours(2);
+
+    /// <summary>El màxim que es pot aturar d'una vegada (mai indefinidament, D-073).</summary>
+    public TimeSpan MaxPause { get; init; } = TimeSpan.FromHours(12);
 }
 
 /// <summary>
@@ -61,6 +67,17 @@ public sealed class AutoDj
     /// <summary>L'últim avís (en català), o null si tot va bé.</summary>
     public string? Problem { get; private set; }
 
+    /// <summary>Fins quan està aturat (D-073): llavors es torna a activar sol. Null si està actiu.</summary>
+    public DateTimeOffset? DisabledUntil { get; private set; }
+
+    /// <summary>Avís de l'última vegada que s'ha tornat a activar sol (es manté fins al pròxim canvi a mà), o null.</summary>
+    public string? Notice { get; private set; }
+
+    /// <summary>Qui ha posat la rotació activa («a mà», «esdeveniment «Converses»», «en arrencar el motor») i quan.</summary>
+    public string? RotationChangedBy { get; private set; }
+
+    public DateTimeOffset? RotationChangedAt { get; private set; }
+
     /// <summary>Ha canviat l'estat, la rotació o l'avís (no cada vegada que s'afegeix una pista: per això hi ha <c>queue.changed</c>).</summary>
     public event Action? Changed;
 
@@ -68,40 +85,95 @@ public sealed class AutoDj
     /// Activa o desactiva l'AutoDJ i tria la rotació. Sense <paramref name="rotationId"/>, es fa servir la primera rotació
     /// (la de l'id més baix). Retorna false, sense canviar res, si la rotació demanada no existeix.
     /// </summary>
-    public bool Configure(bool enabled, long? rotationId)
+    /// <param name="by">Qui fa el canvi, per mostrar d'on ve la rotació (p. ex. «a mà» o «esdeveniment «Converses»»).</param>
+    /// <param name="pause">Si s'atura: quant temps (per defecte <see cref="AutoDjSettings.DefaultPause"/>, com a molt
+    /// <see cref="AutoDjSettings.MaxPause"/>). Després es torna a activar sol (D-073).</param>
+    public bool Configure(bool enabled, long? rotationId, string? by = null, TimeSpan? pause = null)
     {
         var all = _rotations.List();
         Rotation? rotation = rotationId is { } id ? all.FirstOrDefault(r => r.Id == id) : all.FirstOrDefault();
         if (rotationId is not null && rotation is null) return false;
         lock (_sync)
         {
+            var now = _clock();
+            if (enabled) DisabledUntil = null;
+            else if (Enabled || pause is not null || DisabledUntil is null)
+            {
+                var length = pause ?? _settings.DefaultPause;
+                if (length > _settings.MaxPause) length = _settings.MaxPause;
+                if (length < TimeSpan.FromMinutes(1)) length = TimeSpan.FromMinutes(1);
+                DisabledUntil = now + length;
+            }
             Enabled = enabled;
-            if (rotation?.Id != Rotation?.Id) NextStep = 0;
+            if (rotation?.Id != Rotation?.Id)
+            {
+                NextStep = 0;
+                RotationChangedBy = by;
+                RotationChangedAt = now;
+            }
             Rotation = rotation;
             Problem = null;
+            Notice = null;
             _retryAt = DateTimeOffset.MinValue;
         }
         Changed?.Invoke();
         return true;
     }
 
+    /// <summary>
+    /// «Regenera la cua» (D-034): treu de la cua les pistes que hi ha posat l'AutoDJ (no la que sona, ni les manuals, ni
+    /// les dels esdeveniments) i la torna a omplir amb la rotació actual. El pas de la rotació torna enrere tants passos
+    /// com pistes s'han tret, perquè la rotació continuï on era. Retorna quantes s'han tret.
+    /// </summary>
+    public int Regenerate()
+    {
+        int removed = _queue.RemoveWhere(i => i.Origin == QueueOrigin.AutoDj);
+        lock (_sync)
+        {
+            if (Rotation is { Steps.Count: > 0 } rotation && removed > 0)
+                NextStep = (((NextStep - removed) % rotation.Steps.Count) + rotation.Steps.Count) % rotation.Steps.Count;
+            _retryAt = DateTimeOffset.MinValue;
+        }
+        Changed?.Invoke();
+        return removed;
+    }
+
     /// <summary>Fil de control: si a la cua hi falten pistes, n'hi afegeix una. Barata quan no cal fer res.</summary>
     public void Tick()
     {
-        string? problem;
+        bool changed = false;
         lock (_sync)
         {
-            if (!Enabled || _queue.Upcoming.Count >= _settings.MinUpcoming) return;
             var now = _clock();
-            if (now < _retryAt) return;
 
-            var item = PickNext(DateOnly.FromDateTime(now.LocalDateTime), out problem);
-            if (item is null) _retryAt = now + _settings.RetryAfterNothing;
-            else _queue.Enqueue(item);
-            if (problem == Problem) return;
-            Problem = problem;
+            // Aturat (D-073): es torna a activar sol quan s'acaba el temps, o abans si a la cua ja no queda res (mai silenci)
+            if (!Enabled)
+            {
+                if (DisabledUntil is { } until && now >= until)
+                    Notice = $"L'AutoDJ s'ha tornat a activar sol: s'havia aturat fins a les {until.LocalDateTime:HH:mm}.";
+                else if (_queue.Upcoming.Count == 0)
+                    Notice = "L'AutoDJ estava aturat i a la cua ja no hi quedava res: s'ha tornat a activar sol perquè no hi hagi silenci.";
+                else
+                    return;
+                Enabled = true;
+                DisabledUntil = null;
+                changed = true;
+            }
+
+            // Si a la cua hi falten pistes, n'afegeix una
+            if (_queue.Upcoming.Count < _settings.MinUpcoming && now >= _retryAt)
+            {
+                var item = PickNext(DateOnly.FromDateTime(now.LocalDateTime), out string? problem);
+                if (item is null) _retryAt = now + _settings.RetryAfterNothing;
+                else _queue.Enqueue(item);
+                if (problem != Problem)
+                {
+                    Problem = problem;
+                    changed = true;
+                }
+            }
         }
-        Changed?.Invoke();
+        if (changed) Changed?.Invoke();
     }
 
     /// <summary>Tria la pista següent i avança el pas de la rotació. Retorna null si no hi ha res que pugui sonar.</summary>

@@ -57,6 +57,8 @@ public sealed class EventExecutor
     private readonly Action<long?>? rememberRotation;
     private readonly SampleClock? clock;
     private readonly AuxPlayers? aux;
+    /// <summary>L'esdeveniment que s'aplica ara (per dir a l'AutoDJ qui li ha canviat la rotació).</summary>
+    private string currentEventName = "";
 
     /// <param name="clock">Rellotge de mostres per tallar a la mostra exacta. Sense, el TALLA talla en el moment de disparar-lo.</param>
     /// <param name="aux">Reproductors auxiliars (accions AUXILIAR). Sense, aquestes accions no es fan (avís al registre).</param>
@@ -189,6 +191,7 @@ public sealed class EventExecutor
     {
         var occurrence = prepared.Occurrence;
         var ev = occurrence.Event;
+        currentEventName = ev.Name;
         var notes = new List<string>(prepared.Warnings);
         IReadOnlyList<QueueItem> removed = [];
 
@@ -297,7 +300,7 @@ public sealed class EventExecutor
     {
         if (autoDj is null) return (false, "No hi ha AutoDJ: no s'ha canviat la rotació.");
         if (ReadLong(action, "rotacioId") is not { } id) return (false, "Una acció ROTACIO no diu quina rotació (rotacioId).");
-        if (!autoDj.Configure(autoDj.Enabled, id)) return (false, $"La rotació {id} no existeix: no s'ha canviat.");
+        if (!autoDj.Configure(autoDj.Enabled, id, $"esdeveniment «{currentEventName}»")) return (false, $"La rotació {id} no existeix: no s'ha canviat.");
         rememberRotation?.Invoke(id); // com amb autodj.set: es manté si el motor es reinicia (D-053)
         return (true, $"rotació «{autoDj.Rotation?.Name}»");
     }
@@ -306,7 +309,7 @@ public sealed class EventExecutor
     {
         if (autoDj is null) return (false, "No hi ha AutoDJ.");
         if (ReadBool(action, "actiu") is not { } enabled) return (false, "Una acció AUTODJ no diu si s'activa o s'atura (actiu).");
-        autoDj.Configure(enabled, autoDj.Rotation?.Id);
+        autoDj.Configure(enabled, autoDj.Rotation?.Id, $"esdeveniment «{currentEventName}»");
         return (true, enabled ? "AutoDJ activat" : "AutoDJ aturat");
     }
 

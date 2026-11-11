@@ -95,6 +95,11 @@ public static class QueueJson
         ["rotation"] = autoDj.Rotation is { } r ? new JsonObject { ["id"] = r.Id, ["name"] = r.Name } : null,
         ["nextStep"] = autoDj.NextStep,
         ["problem"] = autoDj.Problem,
+        // Fase 3, pas 2b (D-073): fins quan està aturat, l'avís de quan s'ha tornat a activar sol i d'on ve la rotació
+        ["disabledUntil"] = autoDj.DisabledUntil?.ToString("O"),
+        ["notice"] = autoDj.Notice,
+        ["rotationChangedBy"] = autoDj.RotationChangedBy,
+        ["rotationChangedAt"] = autoDj.RotationChangedAt?.ToString("O"),
     };
 
     /// <summary>Una rotació amb els seus passos (docs/protocol.md, 4.5).</summary>

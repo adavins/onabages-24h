@@ -100,6 +100,7 @@
           <strong>Cua</strong>
           <span id="queue-rotation" class="text-body-secondary"></span>
           <span id="queue-summary" class="ms-auto text-body-secondary"></span>
+          <button id="btn-regenerate" class="btn btn-sm btn-outline-secondary" type="button" title="Treu les pistes que ha posat l'AutoDJ i les torna a triar amb la rotació actual (no toca la que sona, ni les manuals, ni les dels esdeveniments)"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Regenera la cua</button>
         </div>
         <div id="queue-warning" class="queue-warning d-none" role="status"></div>
         <ul id="queue-list" class="list-group list-group-flush"></ul>
@@ -127,7 +128,12 @@
           </div>
           <label for="autodj-rotation" class="form-label">Rotació</label>
           <select id="autodj-rotation" class="form-select"></select>
+          <div id="autodj-origin" class="form-text"></div>
           <div id="autodj-next" class="form-text"></div>
+          <div id="autodj-notice" class="alert alert-info d-flex gap-2 mt-3 mb-0 d-none" role="status">
+            <i class="bi bi-info-circle-fill" aria-hidden="true"></i>
+            <span id="autodj-notice-text"></span>
+          </div>
           <div id="autodj-problem" class="alert alert-warning d-flex gap-2 mt-3 mb-0 d-none" role="status">
             <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
             <span id="autodj-problem-text"></span>
@@ -193,6 +199,21 @@
       <div class="d-flex justify-content-end gap-2">
         <button id="confirm-cancel" class="btn btn-secondary" value="cancel">Cancel·la</button>
         <button id="confirm-ok" class="btn btn-danger" value="ok"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Quant temps s'atura (fase 3, pas 2b; D-073): l'AutoDJ i els esdeveniments, mai indefinidament -->
+  <dialog id="duration-dialog" class="ob-dialog">
+    <form method="dialog">
+      <h2 id="duration-title" class="h5"></h2>
+      <p id="duration-message" class="ob-dialog-message"></p>
+      <label for="duration-select" class="form-label">Durant</label>
+      <select id="duration-select" class="form-select mb-2"></select>
+      <p id="duration-until" class="form-text"></p>
+      <div class="d-flex justify-content-end gap-2">
+        <button id="duration-cancel" class="btn btn-secondary" value="cancel">Cancel·la</button>
+        <button id="duration-ok" class="btn btn-danger" value="ok"></button>
       </div>
     </form>
   </dialog>

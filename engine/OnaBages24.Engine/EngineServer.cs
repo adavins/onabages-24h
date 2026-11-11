@@ -317,10 +317,10 @@ public static class EngineServer
         {
             log.LogWarning("La configuració desada de l'AutoDJ no és vàlida ({Message}): s'activa amb la primera rotació", ex.Message);
         }
-        if (!autoDj.Configure(enabled, rotationId))
+        if (!autoDj.Configure(enabled, rotationId, "en arrencar el motor"))
         {
             log.LogWarning("La rotació desada ({Id}) ja no existeix: es fa servir la primera", rotationId);
-            autoDj.Configure(enabled, null);
+            autoDj.Configure(enabled, null, "en arrencar el motor");
         }
     }
 

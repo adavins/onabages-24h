@@ -1,9 +1,17 @@
 // @ts-check
-// AutoDJ: si està actiu, quina rotació fa servir i quin és el proper pas; interruptor (aturar-lo demana confirmació,
-// perquè si la cua es buida s'acaba la música) i selector de rotació. L'estat és del motor (autodj.changed).
+// AutoDJ: si està actiu, quina rotació fa servir, d'on ve i quin és el proper pas; interruptor i selector de rotació.
+// L'estat és del motor (autodj.changed). Aturar-lo (D-073) és sempre per un temps: després es torna a activar sol, i
+// també abans si la cua s'acaba (mai silenci).
 
 import { $, el, statusLabel } from './dom.js';
 import { confirmAction } from './confirm.js';
+import { askDuration } from './duration.js';
+
+/** «18:30» d'una hora ISO. @param {string} iso */
+function hhmm(iso) {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 
 /** Text d'un pas de rotació: «Music / Ona Bages Adult 5 + etiqueta». @param {any} step */
 function stepText(step) {
@@ -44,7 +52,8 @@ export class AutoDjView {
 
     $('autodj-state').replaceChildren(state.enabled
       ? statusLabel('text-success', 'bi-check-circle-fill', 'AutoDJ actiu')
-      : statusLabel('text-warning', 'bi-pause-circle-fill', 'AutoDJ aturat: no afegeix música a la cua'));
+      : statusLabel('text-warning', 'bi-pause-circle-fill',
+        `AutoDJ aturat${state.disabledUntil ? ` fins a les ${hhmm(state.disabledUntil)}` : ''}: no afegeix música a la cua`));
 
     const toggle = $('btn-autodj-toggle');
     toggle.className = `btn btn-sm ${state.enabled ? 'btn-outline-warning' : 'btn-success'}`;
@@ -58,8 +67,14 @@ export class AutoDjView {
     const step = rotation?.steps[state.nextStep];
     const stepLine = rotation && step ? `Proper pas: ${state.nextStep + 1} de ${rotation.steps.length} · ${stepText(step)}` : '';
     $('autodj-next').textContent = stepLine;
+    // D'on ve la rotació (pantalla-principal-i-encadenament.md, millora 6)
+    const origin = state.rotation && state.rotationChangedAt
+      ? `Des de les ${hhmm(state.rotationChangedAt)}${state.rotationChangedBy ? `, ${state.rotationChangedBy}` : ''}`
+      : '';
+    $('autodj-origin').textContent = origin;
+    $('queue-rotation').title = origin;
     $('queue-rotation').textContent = !state.enabled
-      ? 'AutoDJ aturat'
+      ? `AutoDJ aturat${state.disabledUntil ? ` fins a les ${hhmm(state.disabledUntil)}` : ''}`
       : state.rotation
         ? `Rotació ${state.rotation.name}${rotation ? ` · proper pas ${state.nextStep + 1} de ${rotation.steps.length}` : ''}`
         : 'Sense rotació: música de tota la biblioteca';
@@ -67,20 +82,27 @@ export class AutoDjView {
     const problem = $('autodj-problem');
     problem.classList.toggle('d-none', !state.problem);
     $('autodj-problem-text').textContent = state.problem ?? '';
+
+    // Quan s'ha tornat a activar sol (per temps o perquè la cua s'acabava)
+    $('autodj-notice').classList.toggle('d-none', !state.notice);
+    $('autodj-notice-text').textContent = state.notice ?? '';
   }
 
   async #toggle() {
     if (!this.#state) return;
     const enable = !this.#state.enabled;
     if (!enable) {
-      const ok = await confirmAction({
+      const minutes = await askDuration({
         title: 'Aturar l\'AutoDJ',
-        message: 'Si atures l\'AutoDJ, ja no s\'afegirà música a la cua. Quan s\'acabin les pistes que hi ha, l\'emissió es quedarà en silenci.',
+        message: 'Mentre estigui aturat, l\'AutoDJ no afegirà música a la cua: sonarà només el que hi posis. Si la cua s\'acaba, ' +
+          'es tornarà a activar sol perquè no hi hagi silenci.',
         confirm: 'Atura l\'AutoDJ',
       });
-      if (!ok) return;
+      if (minutes == null) return;
+      await this.#set({ enabled: false, minutes });
+      return;
     }
-    await this.#set({ enabled: enable });
+    await this.#set({ enabled: true });
   }
 
   /** @param {HTMLSelectElement} select */

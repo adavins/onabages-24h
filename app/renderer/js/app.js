@@ -139,6 +139,20 @@ $('nav-emissio').addEventListener('click', () => showView('emissio'));
 $('nav-planificador').addEventListener('click', () => showView('planificador'));
 
 // Saltar a la següent: interromp la cançó, per tant demana confirmació
+// «Regenera la cua» (D-034): només canvia les pistes que ha posat l'AutoDJ i no interromp res, per això no demana confirmació
+$('btn-regenerate').addEventListener('click', async () => {
+  const button = /** @type {HTMLButtonElement} */ ($('btn-regenerate'));
+  button.disabled = true;
+  try {
+    await send('queue.regenerate');
+    // La cua nova arriba amb queue.changed
+  } catch (err) {
+    await confirmAction({ title: 'No s\'ha pogut regenerar la cua', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+  } finally {
+    button.disabled = false;
+  }
+});
+
 $('btn-skip').addEventListener('click', async () => {
   const title = $('np-title').textContent;
   const ok = await confirmAction({

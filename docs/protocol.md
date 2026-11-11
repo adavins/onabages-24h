@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 2a (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 2b (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -82,6 +82,7 @@ El `message` és en català i es pot mostrar a l'operador.
 | `queue.get` | — | `{ queue }` (vegeu 4.2) | fase 1, pas 7c |
 | `queue.insert` | `items`: llista de `{ "trackId": 12 }` (de la biblioteca) o `{ "path": "D:\\…" }` (un fitxer qualsevol), **o bé** `folder` (carpeta de la biblioteca: pistes barrejades, sense les que falten) i `limit` (per defecte 10); `position`: `"end"` (per defecte), `"next"` o un índex (0 = la primera que sonarà). Origen: `manual` | `{ queue }` | fase 1, pas 7c |
 | `queue.remove` | `itemId` | `{ queue }`. Només les que encara no han començat; si no, `bad_params`. Si venia d'un esdeveniment, queda al registre com a `NO_EMES` (fase 3, pas 2a) | fase 1, pas 7c |
+| `queue.regenerate` | — | `{ removed, queue }`. «Regenera la cua» (D-034): treu les pistes que hi ha posat l'AutoDJ (no la que sona, ni les manuals, ni les dels esdeveniments) i l'AutoDJ les torna a triar amb la rotació actual, continuant pel pas on era | fase 3, pas 2b |
 | `queue.move` | `itemId`, `delta` (−1 = amunt, 1 = avall) | `{ queue }`. La pista que s'estava preparant torna a la cua si cal. No es pot moure el principi de la cua quan la següent comença d'aquí a menys de 3 s, ni quan hi ha un tall programat d'aquí a uns segons: `bad_params` amb el motiu | fase 3, pas 2a |
 | `player.playItem` | `itemId`, `fadeMs` (de 0 a 10.000; per defecte 1.000) | `{ skipped, queue }`. «Reprodueix ara» (D-073): la que sona baixa amb un fos i la triada comença de seguida; les d'entremig es treuen de la cua (`skipped`) i, si venien d'un esdeveniment, queden com a `NO_EMES`. Si la pista ja no hi és o hi ha un tall programat d'aquí a uns segons, `bad_params` | fase 3, pas 2a |
 | `player.next` | `fadeMs` (de 0 a 10.000; per defecte 1.000) | `{ queue }`. La que sona baixa amb un fos i la següent comença de seguida | fase 1, pas 7c |
@@ -91,7 +92,7 @@ El `message` és en català i es pot mostrar a l'operador.
 | `library.list` | `folder`, `limit` (per defecte 100, com a molt 1.000) | `{ tracks: [ … ] }` (vegeu 4.4): pistes de la carpeta i subcarpetes. De moment, per a les proves | fase 1, pas 7c |
 | `library.search` | `text` (paraules que han de sortir totes a l'artista, al títol o a la ruta, sense distingir majúscules; buit = totes), `limit` (per defecte 50, com a molt 200) | `{ tracks: [ … ], more }` (vegeu 4.4), per artista i títol. `more`: n'hi ha més que les retornades | fase 2, pas 8b |
 | `autodj.get` | — | `{ autodj }` (vegeu 4.5) | fase 1, pas 8 |
-| `autodj.set` | `enabled` (`true`/`false`), `rotationId`. Tots dos opcionals: el que no s'envia es queda com està | `{ autodj }`. La rotació es desa i es manté en tornar a arrencar; `enabled` no: el motor sempre arrenca amb l'AutoDJ actiu (D-053). Si la rotació no existeix, `bad_params` | fase 1, pas 8 |
+| `autodj.set` | `enabled` (`true`/`false`), `rotationId`, `minutes` (si s'atura: quant temps, d'1 a 720; per defecte 120). Tots opcionals: el que no s'envia es queda com està. Aturat, es torna a activar sol quan s'acaba el temps o si la cua es queda sense res (D-073) | `{ autodj }`. La rotació es desa i es manté en tornar a arrencar; `enabled` no: el motor sempre arrenca amb l'AutoDJ actiu (D-053). Si la rotació no existeix, `bad_params` | fase 1, pas 8 |
 | `rotations.list` | — | `{ rotations: [ … ] }` (vegeu 4.5) | fase 1, pas 8 |
 | `history.list` | `from`, `to`: una hora ISO 8601 amb zona (`"2026-11-10T12:00:00Z"`) o un dia (`"2026-11-10"`, en hora local; a `to`, el dia hi és inclòs). `search`: text de l'artista o del títol. `limit`: per defecte 100, com a molt 2.000. Tots opcionals | `{ entries: [ … ], more }` (vegeu 4.6): les més recents primer. `more`: n'hi ha més que les retornades | fase 1, pas 9 |
 | `nowplaying.get` | — | `{ nowPlaying }` (vegeu 4.6) | fase 1, pas 9 |
@@ -192,6 +193,8 @@ Rotació:
 - `selection`: `leastRecent` (la que fa més temps que no sona), `leastPlayed` (la que ha sonat menys vegades) o `random`.
 - `repeatRule`: s'apliquen els criteris de repetició (no repetir pista ni artista de la cua).
 - `sweeper`: trepitjador (sweeper) a l'inici de la pista (importat de RadioDJ; encara no es fa servir).
+
+- Fase 3, pas 2b (D-076): `autodj` porta també `disabledUntil` (si està aturat, fins quan; hora ISO), `notice` (l'avís de quan s'ha tornat a activar sol, per temps o perquè la cua s'acabava; es manté fins al pròxim canvi), `rotationChangedBy` («a mà», «en arrencar el motor», «esdeveniment «Converses»») i `rotationChangedAt` (quan).
 
 ### 4.6. Historial i títol per a BUTT (D-051)
 
