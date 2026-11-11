@@ -25,6 +25,7 @@ public static class Program
                 "importa-radiodj" => ImportRadioDj(args[1..]),
                 "importa-carpeta" => ImportFolder(args[1..]),
                 "compara-punts" => CompareCues(args[1..]),
+                "comprova-emissio" => CheckBroadcast(args[1..]),
                 "ajuda" or "--help" or "-h" or "/?" => Help(),
                 _ => EngineServer.Run(args),
             };
@@ -65,8 +66,104 @@ public static class Program
               compara-punts CARPETA [--bd RUTA]
                   Compara els punts de RadioDJ de les pistes d'una carpeta amb els que calcula l'analitzador.
                   No modifica res.
+
+              comprova-emissio [--des DATA] [--fins DATA] [--forat SEGONS] [--bd RUTA]
+                  Comprova una prova llarga d'emissió (fase 1, pas 11): busca forats entre pistes a l'historial i
+                  resumeix les arrencades del motor i els avisos del registre. No modifica res; es pot fer amb el
+                  motor en marxa.
+                  --des, --fins   «2026-11-11» o «2026-11-11 22:00» (hora local). Per defecte, les últimes 72 hores
+                  --forat         forats a partir de quants segons (per defecte, 1)
             """);
         return 2;
+    }
+
+    /// <summary>Ordre <c>comprova-emissio</c>: forats a l'historial, arrencades del motor i avisos del registre.</summary>
+    private static int CheckBroadcast(string[] args)
+    {
+        string databasePath = DefaultDatabasePath;
+        DateTime to = DateTime.Now;
+        DateTime from = to.AddHours(-72);
+        double gapSeconds = 1;
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--bd": databasePath = Value(args, ++i, "--bd"); break;
+                case "--des": from = LocalDate(Value(args, ++i, "--des")); break;
+                case "--fins": to = LocalDate(Value(args, ++i, "--fins")); break;
+                case "--forat":
+                    if (!double.TryParse(Value(args, ++i, "--forat").Replace(',', '.'), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out gapSeconds) || gapSeconds <= 0)
+                        throw new ArgumentException("--forat ha de ser un nombre de segons més gran que 0.");
+                    break;
+                default: throw new ArgumentException($"Opció desconeguda: {args[i]} (ajuda: OnaBages24.Engine ajuda)");
+            }
+        }
+        if (to <= from) throw new ArgumentException("--fins ha de ser després de --des.");
+        if (!File.Exists(databasePath)) throw new ArgumentException($"No hi ha cap base de dades a {databasePath}.");
+
+        using var database = Database.Open(databasePath);
+        var library = new Library(database);
+        var entries = library.History(new DateTimeOffset(from), new DateTimeOffset(to));
+        var report = BroadcastCheck.Analyze(entries, TimeSpan.FromSeconds(gapSeconds));
+        string logs = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(databasePath))!, "logs");
+        var (starts, problems) = BroadcastCheck.ReadLogs(logs, from, to);
+
+        static string When(DateTimeOffset t) => t.ToLocalTime().ToString("dd/MM HH:mm:ss");
+        static string Hours(TimeSpan t) => $"{(int)t.TotalHours} h {t.Minutes:00} min";
+        static string Track(HistoryEntry e) => string.IsNullOrWhiteSpace(e.Artist) ? $"«{e.Title}»" : $"«{e.Artist} - {e.Title}»";
+
+        Console.WriteLine($"Comprovació de l'emissió del {from:dd/MM/yyyy HH:mm} al {to:dd/MM/yyyy HH:mm}");
+        Console.WriteLine($"Base de dades: {Path.GetFullPath(databasePath)}");
+        Console.WriteLine();
+        if (report.Tracks == 0)
+        {
+            Console.WriteLine("No ha sonat cap pista en aquest període.");
+            return 1;
+        }
+        var span = (report.Open is not null ? DateTimeOffset.Now : report.Last!.Value) - report.First!.Value;
+        Console.WriteLine($"Pistes: {report.Tracks}, de {When(report.First!.Value)} a {When(report.Last!.Value)}" +
+                          (report.Open is not null ? $" (encara sona {Track(report.Open)})" : ""));
+        Console.WriteLine($"Temps amb música de la cua: {Hours(report.Covered)} de {Hours(span)}");
+        Console.WriteLine();
+
+        Console.WriteLine($"Forats de més de {gapSeconds:0.#} s entre pistes: {report.Gaps.Count}");
+        foreach (var gap in report.Gaps.Take(50))
+        {
+            // Si entremig el motor ha tornat a arrencar, el forat és d'una aturada del motor, no d'un silenci amb el motor en marxa
+            bool restarted = starts.Any(s => s >= gap.From.LocalDateTime.AddSeconds(-1) && s <= gap.After.Started.LocalDateTime.AddSeconds(1));
+            Console.WriteLine($"  {When(gap.From)}  {gap.Length.TotalSeconds,8:0.0} s  entre {(gap.Before is null ? "?" : Track(gap.Before))} i {Track(gap.After)}" +
+                              (restarted ? "  [el motor estava aturat]" : ""));
+        }
+        if (report.Gaps.Count > 50) Console.WriteLine($"  … i {report.Gaps.Count - 50} més");
+        if (report.Unknown.Count > 0)
+        {
+            Console.WriteLine($"Pistes que sonaven quan el motor es va aturar de cop (no se sap quant van sonar): {report.Unknown.Count}");
+            foreach (var e in report.Unknown.Take(20)) Console.WriteLine($"  {When(e.Started)}  {Track(e)}");
+        }
+        Console.WriteLine();
+
+        Console.WriteLine($"Arrencades del motor: {starts.Count}" + (starts.Count > 0 ? " (" + string.Join(", ", starts.Take(10).Select(s => s.ToString("dd/MM HH:mm:ss"))) + (starts.Count > 10 ? ", …" : "") + ")" : ""));
+        Console.WriteLine($"Avisos i errors del registre ({logs}): {problems.Sum(p => p.Count)}");
+        foreach (var p in problems.Take(25))
+            Console.WriteLine($"  {p.Count,5} × {p.Level} {p.Message}  (el primer, {p.FirstAt:dd/MM HH:mm:ss})");
+        Console.WriteLine();
+
+        bool ok = report.Gaps.Count == 0 && report.Unknown.Count == 0 && starts.Count <= 1;
+        Console.WriteLine(ok
+            ? "CORRECTE: cap forat entre pistes i el motor no s'ha reiniciat."
+            : "ATENCIÓ: hi ha forats, aturades de cop o reinicis del motor; mira el detall de sobre.");
+        return ok ? 0 : 1;
+    }
+
+    /// <summary>«2026-11-11» o «2026-11-11 22:00» (hora local).</summary>
+    private static DateTime LocalDate(string text)
+    {
+        string[] formats = ["yyyy-MM-dd", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-ddTHH:mm", "yyyy-MM-ddTHH:mm:ss"];
+        if (DateTime.TryParseExact(text.Trim(), formats, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeLocal, out var date))
+            return date;
+        throw new ArgumentException($"Data no vàlida: «{text}». Exemples: 2026-11-11 o \"2026-11-11 22:00\".");
     }
 
     private static int ImportRadioDj(string[] args)

@@ -15,6 +15,16 @@ des d'una consola a la carpeta de l'aplicació:
    resources\engine\OnaBages24.Engine.exe importa-radiodj <backup.sql>
 (El motor troba sol la carpeta "dades" de l'aplicació.)
 (resources\engine\OnaBages24.Engine.exe ajuda mostra totes les opcions.)
+Si la música és en una altra unitat o carpeta que a l'ordinador de RadioDJ, afegeix-hi el canvi
+d'arrel: --arrel <ruta de RadioDJ> <ruta d'aquí>. Cada ordinador té la seva base de dades: el canvi
+d'arrel d'un altre ordinador no hi és. Si no hi ha els fitxers dels programes, afegeix-hi
+--esdeveniments-desactivats.
+
+COMPROVAR UNA PROVA LLARGA (SENSE TALLS)
+Des d'una consola a la carpeta de l'aplicació (es pot fer amb l'aplicació oberta; no canvia res):
+   resources\engine\OnaBages24.Engine.exe comprova-emissio --des "2026-11-11 22:00"
+Diu els forats de més d'1 s entre pistes, les pistes que sonaven si el motor es va aturar de cop,
+les vegades que s'ha arrencat el motor i els avisos del registre. Al final: CORRECTE o ATENCIÓ.
 
 TANCAR
 En tancar la finestra, l'aplicació pregunta:

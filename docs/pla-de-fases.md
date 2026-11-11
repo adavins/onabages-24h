@@ -52,7 +52,7 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
    - 10b. ✔ Esquelet d'Electron (D-052): arrencada o connexió amb el motor, pista que sona, vúmetres i rellotge. Prova del desenvolupador (2026-11-10): mostra la pista, el temps i els vúmetres; en tancar la finestra la música continua; amb el motor aturat avisa, i «Arrenca el motor» el torna a engegar. Falta provar-ho per escriptori remot.
    - 10c. ✔ Cua (amb la durada de cada pista, `durationMs`), últimes pistes, AutoDJ (interruptor i rotació), saltar a la següent i barra d'estat. Les accions que interrompen la música (saltar, treure de la cua, aturar l'AutoDJ) demanen confirmació. Provat pel desenvolupador: la cua s'actualitza sola, saltar, treure, canviar de rotació, aturar i activar l'AutoDJ i la barra d'estat funcionen (Dance90 no té pistes en aquest ordinador; s'ha provat amb la bossa de Nadal). En arrencar el motor, l'AutoDJ sempre s'activa (D-053).
    Fora d'abast fins a les fases 2 i 3: esdeveniments, cerca a la biblioteca, cartutxeres, auxiliars, inserir a la cua i hora prevista de cada pista.
-11. Prova de 48 hores: primer a l'ordinador del desenvolupador, després a un altre ordinador de proves. **Posposada** pel desenvolupador (2026-11-10); la fase 1 no es tanca fins que es faci.
+11. Prova de 48 hores: primer a l'ordinador del desenvolupador, després a un altre ordinador de proves. **Posposada** pel desenvolupador (2026-11-10); la fase 1 no es tanca fins que es faci. Per comprovar-la sense talls: `OnaBages24.Engine comprova-emissio` (D-082), que busca forats entre pistes a l'historial (el to de `OnaBages.ToneCheck` no serveix amb música).
 
 ## Fase 2 — Planificador i puntualitat · feta excepte els passos 7 i 9, posposats (D-072)
 
