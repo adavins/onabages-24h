@@ -32,8 +32,9 @@ public sealed record SchedulerSettings
 /// temporitzadors de la interfície:
 /// - té a memòria les emissions dels pròxims minuts (es tornen a calcular cada minut i quan es desa un esdeveniment);
 /// - uns 30 s abans de l'hora, prepara cada esdeveniment (<see cref="EventExecutor.Prepare"/>);
-/// - a l'hora, el dispara i n'anota el resultat al registre d'execució. Un TALLA es programa uns 2 s abans, a la mostra
-///   exacta de l'hora (<see cref="SampleClock"/>), i la línia del registre es completa quan la primera pista comença.
+/// - a l'hora, el dispara i n'anota el resultat al registre d'execució. Un TALLA, un SUPERPOSA o un esdeveniment amb
+///   accions AUXILIAR es programa uns 2 s abans, a la mostra exacta de l'hora (<see cref="SampleClock"/>), i la línia del
+///   registre es completa quan el contingut comença a sonar.
 /// Regles: un esdeveniment que arriba més tard que la seva tolerància s'omet (<c>OMES_TARD</c>); si dos TALLA o ENCUA
 /// coincideixen al mateix instant, només es dispara el de prioritat més alta (<c>OMES_CONFLICTE</c>); una hora que no
 /// existeix pel canvi d'hora no sona (<c>OMES_CANVI_HORA</c>). Els desactivats i les plantilles no es disparen mai.
@@ -54,7 +55,7 @@ public sealed class Scheduler
     private List<Occurrence> _window = [];
     private readonly HashSet<(long EventId, DateTimeOffset At)> _handled = [];
     private readonly Dictionary<(long EventId, DateTimeOffset At), PreparedEvent> _prepared = [];
-    private readonly Dictionary<(long EventId, DateTimeOffset At), ExecutionRecord> _awaitingCut = []; // TALLA programats que encara no han sonat
+    private readonly Dictionary<(long EventId, DateTimeOffset At), ExecutionRecord> _awaitingStart = []; // TALLA i auxiliars programats que encara no han sonat
     private DateTimeOffset _nextRefresh = DateTimeOffset.MinValue;
     private DateTimeOffset? _lastTick;
     private volatile bool _reloadRequested;
@@ -70,7 +71,7 @@ public sealed class Scheduler
         _settings = settings ?? new SchedulerSettings();
         _clock = clock ?? (() => DateTimeOffset.Now);
         _zone = zone ?? TimeZoneInfo.Local;
-        _executor.CutStarted += OnCutStarted;
+        _executor.ContentStarted += OnContentStarted;
     }
 
     /// <summary>S'ha disparat (o s'ha omès) una emissió: la línia que s'ha anotat al registre.</summary>
@@ -186,8 +187,8 @@ public sealed class Scheduler
             Discard(_prepared[key]);
             _prepared.Remove(key);
         }
-        foreach (var key in _awaitingCut.Keys.Where(k => k.At < now - TimeSpan.FromMinutes(10)).ToList())
-            _awaitingCut.Remove(key); // la primera pista no ha arribat a sonar (p. ex. cua buida): la línia queda sense hora
+        foreach (var key in _awaitingStart.Keys.Where(k => k.At < now - TimeSpan.FromMinutes(10)).ToList())
+            _awaitingStart.Remove(key); // la primera pista no ha arribat a sonar (p. ex. cua buida): la línia queda sense hora
     }
 
     /// <summary>Deixa anar el que s'havia preparat (la veu de reserva d'un TALLA).</summary>
@@ -197,9 +198,12 @@ public sealed class Scheduler
         catch (Exception ex) { _log.LogWarning("Planificador: no s'ha pogut deixar anar «{Name}» ({Message})", prepared.Occurrence.Event.Name, ex.Message); }
     }
 
-    /// <summary>Quan s'ha de disparar: a l'hora, i un TALLA uns segons abans (es programa a la mostra exacta).</summary>
+    /// <summary>
+    /// Quan s'ha de disparar: a l'hora, i uns segons abans si té contingut que es programa a la mostra exacta (un TALLA,
+    /// un SUPERPOSA o qualsevol amb accions AUXILIAR).
+    /// </summary>
     private DateTimeOffset DueAt(Occurrence occurrence) =>
-        occurrence.Event.Mode == EventMode.Cut ? occurrence.At - _settings.ArmAhead : occurrence.At;
+        EventExecutor.StartsAtExactFrame(occurrence.Event) ? occurrence.At - _settings.ArmAhead : occurrence.At;
 
     private PreparedEvent Prepare(Occurrence occurrence)
     {
@@ -264,10 +268,10 @@ public sealed class Scheduler
             outcome = new ExecutionOutcome(ExecutionResult.Error, $"Error en executar-lo: {ex.Message}");
         }
 
-        // Un TALLA s'ha programat però encara no ha sonat: l'hora real s'hi posa quan comenci la primera pista
-        bool isCut = occurrence.Event.Mode == EventMode.Cut && outcome.Result == ExecutionResult.Ok;
-        var record = Record(occurrence, isCut ? null : now, outcome.Result, outcome.Detail);
-        if (isCut) _awaitingCut[Key(occurrence)] = record;
+        // Un TALLA o un auxiliar s'ha programat però encara no ha sonat: l'hora real s'hi posa quan comenci
+        bool awaits = outcome.AwaitsStart && outcome.Result == ExecutionResult.Ok;
+        var record = Record(occurrence, awaits ? null : now, outcome.Result, outcome.Detail);
+        if (awaits) _awaitingStart[Key(occurrence)] = record;
         if (outcome.Result == ExecutionResult.Ok)
             _log.LogInformation("Esdeveniment «{Name}» ({Time:HH:mm:ss}): {Detail}", occurrence.Event.Name, occurrence.LocalTime, outcome.Detail);
 
@@ -285,17 +289,20 @@ public sealed class Scheduler
         }
     }
 
-    /// <summary>La primera pista d'un TALLA ha començat: es completa la línia del registre amb l'hora real i la diferència.</summary>
-    private void OnCutStarted(CutStarted started)
+    /// <summary>
+    /// El contingut programat a la mostra exacta ha començat (la primera pista d'un TALLA o un auxiliar; el primer que
+    /// arribi): es completa la línia del registre amb l'hora real i la diferència.
+    /// </summary>
+    private void OnContentStarted(ContentStarted started)
     {
         lock (_sync)
         {
-            if (!_awaitingCut.Remove((started.EventId, started.At), out var record)) return;
+            if (!_awaitingStart.Remove((started.EventId, started.At), out var record)) return;
             string difference = Math.Abs(started.DelayMs) < 0.5
                 ? "ha començat a la mostra prevista"
                 : $"ha començat amb {started.DelayMs:+0;-0} ms de diferència";
             record = record with { ExecutedAt = started.HeardAt ?? _clock(), Detail = $"{record.Detail}; {difference}" };
-            _log.LogInformation("TALLA «{Name}»: {Difference}", record.Name, difference);
+            _log.LogInformation("Esdeveniment «{Name}»: {Difference}", record.Name, difference);
             try
             {
                 if (record.Id > 0) _events.UpdateExecution(record.Id, record.ExecutedAt, record.Detail);

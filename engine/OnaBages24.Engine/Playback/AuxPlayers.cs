@@ -33,7 +33,11 @@ public sealed class AuxPlayers : IDisposable
     /// <summary>Nombre de reproductors auxiliars (numerats de l'1 al 3).</summary>
     public const int Count = 3;
 
-    public static readonly TimeSpan DuckDown = TimeSpan.FromMilliseconds(200);
+    /// <summary>
+    /// Baixada de la música, que acaba just quan comença l'auxiliar. Curta (D-064): els senyals horaris tenen el primer
+    /// pip als 16 ms del fitxer, i amb 200 ms es notava que la música baixava abans.
+    /// </summary>
+    public static readonly TimeSpan DuckDown = TimeSpan.FromMilliseconds(50);
     public static readonly TimeSpan DuckUp = TimeSpan.FromMilliseconds(500);
     public static readonly TimeSpan ReplaceFade = TimeSpan.FromMilliseconds(50);
 

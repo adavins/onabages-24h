@@ -11,8 +11,11 @@ using OnaBages.ToneCheck;
 //   sonoritat <fitxer> [fitxer...]           mesura la sonoritat (LUFS) i el pic (fase 4, pas 5a)
 //   emetre <shoutcast|icecast> <servidor> <port> <sid|punt de muntatge> [segons] [kbps] [Hz]
 //                                            envia un to a un servidor d'streaming (fase 5, pas 31b)
-//   retard [--entrada NOM] [--dades CARPETA] comprova amb el so de debò que el motor d'Ona Bages 24h emet a l'hora
-//                                            prevista (fase 2, pas 4b). Talla el que soni: mai en antena.
+//   retard [--entrada NOM] [--dades CARPETA] [--auxiliar]
+//                                            comprova amb el so de debò que el motor d'Ona Bages 24h emet a l'hora
+//                                            prevista (fase 2, pas 4b). Talla el que soni: mai en antena. Amb --auxiliar,
+//                                            pel reproductor auxiliar 1 com els senyals horaris (pas 5b): no talla, però
+//                                            atenua la música del tot mentre sonen els xiulets.
 
 Console.OutputEncoding = Encoding.UTF8;
 
@@ -43,13 +46,15 @@ if (args.Length >= 3 && args[0] == "processar")
 if (args.Length >= 1 && args[0] == "retard")
 {
     string? input = null, dataDir = null;
+    bool auxiliary = false;
     for (int i = 1; i < args.Length; i++)
     {
         if (args[i] == "--entrada" && i + 1 < args.Length) input = args[++i];
         else if (args[i] == "--dades" && i + 1 < args.Length) dataDir = args[++i];
+        else if (args[i] == "--auxiliar") auxiliary = true;
         else { Console.Error.WriteLine($"Opció desconeguda: {args[i]}"); return 2; }
     }
-    return await Retard.RunAsync(dataDir, input);
+    return await Retard.RunAsync(dataDir, input, auxiliary);
 }
 
 if (args.Length >= 5 && args[0] == "emetre")
@@ -69,7 +74,7 @@ Console.WriteLine("""
       OnaBages.ToneCheck convivencia [minuts, per defecte 60] [carpeta]
       OnaBages.ToneCheck processar <entrada> <sortida.wav> [desactivat]   compressor/limitador (SqrSoft de La Central)
       OnaBages.ToneCheck sonoritat <fitxer> [fitxer...]                  sonoritat (LUFS, EBU R128) i pic
-      OnaBages.ToneCheck retard [--entrada NOM] [--dades CARPETA]       hora real de sortida del motor (talla el que soni!)
+      OnaBages.ToneCheck retard [--entrada NOM] [--dades CARPETA] [--auxiliar]   hora real de sortida del motor (talla el que soni!)
       OnaBages.ToneCheck emetre <shoutcast|icecast> <servidor> <port> <sid|punt de muntatge> [segons=30] [kbps=128] [Hz=44100]
     """);
 return 2;

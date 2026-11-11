@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 2, pas 5a (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 2, pas 5b (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, AutoDJ, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -234,8 +234,9 @@ Exportació del títol:
 - `startTime`: hora local (`HH:MM:SS`; en desar també s'admet `HH:MM`). Dates: `AAAA-MM-DD`.
 - `daysMask`: bit 0 = dilluns (1) … bit 6 = diumenge (64); `127` = tots. `hoursMask`: bit 0 = 00 h … bit 23 = 23 h; `null` = totes.
 - `ordinals`: 1 = primer … 5 = cinquè, `-1` = l'últim. `monthDays`: 1–31, `-1` = l'últim dia del mes.
-- `params` de les accions disponibles ara: `PISTA` `{ songId }` (id de la pista a la biblioteca, el `trackId` de la cua), `ROTACIO` `{ rotacioId }`, `AUTODJ` `{ actiu }`. Les altres es poden desar, però encara no fan res (el registre ho diu).
-- Modes disponibles ara: `ENCUA` (el contingut va al davant de la cua; amb `clearQueue`, abans s'esborra la cua), `TALLA` i `SISTEMA`. Un `SUPERPOSA` s'anota com a `ERROR` fins al pas 5.
+- `params` de les accions disponibles ara: `PISTA` `{ songId }` (id de la pista a la biblioteca, el `trackId` de la cua), `AUXILIAR` `{ songId, player, duckingDb }` (`player` 1–3, per defecte 1; `duckingDb` opcional: si no hi és, el de l'esdeveniment), `ROTACIO` `{ rotacioId }`, `AUTODJ` `{ actiu }`. Les altres es poden desar, però encara no fan res (el registre ho diu).
+- Modes disponibles: `ENCUA` (el contingut va al davant de la cua; amb `clearQueue`, abans s'esborra la cua), `TALLA`, `SUPERPOSA` i `SISTEMA`.
+- `SUPERPOSA` i acció `AUXILIAR` (pas 5b, D-064 i D-065): el fitxer s'obre uns 30 s abans en un reproductor auxiliar i sona a la mostra exacta de l'hora, per sobre del que soni, sense tocar la cua. L'acció `AUXILIAR` també serveix en un `ENCUA` o un `TALLA` (p. ex. senyals horaris i un informatiu a la cua). En un `SUPERPOSA`, les accions `PISTA` no sonen (avís al registre). Una acció `AUXILIAR` per reproductor i esdeveniment. Els esdeveniments amb contingut a la mostra exacta (`TALLA`, `SUPERPOSA` o amb accions `AUXILIAR`) es programen uns 2 s abans i la línia del registre es completa quan comencen a sonar, com el `TALLA`.
 - `TALLA` (pas 4, D-061): es programa uns 2 s abans, a la mostra exacta de l'hora. La pista que sona comença el fos (`fadeMs`; si és `null`, 1.000 ms) en aquell instant i la primera pista de l'esdeveniment comença alhora; la resta va darrere. Amb `clearQueue`, abans s'esborra la cua.
 
 Ocurrència (`scheduler.occurrences`):
@@ -256,7 +257,7 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 
 - `result`: `OK`, `OMES_TARD` (s'hi ha arribat més tard que la tolerància, p. ex. amb el motor aturat), `OMES_CONFLICTE` (coincidia amb un TALLA o ENCUA de més prioritat), `OMES_CANVI_HORA`, `NO_EMES` o `ERROR`. `executedAt` és `null` si no s'ha executat. `name` és el nom en aquell moment.
 - `NO_EMES`: el contingut d'una emissió (normalment un ENCUA) s'ha esborrat de la cua abans de sonar, perquè un esdeveniment posterior amb `clearQueue` l'ha tret. És una línia nova amb el `scheduledFor` d'aquella emissió; la línia `OK` d'aquella emissió es manté. No compta per als certificats.
-- Un `TALLA` s'anota en programar-lo, amb `executedAt: null`. Quan la primera pista comença, la mateixa línia (mateix `id`) es completa: `executedAt` és l'hora en què sona i `detail` acaba amb «ha començat a la mostra prevista» o «ha començat amb +N ms de diferència». Per això `scheduler.fired` arriba dues vegades amb el mateix `id`.
+- Un `TALLA` (i un `SUPERPOSA` o un esdeveniment amb accions `AUXILIAR`) s'anota en programar-lo, amb `executedAt: null`. Quan la primera pista (o l'auxiliar) comença, la mateixa línia (mateix `id`) es completa: `executedAt` és l'hora en què sona i `detail` acaba amb «ha començat a la mostra prevista» o «ha començat amb +N ms de diferència». Per això `scheduler.fired` arriba dues vegades amb el mateix `id`.
 
 ### 4.8. Reproductors auxiliars (D-064)
 
@@ -267,7 +268,7 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 
 - Només hi surten els reproductors que no estan lliures (els que sonen o esperen la seva hora). N'hi ha 3; el 1 és el dels senyals horaris.
 - `item`: com un element de la cua (4.2). `started`: fals si encara espera l'hora (un esdeveniment preparat).
-- `duckingDb`: l'atenuació de la música mentre sona (`null` = cap). La música baixa en els 200 ms d'abans que comenci l'auxiliar i torna a pujar en 500 ms quan s'acaba.
+- `duckingDb`: l'atenuació de la música mentre sona (`null` = cap). La música baixa en els 50 ms d'abans que comenci l'auxiliar i torna a pujar en 500 ms quan s'acaba.
 - Un auxiliar no toca la cua: no surt a `queue.changed` ni a l'historial de la cua.
 
 ## 5. Esdeveniments
@@ -285,7 +286,7 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 | `output.changed` | `output` (4.3) | quan canvia la sortida, l'estat d'emergència o el problema | fase 1, pas 7c |
 | `autodj.changed` | `autodj` (4.5) | quan s'activa o es desactiva, canvia la rotació o canvia l'avís (les pistes que afegeix surten a `queue.changed`) | fase 1, pas 8 |
 | `meters` | `output` (nivells de la sortida), `position` (la pista que sona); vegeu 5.1 | unes 20 vegades per segon, només si hi ha algun client connectat | fase 1, pas 10a |
-| `scheduler.fired` | `entry` (línia del registre, 4.7) | quan el planificador executa o omet una emissió, i quan comença la primera pista d'un TALLA (la mateixa línia, completada) | fase 2, passos 3 i 4 |
+| `scheduler.fired` | `entry` (línia del registre, 4.7) | quan el planificador executa o omet una emissió, i quan comença la primera pista d'un TALLA o l'auxiliar d'un SUPERPOSA (la mateixa línia, completada) | fase 2, passos 3 a 5 |
 | `scheduler.changed` | — | quan es desa o s'esborra un esdeveniment (la interfície torna a demanar el que mostra) | fase 2, pas 3 |
 
 ### 5.1. Mesuradors i posició

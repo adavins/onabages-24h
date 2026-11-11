@@ -123,7 +123,7 @@ public static class EngineServer
         var events = new Events(database);
         // TALLA a la mostra exacta (fase 2, pas 4): l'hora es converteix en el fotograma que sonarà, amb el rellotge de mostres
         var executor = new Scheduling.EventExecutor(library, queue, autoDj, rotationId =>
-            library.SetSetting(CommandRouter.AutoDjSettingKey, System.Text.Json.JsonSerializer.Serialize(new { rotationId })), sampleClock);
+            library.SetSetting(CommandRouter.AutoDjSettingKey, System.Text.Json.JsonSerializer.Serialize(new { rotationId })), sampleClock, aux);
         var scheduler = new Scheduling.Scheduler(events, executor, log);
         scheduler.Fired += record =>
         {

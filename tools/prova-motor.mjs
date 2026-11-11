@@ -15,13 +15,16 @@
 // els mesuradors) durant aquests segons. Amb --mesuradors, també els mesuradors (meters, 20 per segon):
 //   node tools/prova-motor.mjs --escolta 2 --mesuradors engine.ping
 //
-// Esdeveniments de prova (fase 2, passos 3 i 4): es creen per a avui, d'aquí a SEGONS segons, i només sonen una vegada.
+// Esdeveniments de prova (fase 2, passos 3 a 5): es creen per a avui, d'aquí a SEGONS segons, i només sonen una vegada.
 //   --encua SEGONS ID[,ID…]      ENCUA amb aquestes pistes (els id són els trackId de queue.get o history.list)
 //   --talla SEGONS ID[,ID…]      TALLA amb aquestes pistes: talla el que soni a l'hora exacta i esborra la cua
 //   --fos MS                     (després de --talla) fos de la pista tallada; per defecte, 1000 ms
 //   --rotacio SEGONS ROTACIO_ID  SISTEMA que canvia la rotació de l'AutoDJ (els id, a rotations.list)
+//   --superposa SEGONS ID        SUPERPOSA (pas 5b): la pista sona pel reproductor auxiliar 1, per sobre de la música
+//   --atenua DB                  (després de --superposa) atenuació de la música mentre sona, p. ex. -12
 //   p. ex.: node tools/prova-motor.mjs --escolta 90 --encua 60 1234,5678
 //           node tools/prova-motor.mjs --escolta 60 --talla 30 1234 --fos 3000
+//           node tools/prova-motor.mjs --escolta 50 --superposa 40 31 --atenua -12
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -72,6 +75,16 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '--fos') {
     const last = JSON.parse(commands.pop());
     last.event.fadeMs = Number(args[++i]);
+    commands.push(JSON.stringify(last));
+  }
+  else if (args[i] === '--superposa') {
+    const seconds = Number(args[++i]);
+    const songId = Number(args[++i]);
+    commands.push(testEvent('Prova SUPERPOSA', 'SUPERPOSA', seconds, [{ type: 'AUXILIAR', params: { songId, player: 1 } }]));
+  }
+  else if (args[i] === '--atenua') {
+    const last = JSON.parse(commands.pop());
+    last.event.duckingDb = Number(args[++i]);
     commands.push(JSON.stringify(last));
   }
   else if (args[i] === '--rotacio') {

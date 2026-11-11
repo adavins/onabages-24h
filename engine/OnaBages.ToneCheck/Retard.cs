@@ -23,6 +23,9 @@ namespace OnaBages.ToneCheck;
 ///    amb l'hora prevista: <c>heardAt</c> + la posició del xiulet al fitxer.
 ///
 /// Atenció: talla el que soni i fa uns segons de silenci. Només en un ordinador de proves, mai en antena.
+///
+/// Amb <c>--auxiliar</c> (fase 2, pas 5b), els xiulets sonen pel reproductor auxiliar 1, com els senyals horaris, i es
+/// compara amb el <c>heardAt</c> de <c>aux.started</c>. No talla la música, però l'atenua del tot mentre sonen.
 /// </summary>
 internal static class Retard
 {
@@ -39,7 +42,8 @@ internal static class Retard
     /// <summary>Un xiulet comença quan el so passa d'això després d'almenys 200 ms de silenci (el xiulet fa 0,5).</summary>
     private const float Threshold = 0.02f;
 
-    public static async Task<int> RunAsync(string? dataDir, string? input)
+    /// <param name="auxiliary">Pel reproductor auxiliar (com els senyals horaris) en lloc de la cua: no talla la música.</param>
+    public static async Task<int> RunAsync(string? dataDir, string? input, bool auxiliary = false)
     {
         // 1. El motor
         string? runtimePath = FindRuntimeFile(dataDir);
@@ -114,16 +118,26 @@ internal static class Retard
         capture.Start();
         await Task.Delay(500);
 
-        Console.WriteLine("Fent sonar els xiulets (tall sec)...");
-        await engine.CommandAsync("queue.insert", new JsonObject
+        if (auxiliary)
         {
-            ["items"] = new JsonArray(new JsonObject { ["path"] = wav }),
-            ["position"] = "next",
-        });
-        await engine.CommandAsync("player.next", new JsonObject { ["fadeMs"] = 0 });
+            // Pel reproductor auxiliar 1, com els senyals horaris (fase 2, pas 5). La música no s'atura: s'atenua del tot
+            // (−60 dB) perquè no es confongui amb els xiulets, i torna a pujar quan s'acaben.
+            Console.WriteLine("Fent sonar els xiulets pel reproductor auxiliar 1, per sobre de la música (atenuada)...");
+            await engine.CommandAsync("aux.play", new JsonObject { ["path"] = wav, ["player"] = 1, ["duckingDb"] = -60 });
+        }
+        else
+        {
+            Console.WriteLine("Fent sonar els xiulets (tall sec)...");
+            await engine.CommandAsync("queue.insert", new JsonObject
+            {
+                ["items"] = new JsonArray(new JsonObject { ["path"] = wav }),
+                ["position"] = "next",
+            });
+            await engine.CommandAsync("player.next", new JsonObject { ["fadeMs"] = 0 });
+        }
 
         var started = await engine.WaitForEventAsync(e =>
-            e["ev"]?.GetValue<string>() == "player.trackStarted" &&
+            e["ev"]?.GetValue<string>() == (auxiliary ? "aux.started" : "player.trackStarted") &&
             string.Equals(e["item"]?["path"]?.GetValue<string>(), wav, StringComparison.OrdinalIgnoreCase), TimeSpan.FromSeconds(10));
         if (started is null)
         {
