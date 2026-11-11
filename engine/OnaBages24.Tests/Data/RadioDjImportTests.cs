@@ -210,6 +210,43 @@ public class RadioDjImportTests : IDisposable
         Assert.Equal(expected, found.LastPlayed);
     }
 
+    [Fact]
+    public void Si_una_importacio_deixa_sense_fitxer_pistes_que_abans_en_tenien_l_informe_avisa()
+    {
+        string music = Path.Combine(_temp.Path, "musica", "BOSSA 9");
+        Directory.CreateDirectory(music);
+        File.WriteAllBytes(Path.Combine(music, "hi-es.mp3"), [1, 2, 3]);
+        var dump = MySqlDump.FromText(FullSchema + """
+            INSERT INTO `category` VALUES (1,'Music');
+            INSERT INTO `subcategory` VALUES (5,1,'Ona Bages Adult 9');
+            INSERT INTO `genre` VALUES (96,'Other');
+            INSERT INTO `songs` VALUES
+              (10,'D:\\EMISSIO\\M\ÚSICA\\OnaBages\\BOSSA 9\\hi-es.mp3',1,'2026-01-08 10:00:00',0,'2002-01-01 00:00:01','2002-01-01 00:00:01',0,5,96,50.0,200.5,'&sta=0.1&xta=195.2&end=199.9&fin=0&fou=4.7','A','T','','1900');
+            """);
+        var withRoot = new RadioDjImportOptions { RootChanges = [new RootChange(@"D:\EMISSIO\MÚSICA\OnaBages\", Path.Combine(_temp.Path, "musica") + @"\")] };
+
+        Assert.Equal(0, RadioDjImporter.ImportLibrary(dump, _library, withRoot).FilesLost);
+        var withoutRoot = RadioDjImporter.ImportLibrary(dump, _library); // el canvi d'arrel oblidat: el que va passar el 11-11-2026
+
+        Assert.Equal(1, withoutRoot.FilesLost);
+        Assert.Contains("ATENCIÓ: 1 pistes que abans tenien el fitxer ara no el troben", withoutRoot.ToString());
+        Assert.Equal(0, RadioDjImporter.ImportLibrary(dump, _library, withRoot).FilesLost); // tornar-lo a posar ho arregla
+    }
+
+    [Fact]
+    public void Els_canvis_d_arrel_es_recorden_a_la_base_de_dades()
+    {
+        Assert.Empty(RadioDjImporter.RememberedRootChanges(_library));
+
+        RadioDjImporter.RememberRootChanges(_library, [new RootChange(@"D:\EMISSIO\MÚSICA\OnaBages", @"O:\musica")]);
+        var remembered = Assert.Single(RadioDjImporter.RememberedRootChanges(_library));
+        Assert.Equal(@"D:\EMISSIO\MÚSICA\OnaBages", remembered.From);
+        Assert.Equal(@"O:\musica", remembered.To);
+
+        RadioDjImporter.RememberRootChanges(_library, []); // --sense-arrel
+        Assert.Empty(RadioDjImporter.RememberedRootChanges(_library));
+    }
+
     private const string FullSchema = """
         CREATE TABLE `category` (
           `ID` int(11) NOT NULL AUTO_INCREMENT,

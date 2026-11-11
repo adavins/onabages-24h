@@ -51,7 +51,9 @@ public static class Program
                   Es pot tornar a executar: les pistes ja importades s'actualitzen, i les rotacions i els esdeveniments
                   importats abans se substitueixen (els esdeveniments creats a mà no es toquen).
                   --bd RUTA                     base de dades (per defecte, la de la carpeta «dades» de l'aplicació)
-                  --arrel DE A                  canvi d'arrel de les rutes (es pot repetir; s'aplica el primer que coincideixi)
+                  --arrel DE A                  canvi d'arrel de les rutes (es pot repetir; s'aplica el primer que coincideixi).
+                                                Es recorda: les pròximes importacions l'apliquen soles si no se'n diu cap
+                  --sense-arrel                 rutes de RadioDJ tal com són (oblida el canvi d'arrel recordat)
                   --sense-fitxers               no comprova si els fitxers existeixen
                   --sense-esdeveniments         no importa els esdeveniments
                   --esdeveniments-desactivats   els importa tots desactivats (en un ordinador sense els fitxers dels programes)
@@ -75,6 +77,7 @@ public static class Program
         bool checkFiles = true;
         bool importEvents = true;
         bool eventsDisabled = false;
+        bool noRoot = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -85,6 +88,9 @@ public static class Program
                     break;
                 case "--arrel":
                     rootChanges.Add(new RootChange(Value(args, ++i, "--arrel"), Value(args, ++i, "--arrel")));
+                    break;
+                case "--sense-arrel":
+                    noRoot = true;
                     break;
                 case "--sense-fitxers":
                     checkFiles = false;
@@ -101,10 +107,34 @@ public static class Program
             }
         }
         if (files.Count == 0) return Help();
+        if (noRoot && rootChanges.Count > 0)
+        {
+            Console.Error.WriteLine("Error: --sense-arrel i --arrel no es poden fer servir alhora.");
+            return 2;
+        }
 
         Console.WriteLine($"Base de dades: {databasePath}");
         using var database = Database.Open(databasePath);
         var library = new Library(database);
+
+        // Canvis d'arrel (D-067): els que es diuen ara substitueixen els recordats; sense cap, es tornen a aplicar els
+        // de l'última importació en aquesta base de dades (i es diu sempre quins); --sense-arrel els oblida
+        if (rootChanges.Count > 0)
+        {
+            RadioDjImporter.RememberRootChanges(library, rootChanges);
+            foreach (var change in rootChanges) Console.WriteLine($"Canvi d'arrel: {change.From} → {change.To} (es recordarà per a les pròximes importacions)");
+        }
+        else if (noRoot)
+        {
+            RadioDjImporter.RememberRootChanges(library, []);
+            Console.WriteLine("Sense canvi d'arrel: les rutes de RadioDJ tal com són (s'oblida el que es recordava).");
+        }
+        else if (RadioDjImporter.RememberedRootChanges(library) is { Count: > 0 } remembered)
+        {
+            rootChanges.AddRange(remembered);
+            foreach (var change in remembered)
+                Console.WriteLine($"Canvi d'arrel recordat d'una importació anterior: {change.From} → {change.To} (per no aplicar-lo: --sense-arrel)");
+        }
 
         if (library.CountTracks() > 0)
         {

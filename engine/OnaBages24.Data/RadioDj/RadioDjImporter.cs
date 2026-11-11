@@ -24,6 +24,9 @@ public sealed class RadioDjImportReport
     public int TracksAdded { get; set; }
     public int TracksUpdated { get; set; }
     public int FilesMissing { get; set; }
+    /// <summary>Pistes que ja hi eren amb el fitxer i que ara, amb la ruta nova, ja no el troben.</summary>
+    public int FilesLost { get; set; }
+    public List<string> LostExamples { get; } = [];
     public int WithoutCuePoints { get; set; }
     public int WithDates { get; set; }
     public Dictionary<TrackType, int> ByType { get; } = [];
@@ -45,6 +48,10 @@ public sealed class RadioDjImportReport
             $"Fitxers que falten: {FilesMissing} · sense punts d'encadenament: {WithoutCuePoints} · amb dates de vigència: {WithDates}",
             "Per tipus: " + string.Join(", ", ByType.OrderByDescending(t => t.Value).Select(t => $"{t.Key} {t.Value}")),
         };
+        if (FilesLost > 0)
+            lines.Add($"ATENCIÓ: {FilesLost} pistes que abans tenien el fitxer ara no el troben. Potser falta un canvi d'arrel " +
+                "(--arrel) o el que s'ha aplicat no és el bo. Si cal, es pot restaurar la còpia de seguretat d'abans d'importar. " +
+                "Per exemple:\n  " + string.Join("\n  ", LostExamples));
         if (Rotations.Count > 0) lines.Add("Rotacions: " + string.Join(", ", Rotations));
         if (RotationWarnings.Count > 0) lines.Add("A revisar a les rotacions:\n  " + string.Join("\n  ", RotationWarnings));
         if (Skipped.Count > 0) lines.Add("No importades:\n  " + string.Join("\n  ", Skipped));
@@ -67,6 +74,27 @@ public static class RadioDjImporter
 
     /// <summary>Gènere de RadioDJ que no es converteix en etiqueta (D-027).</summary>
     private const string NoGenre = "Other";
+
+    /// <summary>Clau de la configuració on es recorden els canvis d'arrel de l'última importació (D-067).</summary>
+    public const string RootChangesSettingKey = "importacio_arrels";
+
+    /// <summary>Els canvis d'arrel recordats d'una importació anterior en aquesta base de dades (llista buida si no n'hi ha).</summary>
+    public static IReadOnlyList<RootChange> RememberedRootChanges(Library library)
+    {
+        if (library.GetSetting(RootChangesSettingKey) is not { } json) return [];
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<RootChange>>(json) ?? [];
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>Recorda els canvis d'arrel per a la pròxima importació (una llista buida els oblida).</summary>
+    public static void RememberRootChanges(Library library, IReadOnlyList<RootChange> changes) =>
+        library.SetSetting(RootChangesSettingKey, System.Text.Json.JsonSerializer.Serialize(changes));
 
     /// <param name="rotations">Si no és null, també s'importen les rotacions (taules <c>rotations</c> i <c>rotations_list</c>).</param>
     public static RadioDjImportReport ImportLibrary(MySqlDump dump, Library library, RadioDjImportOptions? options = null, Rotations? rotations = null)
@@ -125,6 +153,12 @@ public static class RadioDjImporter
                 if (library.FindByRadioDjId(radioDjId) is { } existing)
                 {
                     id = existing.Id;
+                    // Abans tenia el fitxer i ara no: segurament falta un canvi d'arrel (o se n'ha posat un d'equivocat)
+                    if (existing.FileState == FileState.Ok && track.FileState == FileState.Missing)
+                    {
+                        report.FilesLost++;
+                        if (report.LostExamples.Count < 3) report.LostExamples.Add($"{existing.Path} → {track.Path}");
+                    }
                     library.UpdateTrack(track with { Id = id });
                     report.TracksUpdated++;
                 }
