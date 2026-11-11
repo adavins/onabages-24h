@@ -286,6 +286,24 @@ public class HistoryAndNowPlayingTests : IDisposable
         Assert.Equal("", Send("""{ "v": 1, "id": 5, "cmd": "notes.get" }""")["result"]!["text"]!.GetValue<string>());
     }
 
+    // --- Atenuació per defecte (D-078) ---
+
+    [Fact]
+    public void L_atenuacio_per_defecte_es_canvia_i_es_conserva()
+    {
+        var get = Send("""{ "v": 1, "id": 1, "cmd": "ducking.get" }""")["result"]!;
+        Assert.Equal(-10, get["auxiliary"]!.GetValue<double>());
+        Assert.Equal(-8, get["sweepers"]!.GetValue<double>());
+
+        var set = Send("""{ "v": 1, "id": 2, "cmd": "ducking.set", "auxiliary": -6 }""")["result"]!;
+        Assert.Equal(-6, set["auxiliary"]!.GetValue<double>());
+        Assert.Equal(-8, set["sweepers"]!.GetValue<double>()); // el que no s'envia es queda com està
+        Assert.Equal((-6.0, -8.0), CommandRouter.ReadDucking(_library)); // el que llegeix el motor en arrencar
+
+        Assert.Equal("bad_params", Send("""{ "v": 1, "id": 3, "cmd": "ducking.set", "auxiliary": 3 }""")["error"]!["code"]!.GetValue<string>());
+        Assert.Equal("bad_params", Send("""{ "v": 1, "id": 4, "cmd": "ducking.set", "sweepers": "fort" }""")["error"]!["code"]!.GetValue<string>());
+    }
+
     [Fact]
     public void Les_notes_sense_text_o_massa_llargues_responen_bad_params()
     {

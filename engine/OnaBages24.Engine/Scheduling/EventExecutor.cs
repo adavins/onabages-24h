@@ -168,8 +168,9 @@ public sealed class EventExecutor
                 warnings.Add($"La pista {id} (AUXILIAR) no existeix a la biblioteca.");
                 continue;
             }
-            // L'atenuació de l'acció té prioritat sobre la de l'esdeveniment (D-064)
-            double? ducking = ReadDouble(action, "duckingDb") ?? ev.DuckingDb;
+            // L'atenuació de l'acció té prioritat sobre la de l'esdeveniment (D-064); si cap no en diu, la de la configuració
+            // (D-078). 0 = sense atenuació
+            double? ducking = ReadDouble(action, "duckingDb") ?? ev.DuckingDb ?? aux.DefaultDuckingDb;
             var item = QueueItem.FromTrack(track, QueueOrigin.Event, ev.Name) with { EventId = ev.Id, EventAt = occurrence.At };
             result.Add(new PreparedAux((int)player, item, ducking, aux.Prepare((int)player, item, ducking)));
         }

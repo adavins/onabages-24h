@@ -114,6 +114,8 @@ public sealed class CommandRouter
                 "aux.load" => AuxLoad(msg),
                 "aux.unload" => AuxUnload(msg),
                 "notes.get" => NotesGet(),
+                "ducking.get" => DuckingGet(),
+                "ducking.set" => DuckingSet(msg),
                 "notes.set" => NotesSet(msg),
                 "aux.play" => AuxPlay(msg),
                 "aux.stop" => AuxStop(msg),
@@ -412,7 +414,8 @@ public sealed class CommandRouter
         int player = ReadPlayer(msg);
         var item = ReadAuxItem(msg);
 
-        double? ducking = null;
+        // Si no en diu cap, la de la configuració (D-078); 0 = sense atenuació
+        double? ducking = aux.DefaultDuckingDb;
         if (msg["duckingDb"] is not null)
         {
             if (msg["duckingDb"] is not JsonValue v || !v.TryGetValue(out double db) || db is < -60 or > 0)
@@ -467,6 +470,52 @@ public sealed class CommandRouter
         var aux = Aux();
         aux.Load(ReadPlayer(msg), null);
         return new JsonObject { ["loaded"] = QueueJson.AuxLoaded(aux) };
+    }
+
+    // --- Atenuació per defecte (D-078) ---
+
+    /// <summary>Clau de la configuració: <c>{ "auxiliars": -10, "sweepers": -8 }</c>.</summary>
+    public const string DuckingSettingKey = "atenuacio";
+
+    /// <summary>Atenuació per defecte dels sweepers (provisional; es farà servir al pas 5 de la fase 3).</summary>
+    public const double StandardSweepersDuckingDb = -8;
+
+    /// <summary>Les atenuacions per defecte desades (o les estàndard, si no n'hi ha o no es poden llegir).</summary>
+    public static (double Aux, double Sweepers) ReadDucking(Library? library)
+    {
+        try
+        {
+            if (library?.GetSetting(DuckingSettingKey) is { } json && JsonNode.Parse(json) is JsonObject saved)
+                return (saved["auxiliars"]?.GetValue<double>() ?? AuxPlayers.StandardDuckingDb,
+                        saved["sweepers"]?.GetValue<double>() ?? StandardSweepersDuckingDb);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException) { }
+        return (AuxPlayers.StandardDuckingDb, StandardSweepersDuckingDb);
+    }
+
+    private JsonObject DuckingGet()
+    {
+        var (auxDb, sweepersDb) = ReadDucking(_library);
+        return new JsonObject { ["auxiliary"] = auxDb, ["sweepers"] = sweepersDb };
+    }
+
+    /// <summary><c>auxiliary</c> i <c>sweepers</c> (de −60 a 0 dB; 0 = sense atenuació), tots dos opcionals.</summary>
+    private JsonObject DuckingSet(JsonObject msg)
+    {
+        var library = _library ?? throw new BadParamsException("El motor no té biblioteca.");
+        var (auxDb, sweepersDb) = ReadDucking(library);
+        static double Read(JsonNode? node, string name, double current)
+        {
+            if (node is null) return current;
+            if (node is not JsonValue v || !v.TryGetValue(out double db) || db is < -60 or > 0)
+                throw new BadParamsException($"El camp '{name}' ha de ser un nombre entre −60 i 0 (dB).");
+            return db;
+        }
+        auxDb = Read(msg["auxiliary"], "auxiliary", auxDb);
+        sweepersDb = Read(msg["sweepers"], "sweepers", sweepersDb);
+        library.SetSetting(DuckingSettingKey, JsonSerializer.Serialize(new { auxiliars = auxDb, sweepers = sweepersDb }));
+        if (_aux is not null) _aux.DefaultDuckingDb = auxDb;
+        return new JsonObject { ["auxiliary"] = auxDb, ["sweepers"] = sweepersDb };
     }
 
     // --- Notes (fase 3, pas 4a) ---

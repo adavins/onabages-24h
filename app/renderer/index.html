@@ -119,16 +119,22 @@
     </div>
 
     <div class="column-side">
-      <!-- Biblioteca (fase 3, pas 3b; D-079): cerca i afegir a la cua. Cartutxeres i notes, al pas 4 -->
+      <!-- Biblioteca (fase 3, pas 3b; D-079): cerca i afegir a la cua. Notes al pas 4b (D-081); cartutxeres, més endavant -->
       <section class="card ob-card library-card">
         <div class="card-header ob-card-header p-0">
           <ul class="nav nav-tabs card-header-tabs m-0" role="tablist">
-            <li class="nav-item"><button class="nav-link active" type="button" aria-current="true"><i class="bi bi-search" aria-hidden="true"></i> Cerca</button></li>
-            <li class="nav-item"><button class="nav-link" type="button" disabled title="Al pas 4">Cartutxeres</button></li>
-            <li class="nav-item"><button class="nav-link" type="button" disabled title="Al pas 4">Notes</button></li>
+            <li class="nav-item" role="presentation"><button id="tab-search" class="nav-link active" type="button" role="tab" aria-selected="true" aria-controls="pane-search"><i class="bi bi-search" aria-hidden="true"></i> Cerca</button></li>
+            <li class="nav-item" role="presentation"><button id="tab-notes" class="nav-link" type="button" role="tab" aria-selected="false" aria-controls="pane-notes"><i class="bi bi-journal-text" aria-hidden="true"></i> Notes</button></li>
           </ul>
         </div>
-        <div class="card-body library-body">
+        <div id="pane-notes" class="card-body library-body d-none" role="tabpanel" aria-labelledby="tab-notes">
+          <textarea id="notes-text" class="form-control notes-text" maxlength="20000" spellcheck="true" aria-label="Notes" placeholder="Notes per a qui estigui a l'emissió: avisos, encàrrecs, canvis de programació… Es desen soles i les veuen totes les pantalles connectades."></textarea>
+          <div class="library-foot">
+            <span id="notes-state" class="notes-state"></span>
+            <span class="text-body-secondary">Es desa sol</span>
+          </div>
+        </div>
+        <div id="pane-search" class="card-body library-body" role="tabpanel" aria-labelledby="tab-search">
           <input id="lib-search" class="form-control" type="search" placeholder="Cerca artista, títol, àlbum o carpeta…" aria-label="Cerca a la biblioteca">
           <div class="library-filters">
             <select id="lib-category" class="form-select form-select-sm" aria-label="Categoria" title="Categoria (sense triar: totes)"></select>
@@ -140,9 +146,18 @@
           </div>
           <div class="library-foot">
             <span id="lib-count"></span>
-            <span class="text-body-secondary">Doble clic o arrossega a la cua</span>
+            <span class="text-body-secondary">Doble clic o arrossega a la cua o a un auxiliar</span>
           </div>
         </div>
+      </section>
+
+      <!-- Reproductors auxiliars (fase 3, pas 4b; D-081): sonen per sobre de la música; el 1 és el dels senyals horaris -->
+      <section class="card ob-card">
+        <div class="card-header ob-card-header">
+          <strong>Reproductors auxiliars</strong>
+          <span class="ms-auto text-body-secondary small">Arrossega-hi una pista i prem ▶</span>
+        </div>
+        <ul id="aux-list" class="aux-list"></ul>
       </section>
 
       <!-- AutoDJ -->

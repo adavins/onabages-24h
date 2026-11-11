@@ -86,6 +86,15 @@ public sealed class AuxPlayers : IDisposable
 
     public int SampleRate => _mixer.SampleRate;
 
+    /// <summary>Atenuació per defecte dels auxiliars si no se n'hi passa cap (D-078), en dB.</summary>
+    public const double StandardDuckingDb = -10;
+
+    /// <summary>
+    /// Atenuació de la música quan un auxiliar no en diu cap (D-078): la de la configuració (<c>ducking.set</c>), o
+    /// <see cref="StandardDuckingDb"/>. 0 = sense atenuació.
+    /// </summary>
+    public double DefaultDuckingDb { get; set; } = StandardDuckingDb;
+
     /// <summary>Si el número de reproductor és vàlid (1 a <see cref="Count"/>).</summary>
     public static bool IsValidPlayer(int player) => player is >= 1 and <= Count;
 

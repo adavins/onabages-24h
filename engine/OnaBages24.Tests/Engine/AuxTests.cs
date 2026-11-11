@@ -317,6 +317,19 @@ public sealed class AuxTests : IDisposable
     }
 
     [Fact]
+    public void Aux_play_sense_atenuacio_fa_servir_la_per_defecte_i_amb_0_no_n_hi_ha()
+    {
+        string path = Wav("jingle", 5, Signal).Replace(@"\", @"\\");
+        Send($$"""{ "v": 1, "id": 1, "cmd": "aux.play", "path": "{{path}}", "player": 2 }""");
+        Send($$"""{ "v": 1, "id": 2, "cmd": "aux.play", "path": "{{path}}", "player": 3, "duckingDb": 0 }""");
+        WaitReady();
+        Run(Rate / 2);
+        var status = _aux.Status.ToDictionary(s => s.Player);
+        Assert.Equal(AuxPlayers.StandardDuckingDb, status[2].DuckingDb); // −10 dB (D-078)
+        Assert.Null(status[3].DuckingDb);                                 // 0 = sense atenuació
+    }
+
+    [Fact]
     public void No_es_pot_carregar_un_fitxer_que_no_hi_es()
     {
         var response = Send("""{ "v": 1, "id": 1, "cmd": "aux.load", "path": "D:\\no-hi-es\\x.mp3", "player": 2 }""");

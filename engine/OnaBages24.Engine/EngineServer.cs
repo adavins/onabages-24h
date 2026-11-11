@@ -105,6 +105,8 @@ public static class EngineServer
         var sampleClock = new SampleClock(mixer, () => outputs.Latency);
         // Reproductors auxiliars (fase 2, pas 5): senyals horaris per sobre de la música, amb atenuació opcional
         var aux = new AuxPlayers(mixer);
+        // Atenuació per defecte dels auxiliars (D-078): la desada a la configuració, o −10 dB
+        aux.DefaultDuckingDb = CommandRouter.ReadDucking(library).Aux;
 
         // AutoDJ (fase 1, pas 8): arrenca sol amb la rotació desada (o la primera), i l'emissió comença de seguida
         var rotations = new Rotations(database);

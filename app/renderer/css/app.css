@@ -1468,3 +1468,105 @@ button.pl-chip.is-off {
   outline: 2px dashed var(--ob-progress);
   outline-offset: -2px;
 }
+
+/* --- Reproductors auxiliars (fase 3, pas 4b) --- */
+
+.aux-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.aux-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.aux-row:last-child {
+  border-bottom: 0;
+}
+
+.aux-row.is-playing {
+  background: #18241c;
+}
+
+/* On es deixarà anar la pista que s'arrossega (sense animacions) */
+.aux-row.drop-here {
+  outline: 2px dashed var(--ob-progress);
+  outline-offset: -2px;
+}
+
+.aux-number {
+  width: 1.4rem;
+  height: 1.4rem;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--ob-border);
+  color: var(--ob-muted);
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.aux-btn {
+  width: 2.1rem;
+  height: 2.1rem;
+  flex: none;
+  padding: 0;
+}
+
+.aux-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.aux-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aux-title.is-empty {
+  color: var(--ob-muted);
+  font-weight: 400;
+}
+
+.aux-state {
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aux-time {
+  font-family: var(--ob-mono);
+  font-size: 0.85rem;
+  width: 3.6rem;
+  text-align: right;
+  flex: none;
+}
+
+.aux-unload {
+  flex: none;
+  padding: 0.1rem 0.35rem;
+}
+
+/* --- Notes (fase 3, pas 4b) --- */
+
+.notes-text {
+  height: 22rem;
+  resize: none;
+  font-size: 0.92rem;
+}
+
+.notes-state {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

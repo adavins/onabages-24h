@@ -87,10 +87,12 @@ El `message` és en català i es pot mostrar a l'operador.
 | `player.playItem` | `itemId`, `fadeMs` (de 0 a 10.000; per defecte 1.000) | `{ skipped, queue }`. «Reprodueix ara» (D-073): la que sona baixa amb un fos i la triada comença de seguida; les d'entremig es treuen de la cua (`skipped`) i, si venien d'un esdeveniment, queden com a `NO_EMES`. Si la pista ja no hi és o hi ha un tall programat d'aquí a uns segons, `bad_params` | fase 3, pas 2a |
 | `player.next` | `fadeMs` (de 0 a 10.000; per defecte 1.000) | `{ queue }`. La que sona baixa amb un fos i la següent comença de seguida | fase 1, pas 7c |
 | `aux.get` | — | `{ aux, loaded }` (vegeu 4.8). `loaded` des de la fase 3, pas 4a | fase 2, pas 5a |
-| `aux.play` | `trackId` (de la biblioteca) **o bé** `path` (un fitxer qualsevol); `player` (1–3, per defecte 1); `duckingDb` (atenuació de la música mentre sona, de −60 a 0; per defecte, cap) | `{ player, item }`. Sona per sobre del que soni, sencer i des del principi; si el reproductor ja sonava, el substitueix. **Sense `trackId` ni `path`** (fase 3, pas 4a): sona la pista carregada amb `aux.load`; si no n'hi ha cap, `bad_params`. Si no queden veus lliures, `bad_params` | fase 2, pas 5a |
+| `aux.play` | `trackId` (de la biblioteca) **o bé** `path` (un fitxer qualsevol); `player` (1–3, per defecte 1); `duckingDb` (atenuació de la música mentre sona, de −60 a 0; 0 = cap; si no s'envia, la per defecte de `ducking.get`, D-078) | `{ player, item }`. Sona per sobre del que soni, sencer i des del principi; si el reproductor ja sonava, el substitueix. **Sense `trackId` ni `path`** (fase 3, pas 4a): sona la pista carregada amb `aux.load`; si no n'hi ha cap, `bad_params`. Si no queden veus lliures, `bad_params` | fase 2, pas 5a |
 | `aux.load` | `player` (1–3, per defecte 1) i `trackId` **o bé** `path` | `{ loaded }` (4.8). Carrega la pista al reproductor **sense fer-la sonar**: sona amb `aux.play` sense pista, i s'hi queda carregada després (es pot tornar a fer sonar). No atura el que hi soni. Si el fitxer no hi és, `bad_params`. Avisa amb `aux.loaded` | fase 3, pas 4a |
 | `aux.unload` | `player` (1–3, per defecte 1) | `{ loaded }`. Treu la pista carregada; el que hi soni continua sonant. Avisa amb `aux.loaded` | fase 3, pas 4a |
 | `aux.stop` | `player` (per defecte 1), `fadeMs` (de 0 a 10.000; per defecte 500) | `{ stopped, aux }`. `stopped`: fals si no sonava res | fase 2, pas 5a |
+| `ducking.get` | — | `{ auxiliary, sweepers }`: l'atenuació per defecte de la música (en dB; 0 = cap) quan un auxiliar o un sweeper no en diuen cap (D-078). Si no s'ha canviat mai, −10 i −8 | fase 3, pas 4b |
+| `ducking.set` | `auxiliary`, `sweepers` (de −60 a 0; 0 = sense atenuació). Tots dos opcionals: el que no s'envia es queda com està | `{ auxiliary, sweepers }`. Es desa a la configuració i s'aplica de seguida (el que ja sona o ja està preparat no canvia) | fase 3, pas 4b |
 | `notes.get` | — | `{ text }`: el bloc de notes compartit de la pestanya «Notes» (buit si no n'hi ha) | fase 3, pas 4a |
 | `notes.set` | `text` (pot ser buit; com a molt 20.000 caràcters) | `{ text }`. Es desa a la configuració (es conserva en reiniciar) i s'avisa les altres interfícies amb `notes.changed` | fase 3, pas 4a |
 | `library.list` | `folder`, `limit` (per defecte 100, com a molt 1.000) | `{ tracks: [ … ] }` (vegeu 4.4): pistes de la carpeta i subcarpetes. De moment, per a les proves | fase 1, pas 7c |
@@ -291,7 +293,7 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 
 - Només hi surten els reproductors que no estan lliures (els que sonen o esperen la seva hora). N'hi ha 3; el 1 és el dels senyals horaris.
 - `item`: com un element de la cua (4.2). `started`: fals si encara espera l'hora (un esdeveniment preparat).
-- `duckingDb`: l'atenuació de la música mentre sona (`null` = cap). La música baixa en els 50 ms d'abans que comenci l'auxiliar i torna a pujar en 500 ms quan s'acaba.
+- `duckingDb`: l'atenuació de la música mentre sona (`null` = cap). Un esdeveniment fa servir la de l'acció; si no en té, la de l'esdeveniment; si tampoc, la per defecte (`ducking.get`, D-078). La música baixa en els 50 ms d'abans que comenci l'auxiliar i torna a pujar en 500 ms quan s'acaba.
 - Un auxiliar no toca la cua: no surt a `queue.changed` ni a l'historial de la cua.
 - `loaded` (fase 3, pas 4a): la pista carregada a mà a cada reproductor, sempre amb una entrada per reproductor: `[ { "player": 1, "item": null }, { "player": 2, "item": { … } }, … ]`. És independent del que sona (`aux`) i del que preparen els esdeveniments.
 

@@ -172,6 +172,37 @@ public sealed class OverlayTests : IDisposable
         Assert.Equal(Music * Db(-12) + Signal, output[at * 2], 4);
     }
 
+    [Theory]
+    [InlineData(-10.0)] // l'estàndard (D-078)
+    [InlineData(-4.0)]  // un altre de la configuració
+    public void Si_ni_l_accio_ni_l_esdeveniment_diuen_atenuacio_es_fa_servir_la_de_la_configuracio(double configured)
+    {
+        _aux.DefaultDuckingDb = configured;
+        StartMusic();
+        long signals = Track("Senyals horaris", 1, Signal);
+        _events.Save(new ScheduledEvent { Name = "Senyals", Mode = EventMode.Overlay, StartTime = new TimeOnly(10, 0),
+            Actions = [Aux(signals)] });
+
+        var (output, first, _) = Run(Hour + TimeSpan.FromSeconds(1));
+
+        int at = (int)(Assert.Single(_auxStarted).StartFrame - first);
+        Assert.Equal(Music * Db(configured) + Signal, output[at * 2], 4);
+    }
+
+    [Fact]
+    public void Un_esdeveniment_amb_atenuacio_0_no_atenua()
+    {
+        StartMusic();
+        long signals = Track("Senyals horaris", 1, Signal);
+        _events.Save(new ScheduledEvent { Name = "Senyals", Mode = EventMode.Overlay, StartTime = new TimeOnly(10, 0), DuckingDb = 0,
+            Actions = [Aux(signals)] });
+
+        var (output, first, _) = Run(Hour + TimeSpan.FromSeconds(1));
+
+        int at = (int)(Assert.Single(_auxStarted).StartFrame - first);
+        Assert.Equal(Music + Signal, output[at * 2], 4);
+    }
+
     [Fact]
     public void Un_ENCUA_amb_senyals_posa_la_pista_a_la_cua_i_els_senyals_sonen_a_l_hora()
     {

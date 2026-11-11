@@ -15,6 +15,8 @@ import { PlannerView } from './ui/planner.js';
 import { UpcomingEvents } from './ui/upcoming.js';
 import { EventsPause } from './ui/events-pause.js';
 import { LibraryView, TRACK_DRAG_TYPE } from './ui/library.js';
+import { AuxPlayersView } from './ui/aux-players.js';
+import { NotesView } from './ui/notes.js';
 
 /**
  * @typedef {{
@@ -94,6 +96,22 @@ const upcoming = new UpcomingEvents(send, () => queueView.render(lastQueue, upco
 const eventsPause = new EventsPause(send);
 const library = new LibraryView(send);
 queueView.acceptDrops(TRACK_DRAG_TYPE, (track, position) => library.add(track, position));
+const auxPlayers = new AuxPlayersView(send, TRACK_DRAG_TYPE);
+const notes = new NotesView(send);
+
+// Pestanyes del quadre de la dreta: Cerca i Notes (fase 3, pas 4b)
+/** @param {'search' | 'notes'} name */
+function showSideTab(name) {
+  for (const tab of /** @type {const} */ (['search', 'notes'])) {
+    const active = tab === name;
+    $(`pane-${tab}`).classList.toggle('d-none', !active);
+    const button = $(`tab-${tab}`);
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  }
+}
+$('tab-search').addEventListener('click', () => showSideTab('search'));
+$('tab-notes').addEventListener('click', () => showSideTab('notes'));
 const problems = { autodj: /** @type {string | null} */ (null), output: /** @type {string | null} */ (null) };
 renderWarnings(problems);
 
@@ -236,6 +254,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
       showBanner('No hi ha connexió amb el motor.',
         'Si el motor funciona, l\'emissió continua. Es torna a provar cada pocs segons.');
       showQueue({ current: null, upcoming: [] });
+      auxPlayers.refresh(); // sense connexió: es buida el que sonava
       // Potser el motor ha tornat a arrencar amb un altre testimoni: se'n llegeix el fitxer d'execució
       const found = await bridge.findEngine().catch(() => null);
       if (found) client?.setEngine(found.port, found.token);
@@ -261,6 +280,15 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   });
   client.addEventListener('ev:scheduler.fired', () => upcoming.refresh());
   client.addEventListener('ev:scheduler.paused', (e) => eventsPause.show(detail(e).paused));
+  // Reproductors auxiliars i notes (fase 3, pas 4b)
+  client.addEventListener('ev:aux.started', (e) => {
+    auxPlayers.started(detail(e).player);
+    auxPlayers.refresh();
+  });
+  client.addEventListener('ev:aux.ended', () => auxPlayers.refresh());
+  client.addEventListener('ev:aux.loaded', () => auxPlayers.refresh());
+  client.addEventListener('ev:aux.failed', (e) => auxPlayers.failed(detail(e).player, detail(e).message));
+  client.addEventListener('ev:notes.changed', (e) => notes.received(detail(e).text));
   client.addEventListener('ev:meters', (e) => {
     const ev = detail(e);
     meters.set(ev.output);
@@ -285,6 +313,8 @@ async function loadState() {
     upcoming.refresh();
     eventsPause.refresh();
     library.refresh();
+    auxPlayers.refresh();
+    notes.refresh();
   } catch (err) {
     console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }
