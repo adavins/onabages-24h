@@ -79,7 +79,7 @@ Encàrrec original a `docs/referencia/preparar-motor-ona-bages-play.md`.
 8. Interfície (abans del pas 7, D-068):
    - 8a. ✔ Pestanyes Emissió | Planificador; graella per setmanes reals i setmana tipus (lectura), amb zoom, filtres per mode, desactivats, fila dels que es repeteixen cada hora i detall amb les 10 pròximes emissions i les accions.
    - 8b. ✔ Editor d'esdeveniments al panell de la dreta: tots els camps, accions (afegir, treure, reordenar, dies propis), cercador de pistes (`library.search`), pròximes emissions mentre s'edita (`scheduler.preview`), Desa, Duplica i Esborra amb confirmació (D-070).
-   - 8c. Avisos en desar (franja massa llarga, ENCUA que no sonarà, emissions perdudes pel canvi d'hora).
+   - 8c. ✔ Avisos a l'editor, mentre s'edita i en desar (franja massa llarga, ENCUA que no sonarà o es tallarà, durada màxima superada, emissions perdudes pel canvi d'hora, pistes que falten) (D-071). Els avisos en emissió (en preparar l'esdeveniment i quan canvia un fitxer de durada variable) queden per a la fase 4, amb la detecció de canvis als fitxers.
 9. Prova de tancament (criteri de sota).
 
 Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al 6, segons el que demani la migració. Fora d'aquesta fase: `CAMPANYA` i detecció de canvis als fitxers (fase 4), `SWEEPERS` (fase 3, amb el trepitjador) i `ENTRADA` (encara no hi ha entrada).

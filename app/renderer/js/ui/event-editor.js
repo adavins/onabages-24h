@@ -183,6 +183,12 @@ export class EventEditor {
 
     panel.append(this.#switch('Activat (si no, no es dispara)', ev.enabled, (on) => { ev.enabled = on; }));
 
+    // Avisos (pas 8c): els calcula el motor amb l'esborrany, alhora que les pròximes emissions
+    const warnings = el('div', 'ee-warnings d-none');
+    warnings.id = 'ee-warnings';
+    warnings.setAttribute('role', 'status');
+    panel.append(warnings);
+
     // Quan
     panel.append(el('h3', 'ee-section', 'Quan'));
     const whenRow = el('div', 'ee-row');
@@ -275,6 +281,14 @@ export class EventEditor {
     save.append(icon('bi-check-lg'), ' ', el('span', '', 'Desa'));
     save.addEventListener('click', () => this.#save());
     buttons.append(save);
+
+    // Quants avisos hi ha: els avisos són a dalt i, si s'ha baixat fins aquí, no es veuen
+    const warningCount = el('button', 'btn btn-sm btn-link ee-warn-count d-none');
+    warningCount.id = 'ee-warn-count';
+    warningCount.type = 'button';
+    warningCount.title = 'Mostra els avisos';
+    warningCount.addEventListener('click', () => this.#panel.querySelector('#ee-warnings')?.scrollIntoView({ block: 'start' }));
+    buttons.append(warningCount);
 
     const discard = el('button', 'btn btn-outline-secondary');
     discard.id = 'ee-discard';
@@ -691,6 +705,7 @@ export class EventEditor {
     try {
       const result = await this.#send('scheduler.preview', { event: draft, limit: 10 });
       if (token !== this.#previewToken) return;
+      this.#showWarnings(result.warnings ?? []);
       box.replaceChildren();
       if (!this.#draft.enabled) box.append(statusLabel('text-warning', 'bi-pause-circle-fill', 'Desactivat: si s\'activés, sonaria'));
       if (result.occurrences.length === 0) box.append(el('span', 'text-body-secondary', 'Cap en els pròxims 400 dies.'));
@@ -710,6 +725,42 @@ export class EventEditor {
       warning.append(icon('bi-exclamation-triangle-fill'), ' ', el('span', '', /** @type {Error} */ (err).message));
       box.replaceChildren(warning);
     }
+  }
+
+  /**
+   * Avisos del motor: què passarà els pròxims dies (programa que es tallarà, Encua que no sonarà, fitxers que falten…).
+   * @param {{ text: string, dates: string[] }[]} warnings
+   */
+  #showWarnings(warnings) {
+    const box = this.#panel.querySelector('#ee-warnings');
+    if (!box) return;
+    box.replaceChildren();
+    box.classList.toggle('d-none', warnings.length === 0);
+    const count = /** @type {HTMLElement | null} */ (this.#panel.querySelector('#ee-warn-count'));
+    if (count) {
+      count.classList.toggle('d-none', warnings.length === 0);
+      count.replaceChildren(icon('bi-exclamation-triangle-fill'), ' ',
+        el('span', '', warnings.length === 1 ? '1 avís' : `${warnings.length} avisos`));
+    }
+    if (warnings.length === 0) return;
+    const title = el('div', 'ee-warnings-title');
+    title.append(icon('bi-exclamation-triangle-fill'), ' ',
+      el('span', '', warnings.length === 1 ? 'Un avís' : `${warnings.length} avisos`),
+      el('span', 'ee-warnings-note', ' · els pròxims 14 dies, sense comptar la cançó que soni'));
+    const list = el('ul', 'ee-warnings-list');
+    for (const w of warnings) {
+      const li = el('li', '', w.text);
+      if (w.dates.length > 0) {
+        const days = w.dates.slice(0, 4).map((d) => {
+          const date = parseDate(d);
+          return `${DAY_NAMES[(date.getDay() + 6) % 7]} ${date.getDate()}/${date.getMonth() + 1}`;
+        });
+        if (w.dates.length > 4) days.push(`i ${w.dates.length - 4} més`);
+        li.append(el('span', 'ee-warnings-dates', ` (${days.join(', ')})`));
+      }
+      list.append(li);
+    }
+    box.append(title, list);
   }
 
   // --- Desar i esborrar ---

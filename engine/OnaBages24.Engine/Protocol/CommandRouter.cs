@@ -558,7 +558,8 @@ public sealed class CommandRouter
             throw new BadParamsException(ex.Message);
         }
         _scheduler?.Reload();
-        return new JsonObject { ["event"] = EventJson.Event(events.Get(id)!, Describer()) };
+        var saved = events.Get(id)!;
+        return new JsonObject { ["event"] = EventJson.Event(saved, Describer()), ["warnings"] = Warnings(saved) };
     }
 
     /// <summary>
@@ -581,7 +582,11 @@ public sealed class CommandRouter
         int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 10, 1, 100);
         var now = DateTimeOffset.Now;
         var list = Recurrences.Between(ev, now, now.AddDays(400), Zone).Take(limit).ToList();
-        return new JsonObject { ["occurrences"] = new JsonArray(list.Select(o => (JsonNode)EventJson.Occurrence(o)).ToArray()) };
+        return new JsonObject
+        {
+            ["occurrences"] = new JsonArray(list.Select(o => (JsonNode)EventJson.Occurrence(o)).ToArray()),
+            ["warnings"] = Warnings(ev),
+        };
     }
 
     private JsonObject SchedulerDelete(JsonObject msg)
@@ -644,6 +649,28 @@ public sealed class CommandRouter
             ["entries"] = new JsonArray(records.Take(limit).Select(r => (JsonNode)EventJson.Execution(r)).ToArray()),
             ["more"] = records.Count > limit,
         };
+    }
+
+    /// <summary>Avisos de l'editor (fase 2, pas 8c): què passarà els pròxims dies amb aquest esdeveniment (docs/protocol.md, 4.7).</summary>
+    private JsonArray Warnings(ScheduledEvent ev)
+    {
+        var cache = new Dictionary<long, TrackFacts?>();
+        TrackFacts? Facts(long id)
+        {
+            if (cache.TryGetValue(id, out var known)) return known;
+            var track = _library?.GetTrack(id);
+            var facts = track is null ? null : new TrackFacts(
+                string.IsNullOrWhiteSpace(track.Title) ? System.IO.Path.GetFileNameWithoutExtension(track.Path) : track.Title,
+                track.EndMs is { } end ? end - (track.StartMs ?? 0) : track.DurationMs,
+                track.FileState == FileState.Missing);
+            return cache[id] = facts;
+        }
+        var warnings = EventWarnings.For(ev, EventsOrError().List(), Facts, Zone, DateTimeOffset.Now);
+        return new JsonArray(warnings.Select(w => (JsonNode)new JsonObject
+        {
+            ["text"] = w.Text,
+            ["dates"] = new JsonArray(w.Dates.Select(d => (JsonNode)DbTime.ToText(d)).ToArray()),
+        }).ToArray());
     }
 
     /// <summary>Per descriure les accions dels esdeveniments (títols de les pistes, rotacions…).</summary>
