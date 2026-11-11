@@ -11,6 +11,8 @@ using OnaBages.ToneCheck;
 //   sonoritat <fitxer> [fitxer...]           mesura la sonoritat (LUFS) i el pic (fase 4, pas 5a)
 //   emetre <shoutcast|icecast> <servidor> <port> <sid|punt de muntatge> [segons] [kbps] [Hz]
 //                                            envia un to a un servidor d'streaming (fase 5, pas 31b)
+//   retard [--entrada NOM] [--dades CARPETA] comprova amb el so de debò que el motor d'Ona Bages 24h emet a l'hora
+//                                            prevista (fase 2, pas 4b). Talla el que soni: mai en antena.
 
 Console.OutputEncoding = Encoding.UTF8;
 
@@ -38,6 +40,18 @@ if (args.Length >= 3 && args[0] == "processar")
     return Processar.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), settings);
 }
 
+if (args.Length >= 1 && args[0] == "retard")
+{
+    string? input = null, dataDir = null;
+    for (int i = 1; i < args.Length; i++)
+    {
+        if (args[i] == "--entrada" && i + 1 < args.Length) input = args[++i];
+        else if (args[i] == "--dades" && i + 1 < args.Length) dataDir = args[++i];
+        else { Console.Error.WriteLine($"Opció desconeguda: {args[i]}"); return 2; }
+    }
+    return await Retard.RunAsync(dataDir, input);
+}
+
 if (args.Length >= 5 && args[0] == "emetre")
 {
     var type = args[1].Equals("icecast", StringComparison.OrdinalIgnoreCase) ? StreamServerType.Icecast : StreamServerType.Shoutcast;
@@ -55,6 +69,7 @@ Console.WriteLine("""
       OnaBages.ToneCheck convivencia [minuts, per defecte 60] [carpeta]
       OnaBages.ToneCheck processar <entrada> <sortida.wav> [desactivat]   compressor/limitador (SqrSoft de La Central)
       OnaBages.ToneCheck sonoritat <fitxer> [fitxer...]                  sonoritat (LUFS, EBU R128) i pic
+      OnaBages.ToneCheck retard [--entrada NOM] [--dades CARPETA]       hora real de sortida del motor (talla el que soni!)
       OnaBages.ToneCheck emetre <shoutcast|icecast> <servidor> <port> <sid|punt de muntatge> [segons=30] [kbps=128] [Hz=44100]
     """);
 return 2;
