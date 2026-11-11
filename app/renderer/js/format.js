@@ -78,3 +78,23 @@ export function formatLongDate(date) {
 export function formatClock(date) {
   return [date.getHours(), date.getMinutes(), date.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
 }
+
+/**
+ * Quan va sonar per última vegada, curt (fase 3, pas 3b): «fa 5 min», «fa 3 h», «ahir», «fa 4 dies», «fa 2 mesos»,
+ * «mai». Comptant dies de calendari (no de 24 h): «ahir» és el dia d'abans, sigui l'hora que sigui.
+ * @param {string | null | undefined} iso  @param {Date} now
+ */
+export function playedAgo(iso, now) {
+  if (!iso) return 'mai';
+  const then = new Date(iso);
+  const minutes = Math.floor((now.getTime() - then.getTime()) / 60_000);
+  if (minutes < 1) return 'ara';
+  if (minutes < 60) return `fa ${minutes} min`;
+  const day = (/** @type {Date} */ d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((day(now) - day(then)) / 86_400_000);
+  if (days === 0) return `fa ${Math.floor(minutes / 60)} h`;
+  if (days === 1) return 'ahir';
+  if (days < 45) return `fa ${days} dies`;
+  const months = Math.round(days / 30);
+  return months < 12 ? `fa ${months} mesos` : `fa ${Math.floor(days / 365)} ${Math.floor(days / 365) === 1 ? 'any' : 'anys'}`;
+}

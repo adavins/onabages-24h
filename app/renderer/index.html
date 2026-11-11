@@ -96,7 +96,7 @@
   <main class="workspace">
     <div class="column-main">
       <!-- Cua d'emissió -->
-      <section class="card ob-card">
+      <section id="queue-card" class="card ob-card">
         <div class="card-header ob-card-header">
           <strong>Cua</strong>
           <span id="queue-rotation" class="text-body-secondary"></span>
@@ -119,6 +119,32 @@
     </div>
 
     <div class="column-side">
+      <!-- Biblioteca (fase 3, pas 3b; D-079): cerca i afegir a la cua. Cartutxeres i notes, al pas 4 -->
+      <section class="card ob-card library-card">
+        <div class="card-header ob-card-header p-0">
+          <ul class="nav nav-tabs card-header-tabs m-0" role="tablist">
+            <li class="nav-item"><button class="nav-link active" type="button" aria-current="true"><i class="bi bi-search" aria-hidden="true"></i> Cerca</button></li>
+            <li class="nav-item"><button class="nav-link" type="button" disabled title="Al pas 4">Cartutxeres</button></li>
+            <li class="nav-item"><button class="nav-link" type="button" disabled title="Al pas 4">Notes</button></li>
+          </ul>
+        </div>
+        <div class="card-body library-body">
+          <input id="lib-search" class="form-control" type="search" placeholder="Cerca artista, títol, àlbum o carpeta…" aria-label="Cerca a la biblioteca">
+          <div class="library-filters">
+            <select id="lib-category" class="form-select form-select-sm" aria-label="Categoria" title="Categoria (sense triar: totes)"></select>
+            <select id="lib-subcategory" class="form-select form-select-sm" aria-label="Subcategoria" title="Subcategoria (sense triar: totes)"></select>
+            <select id="lib-tag" class="form-select form-select-sm" aria-label="Etiqueta" title="Etiqueta (sense triar: totes)"></select>
+          </div>
+          <div id="lib-results" class="library-results">
+            <ul id="lib-list" class="library-list"></ul>
+          </div>
+          <div class="library-foot">
+            <span id="lib-count"></span>
+            <span class="text-body-secondary">Doble clic o arrossega a la cua</span>
+          </div>
+        </div>
+      </section>
+
       <!-- AutoDJ -->
       <section class="card ob-card">
         <div class="card-header ob-card-header"><strong>AutoDJ</strong></div>

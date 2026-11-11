@@ -42,3 +42,17 @@ test('formatClock i formatLongDate', () => {
   assert.equal(formatClock(date), '09:05:07');
   assert.match(formatLongDate(date), /dimarts, 10 de novembre/);
 });
+
+test('playedAgo: quan va sonar per última vegada', async () => {
+  const { playedAgo } = await import('../renderer/js/format.js');
+  const now = new Date(2026, 10, 19, 12, 0);
+  const ago = (/** @type {number} */ ms) => new Date(now.getTime() - ms).toISOString();
+  assert.equal(playedAgo(null, now), 'mai');
+  assert.equal(playedAgo(ago(20_000), now), 'ara');
+  assert.equal(playedAgo(ago(5 * 60_000), now), 'fa 5 min');
+  assert.equal(playedAgo(ago(3 * 3600_000), now), 'fa 3 h');
+  assert.equal(playedAgo(new Date(2026, 10, 18, 23, 30).toISOString(), now), 'ahir');   // dia de calendari
+  assert.equal(playedAgo(new Date(2026, 10, 15, 12, 0).toISOString(), now), 'fa 4 dies');
+  assert.equal(playedAgo(new Date(2026, 7, 19, 12, 0).toISOString(), now), 'fa 3 mesos');
+  assert.equal(playedAgo(new Date(2025, 9, 1).toISOString(), now), 'fa 1 any');
+});

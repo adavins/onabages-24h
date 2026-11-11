@@ -42,6 +42,49 @@ export class QueueView {
   }
 
   /**
+   * Accepta pistes arrossegades des de la biblioteca (fase 3, pas 3b): damunt d'una pista, s'insereixen abans o després
+   * segons la meitat on es deixin anar; a la resta del quadre de la cua, al final. Es marca on aniria amb una línia.
+   * @param {string} dragType  el tipus de dada de l'arrossegament (només s'accepten pistes de la biblioteca)
+   * @param {(track: { id: number, title: string }, position: number | 'end') => void} onDrop
+   */
+  acceptDrops(dragType, onDrop) {
+    const area = $('queue-card');
+    const clearMarks = () => {
+      for (const node of area.querySelectorAll('.drop-before, .drop-after')) node.classList.remove('drop-before', 'drop-after');
+      area.classList.remove('drop-end');
+    };
+    /** On aniria: l'índex a la cua (0 = la primera que sonarà) i la fila que es marca, o el final. @param {DragEvent} e */
+    const target = (e) => {
+      const row = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest?.('.queue-row'));
+      if (!row || row.dataset.index == null) return { position: /** @type {'end'} */ ('end'), row: null, after: false };
+      const box = row.getBoundingClientRect();
+      const after = e.clientY > box.top + box.height / 2;
+      return { position: Number(row.dataset.index) + (after ? 1 : 0), row, after };
+    };
+    area.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer?.types.includes(dragType)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      clearMarks();
+      const t = target(e);
+      if (t.row) t.row.classList.add(t.after ? 'drop-after' : 'drop-before');
+      else area.classList.add('drop-end');
+    });
+    area.addEventListener('dragleave', (e) => {
+      if (!area.contains(/** @type {Node | null} */ (e.relatedTarget))) clearMarks();
+    });
+    area.addEventListener('drop', (e) => {
+      const data = e.dataTransfer?.getData(dragType);
+      clearMarks();
+      if (!data) return;
+      e.preventDefault();
+      const t = target(e);
+      // Una posició més enllà de l'última és el mateix que al final
+      onDrop(JSON.parse(data), typeof t.position === 'number' && t.position >= this.#count ? 'end' : t.position);
+    });
+  }
+
+  /**
    * @param {any} queue  la cua del motor (docs/protocol.md, 4.2): current, currentEndsAt i upcoming amb plannedAt
    * @param {import('../forecast.js').UpcomingEvent[]} events  pròxims esdeveniments, per a la previsió
    */
@@ -110,6 +153,7 @@ export class QueueView {
   #row(item, index, forecast, cut) {
     const state = forecast?.state ?? 'ok';
     const row = el('li', `list-group-item queue-row${state === 'lost' ? ' is-lost' : ''}${state === 'cut' ? ' is-cut' : ''}`);
+    row.dataset.index = String(index); // per saber on es deixa anar una pista arrossegada
 
     const number = el('span', 'queue-number', String(index + 1));
     // Hora prevista d'inici (la calcula el motor); la de les que no sonaran no té sentit

@@ -14,6 +14,7 @@ import { renderOutput, renderNowPlaying, renderWarnings } from './ui/statusbar.j
 import { PlannerView } from './ui/planner.js';
 import { UpcomingEvents } from './ui/upcoming.js';
 import { EventsPause } from './ui/events-pause.js';
+import { LibraryView, TRACK_DRAG_TYPE } from './ui/library.js';
 
 /**
  * @typedef {{
@@ -91,6 +92,8 @@ const planner = new PlannerView(send);
 let lastQueue = { current: null, currentEndsAt: null, upcoming: [] };
 const upcoming = new UpcomingEvents(send, () => queueView.render(lastQueue, upcoming.events));
 const eventsPause = new EventsPause(send);
+const library = new LibraryView(send);
+queueView.acceptDrops(TRACK_DRAG_TYPE, (track, position) => library.add(track, position));
 const problems = { autodj: /** @type {string | null} */ (null), output: /** @type {string | null} */ (null) };
 renderWarnings(problems);
 
@@ -281,6 +284,7 @@ async function loadState() {
     planner.refresh(); // només si es mostra
     upcoming.refresh();
     eventsPause.refresh();
+    library.refresh();
   } catch (err) {
     console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }
