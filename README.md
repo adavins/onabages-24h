@@ -18,18 +18,22 @@ Aplicació d'escriptori per a Windows per a l'emissió continuada les 24 hores d
 | `docs/radiodj/` | Esquema i dades de referència de RadioDJ per a la migració |
 | `docs/referencia/` | Encàrrec de la fase 0, ja tancada (només com a història) |
 
-## Scripts (a l'arrel, amb doble clic o des d'una consola)
+## Consola de desenvolupament (D-098)
 
-Cal tenir instal·lats el SDK de .NET 10 i Node.js.
+Cal tenir instal·lats el SDK de .NET 10 i Node.js 22 o posterior. Obre **`consola.cmd`** (a l'arrel, amb doble clic o des d'una consola). És un menú; en acabar cada opció torna al menú:
 
-| Script | Què fa |
+| Opció | Què fa |
 |---|---|
-| `arrencar.cmd` | Compila el motor i obre la interfície, que arrenca el motor si no n'hi ha cap en marxa |
-| `arrencar-motor.cmd` | Compila el motor i l'arrenca sol en aquella finestra, on es veu el registre (Ctrl+C l'atura) |
-| `aturar-motor.cmd` | Atura el motor (`engine.shutdown`): l'emissió s'atura |
-| `empaquetar.cmd` | Genera la versió portable a `build\OnaBages24\` i `build\OnaBages24-<versió>.zip`, amb el .NET inclòs i la carpeta `dades` buida (D-044) |
+| Arrencar tot | Compila el motor i obre la interfície (en una finestra nova), que arrenca el motor si no n'hi ha cap en marxa |
+| Arrencar només el motor | Compila el motor i l'arrenca sol en una finestra nova, on es veu el registre (Ctrl+C l'atura) |
+| Aturar el motor | `engine.shutdown`, amb confirmació: l'emissió s'atura |
+| Compilar el motor | `dotnet build` |
+| Proves automàtiques | Del motor (xUnit), de la interfície (`node --test`) o totes |
+| Diagnòstic del motor | Estat general, cua i rotació, dispositius, planificador, historial, escoltar esdeveniments, `comprova-emissio`, una ordre lliure i el registre del motor |
+| Empaquetar | Genera la versió portable a `build\OnaBages24\` i `build\OnaBages24-<versió>.zip`, amb el .NET inclòs i la carpeta `dades` buida (D-044) |
+| Obrir la carpeta de dades | `dades\` |
 
-Si el motor ja funciona, no es pot recompilar (els seus fitxers estan en ús): primer `aturar-motor.cmd`.
+Si el motor ja funciona, no es pot recompilar (els seus fitxers estan en ús): primer cal aturar-lo. Els scripts que crida la consola són a `tools/` (`arrencar-tot.cmd`, `arrencar-motor.cmd`, `empaquetar.cmd`). Per a proves des de la línia d'ordres hi ha `tools/prova-motor.mjs`.
 
 ## Com començar amb Claude Code
 

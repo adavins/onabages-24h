@@ -1,5 +1,5 @@
 @echo off
-rem Genera la versio portable d'Ona Bages 24h (D-044):
+rem Genera la versio portable d'Ona Bages 24h (D-044). El crida consola.cmd, opcio 7:
 rem   build\OnaBages24\              carpeta a punt per fer servir
 rem   build\OnaBages24-<versio>.zip  el mateix, comprimit per distribuir-lo
 rem
@@ -11,7 +11,7 @@ rem No s'hi copia res de la carpeta dades del repositori (base de dades, registr
 rem comenca buida. Cal tenir tancada l'aplicacio empaquetada si funciona des de build\.
 
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 for /f "delims=" %%v in ('node -p "require('./app/package.json').version"') do set VERSION=%%v
 if "%VERSION%"=="" (

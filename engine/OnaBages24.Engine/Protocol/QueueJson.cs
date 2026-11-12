@@ -20,6 +20,9 @@ public static class QueueJson
         ["durationMs"] = item.PlannedMs,
         // Trepitjador (fase 3, pas 5): el sweeper que sonarà a sobre de l'inici, o null
         ["sweeper"] = item.Sweeper is { } sweeper ? Item(sweeper) : null,
+        // D'on l'ha triada l'AutoDJ (D-097): la rotació i el pas (des de 0), o null (per al diagnòstic)
+        ["rotationId"] = item.RotationId,
+        ["rotationStep"] = item.RotationStep,
     };
 
     /// <summary>
