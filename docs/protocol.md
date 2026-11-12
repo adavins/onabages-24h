@@ -244,7 +244,7 @@ El `message` és en català i es pot mostrar a l'operador.
 - `enabled`: l'AutoDJ afegeix pistes quan a la cua n'hi ha menys de 2. En arrencar, el motor l'activa sol (amb la configuració desada o, la primera vegada, amb la primera rotació).
 - `rotation`: la rotació activa, o `null` si no n'hi ha cap (llavors sona música de tota la biblioteca, amb avís).
 - `nextStep`: índex del pas que es farà servir la pròxima vegada (0 = el primer).
-- `problem`: avís en català (un pas sense pistes que s'ha saltat, la rotació que no troba res…) o `null`.
+- `problem`: avís en català (els passos sense pistes que se salten, i es manté mentre no en tinguin; la rotació que no troba res…) o `null`.
 
 Rotació:
 

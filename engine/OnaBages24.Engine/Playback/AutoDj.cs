@@ -64,6 +64,12 @@ public sealed class AutoDj
     private readonly object _sync = new();
     private DateTimeOffset _retryAt = DateTimeOffset.MinValue;
 
+    /// <summary>
+    /// Passos de la rotació activa que l'última vegada no han trobat cap pista (s'han saltat). L'avís es manté mentre n'hi
+    /// hagi, no només quan l'última tria ha saltat un pas; un pas en surt quan torna a trobar una pista.
+    /// </summary>
+    private readonly SortedSet<int> _emptySteps = [];
+
     /// <param name="clock">Rellotge (les proves en fan servir un de fals). Per defecte, l'hora de l'ordinador.</param>
     /// <param name="random">Generador d'atzar (les proves hi posen una llavor fixa).</param>
     public AutoDj(Library library, Rotations rotations, QueuePlayer queue, AutoDjSettings? settings = null,
@@ -201,6 +207,7 @@ public sealed class AutoDj
         {
             if (fresh is null) return; // l'activa no es pot esborrar (ho comprova qui l'esborra)
             stepsChanged = StepsKey(current) != StepsKey(fresh);
+            if (stepsChanged) _emptySteps.Clear(); // els passos poden haver canviat de lloc: es tornen a comprovar
             Rotation = fresh;
             if (NextStep >= fresh.Steps.Count) NextStep = 0;
         }
@@ -238,6 +245,7 @@ public sealed class AutoDj
             if (rotation?.Id != Rotation?.Id)
             {
                 NextStep = 0;
+                _emptySteps.Clear();
                 RotationChangedBy = by;
                 RotationChangedAt = now;
             }
@@ -364,7 +372,15 @@ public sealed class AutoDj
         int next = NextStep;
         var pick = Pick(Rotation, ref next, today, context, _random);
         NextStep = next;
+
+        // Passos buits: els que s'han saltat ara s'hi afegeixen i el que ha trobat pista en surt (l'avís no va i ve)
+        if (pick.StepIndex >= 0) _emptySteps.Remove(pick.StepIndex);
+        foreach (int index in pick.SkippedSteps) _emptySteps.Add(index);
         problem = pick.Problem;
+        if (!pick.Fallback && Rotation is { } active && _emptySteps.Count > 0)
+            problem = $"Rotació «{active.Name}»: sense pistes disponibles a " +
+                string.Join(", ", _emptySteps.Where(i => i < active.Steps.Count).Select(i => $"«{active.Steps[i]}»").Distinct()) +
+                "; se salten";
         if (pick.Track is null) return null;
 
         var item = QueueItem.FromTrack(pick.Track, QueueOrigin.AutoDj);
@@ -380,7 +396,11 @@ public sealed class AutoDj
     }
 
     /// <summary>Una tria: la pista (o null), el pas d'on surt, la regla de repetició que s'ha hagut d'afluixar, l'avís i si és de la reserva.</summary>
-    private sealed record PickResult(Track? Track, RotationStep? Step, int StepIndex, string? Relaxed, string? Problem, bool Fallback);
+    private sealed record PickResult(Track? Track, RotationStep? Step, int StepIndex, string? Relaxed, string? Problem, bool Fallback)
+    {
+        /// <summary>Els passos (índexs) que s'han saltat perquè no tenien pistes.</summary>
+        public IReadOnlyList<int> SkippedSteps { get; init; } = [];
+    }
 
     /// <summary>El que ja és a la cua (o ja s'ha triat, a la previsualització) i el que ha sonat fa poc: per als criteris de repetició.</summary>
     private sealed class PickContext
@@ -430,6 +450,7 @@ public sealed class AutoDj
     private PickResult Pick(Rotation? rotation, ref int next, DateOnly today, PickContext context, Random random)
     {
         var skipped = new List<string>();
+        var skippedSteps = new List<int>();
         if (rotation is { Steps.Count: > 0 })
         {
             for (int attempt = 0; attempt < rotation.Steps.Count; attempt++)
@@ -441,9 +462,10 @@ public sealed class AutoDj
                 if (track is not null)
                 {
                     string? problem = skipped.Count > 0 ? $"Rotació «{rotation.Name}»: sense pistes disponibles a {string.Join(", ", skipped)}; s'ha saltat" : null;
-                    return new PickResult(track, step, index, relaxed, problem, false);
+                    return new PickResult(track, step, index, relaxed, problem, false) { SkippedSteps = skippedSteps };
                 }
                 skipped.Add($"«{step}»");
+                skippedSteps.Add(index);
             }
         }
 

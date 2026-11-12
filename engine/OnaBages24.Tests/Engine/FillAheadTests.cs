@@ -155,6 +155,33 @@ public sealed class FillAheadTests : IDisposable
     }
 
     [Fact]
+    public void L_avis_del_pas_buit_es_mante_encara_que_l_ultima_tria_no_l_hagi_saltat()
+    {
+        long empty = _library.EnsureSubcategory(_library.EnsureCategory("Jingles"), "Buits");
+        _autoDj.Configure(true, _rotations.Create("R", [
+            new RotationStep { SubcategoryId = _a },
+            new RotationStep { SubcategoryId = empty },
+            new RotationStep { SubcategoryId = _b },
+            new RotationStep { SubcategoryId = _a },
+        ]), "a mà");
+
+        // Es fa «Regenera la cua» diverses vegades: s'acabi on s'acabi la tria, l'avís hi ha de ser
+        for (int round = 0; round < 6; round++)
+        {
+            _autoDj.Regenerate();
+            Fill();
+            Assert.Contains("Buits", _autoDj.Problem);
+            Assert.Contains("sense pistes disponibles", _autoDj.Problem);
+        }
+
+        // Quan el pas torna a tenir pistes, l'avís marxa
+        Track(empty);
+        _autoDj.Regenerate();
+        Fill();
+        Assert.Null(_autoDj.Problem);
+    }
+
+    [Fact]
     public void Desar_una_rotacio_que_no_es_l_activa_no_toca_la_cua()
     {
         _autoDj.Configure(true, _rotations.Create("A", [new RotationStep { SubcategoryId = _a }]), "a mà");
