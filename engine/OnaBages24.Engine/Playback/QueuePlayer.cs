@@ -1,4 +1,5 @@
 using OnaBages.Audio;
+using OnaBages24.Data;
 
 namespace OnaBages24.Engine.Playback;
 
@@ -339,6 +340,36 @@ public sealed class QueuePlayer : IDisposable
     }
 
     /// <summary>Treu de la cua les pistes que encara no han començat i compleixen la condició (p. ex. totes les de l'AutoDJ, D-034).</summary>
+    /// <summary>
+    /// La pista <paramref name="track"/> ha canviat (fitxer substituït o punts nous, fase 4, pas 1; D-012): les pistes de la
+    /// cua que en són prenen la durada i els punts nous. Si la següent ja s'estava preparant amb els d'abans, es torna a
+    /// preparar, però només si falten més de 5 s perquè comenci (si no, sona com estava: l'última versió bona).
+    /// Retorna quantes s'han actualitzat.
+    /// </summary>
+    public int RefreshTrack(Track track)
+    {
+        QueueItem Updated(QueueItem i) => i with { StartMs = track.StartMs, MixMs = track.MixMs, EndMs = track.EndMs, FileDurationMs = track.DurationMs };
+        bool Differs(QueueItem i) => i.TrackId == track.Id &&
+            (i.StartMs != track.StartMs || i.MixMs != track.MixMs || i.EndMs != track.EndMs || i.FileDurationMs != track.DurationMs);
+        var events = new List<Action>();
+        int count = 0;
+        lock (_sync)
+        {
+            if (_next is { HasStarted: false } next && Differs(next.Item) && _cut?.First != next
+                && (!next.Scheduled || next.StartFrame - _mixer.FramesRendered > Frames(TimeSpan.FromSeconds(5))))
+                UnprepareNext(events); // torna al principi de la cua i es prepara de nou al pròxim Tick
+            for (int i = 0; i < _upcoming.Count; i++)
+            {
+                if (!Differs(_upcoming[i])) continue;
+                _upcoming[i] = Updated(_upcoming[i]);
+                count++;
+            }
+        }
+        Raise(events);
+        if (count > 0) Changed?.Invoke();
+        return count;
+    }
+
     public int RemoveWhere(Func<QueueItem, bool> condition) => TakeWhere(condition).Count;
 
     /// <summary>Com <see cref="RemoveWhere"/>, però retorna les pistes que ha tret, en l'ordre que tenien a la cua.</summary>

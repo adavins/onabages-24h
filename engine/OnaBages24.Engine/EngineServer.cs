@@ -307,16 +307,27 @@ public static class EngineServer
         // Recàlcul dels punts amb el nostre analitzador, en segon pla (D-042)
         var recalculator = new LibraryTools.CueRecalculator(library, log: message => log.LogInformation("{Message}", message));
 
+        // Pistes de durada variable (fase 4, pas 1; D-012): si el fitxer d'una pista de la cua canvia, durada i punts nous
+        var changeChecker = new LibraryTools.TrackChangeChecker(library, queue, log: message => log.LogInformation("{Message}", message));
+        changeChecker.TrackUpdated += trackId =>
+        {
+            var ev = Messages.Event("library.changed");
+            ev["trackId"] = trackId;
+            Broadcast(ev);
+        };
+
         app.Lifetime.ApplicationStarted.Register(() =>
         {
             control.Start();
             recalculator.Start();
             watcher.Start();
+            changeChecker.Start();
         });
 
         app.Lifetime.ApplicationStopping.Register(() =>
         {
             log.LogInformation("Aturant el motor");
+            changeChecker.Dispose();
             recalculator.Dispose();
             watcher.Dispose();
             importer.Dispose();

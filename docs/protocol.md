@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 8d (motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 4, pas 1 (motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -426,7 +426,7 @@ Estat (`folders.status`, `folders.changed`), una entrada per subcategoria amb ca
 | `rotations.changed` | — | quan es desa o s'esborra una rotació (les interfícies tornen a demanar `rotations.list`) | fase 3, pas 8a |
 | `folders.changed` | `folders` (4.11) | després de cada revisió de les carpetes vigilades (si ha canviat alguna pista, també `library.changed`) | fase 3, pas 7c |
 | `library.importProgress` | `import` (4.10) | unes 2 vegades per segon mentre s'importa, i una última en acabar | fase 3, pas 7b |
-| `library.changed` | `trackId` (la pista editada, canviada de fitxer o esborrada), o `null` si han canviat les categories o s'ha acabat una importació | quan es canvia la biblioteca des d'una ordre (les interfícies tornen a demanar el que mostren) | fase 3, pas 7a |
+| `library.changed` | `trackId` (la pista editada, canviada de fitxer o esborrada), o `null` si han canviat les categories o s'ha acabat una importació | quan es canvia la biblioteca des d'una ordre (les interfícies tornen a demanar el que mostren). Fase 4, pas 1 (D-102): també quan el fitxer d'una pista de la cua s'ha substituït i se n'han tornat a llegir la durada i els punts | fase 3, pas 7a |
 | `processor.changed` | `processor` (4.9) | quan canvia el preajust o el volum del processador de la sortida | fase 3, pas 6 |
 | `output.changed` | `output` (4.3) | quan canvia la sortida, l'estat d'emergència o el problema | fase 1, pas 7c |
 | `autodj.changed` | `autodj` (4.5) | quan s'activa o es desactiva, canvia la rotació o canvia l'avís (les pistes que afegeix surten a `queue.changed`) | fase 1, pas 8 |
