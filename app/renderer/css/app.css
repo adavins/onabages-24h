@@ -1483,6 +1483,202 @@ button.section:hover {
 }
 
 /* Cada pantalla ocupa l'espai entre la capçalera i la barra d'estat */
+/* --- Calendari d'una pista (fase 4, pas 2b; D-104) --- */
+
+.cal-search {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.cal-filters {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.cal-filters .form-select {
+  min-width: 0;
+}
+
+.cal-result {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.3rem 0.6rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.cal-result:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cal-result.active {
+  background: rgba(13, 110, 253, 0.25);
+}
+
+.cal-result-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-result-type {
+  flex: none;
+  color: var(--ob-muted);
+  font-size: 0.75rem;
+}
+
+.cal-head {
+  margin-bottom: 0.75rem;
+}
+
+.cal-title {
+  font-size: 1.05rem;
+}
+
+.cal-grid-wrap {
+  overflow-x: auto;
+}
+
+.cal-grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 3px;
+  font-size: 0.8rem;
+}
+
+.cal-grid th {
+  text-align: center;
+  font-weight: 600;
+  color: var(--ob-muted);
+}
+
+.cal-grid .cal-time {
+  width: 3.5rem;
+  text-align: right;
+  padding-right: 0.4rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Casella buida (D-105): discreta; en passar-hi el ratolí, es veu que s'hi pot programar la pista */
+.cal-cell.cal-cell-empty {
+  justify-content: center;
+  border: 1px dashed transparent;
+  background: rgba(255, 255, 255, 0.02);
+  color: transparent;
+}
+
+.cal-cell.cal-cell-empty:hover,
+.cal-cell.cal-cell-empty:focus-visible {
+  border-color: var(--ob-border);
+  color: var(--ob-muted);
+}
+
+/* Hora afegida que encara no té res (no es desa fins que s'hi marca un dia) */
+.cal-provisional .cal-time {
+  font-style: italic;
+  color: var(--bs-info);
+}
+
+.cal-mode {
+  margin-top: 0.5rem;
+}
+
+/* Vista «Només aquesta pista»: una marca els dies que sona */
+.cal-grid-track td {
+  height: 1.9rem;
+  border-radius: 0.25rem;
+  text-align: center;
+}
+
+.cal-grid-track .cal-on {
+  background: rgba(25, 135, 84, 0.35);
+  color: #d1f0df;
+  font-size: 1rem;
+}
+
+.cal-grid-track .cal-off {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Casella: el color del mode; marcada, més intensa i amb la marca; d'un esdeveniment desactivat, ratllada */
+.cal-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  min-height: 1.9rem;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--mode-line);
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--mode-fg);
+  text-align: left;
+}
+
+.cal-cell.is-marked {
+  background: var(--mode-bg);
+  border-width: 2px;
+  font-weight: 600;
+}
+
+.cal-cell.is-disabled {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.cal-cell:disabled {
+  cursor: wait;
+}
+
+.cal-cell-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-add {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.cal-add-time {
+  width: 5rem;
+}
+
+.cal-counts {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ob-border);
+  font-size: 0.9rem;
+}
+
+.cal-week {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.35rem 0;
+}
+
+.cal-week-day {
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-months {
+  color: var(--ob-muted);
+  font-size: 0.85rem;
+}
+
 .view {
   flex: 1 1 auto;
   min-height: 0;

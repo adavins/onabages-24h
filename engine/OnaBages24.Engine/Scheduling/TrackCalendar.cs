@@ -36,11 +36,25 @@ public static class TrackCalendar
     public static bool Carries(ScheduledEvent ev) => !ev.IsTemplate && ev.Mode is EventMode.Cut or EventMode.Queue;
 
     /// <summary>
-    /// Els dies de la setmana en què pot sonar (bit0 = dilluns). Els que no van per dies de la setmana (dies del mes, dates
-    /// soltes) poden caure qualsevol dia.
+    /// Els dies de la setmana en què pot sonar a partir d'avui (bit0 = dilluns; 0 = ja no sonarà mai):
+    /// - dates soltes: els dies de la setmana de les dates d'avui en endavant (una sola data, un sol dia);
+    /// - dies del mes: qualsevol dia;
+    /// - la resta, els seus dies de la setmana; si la data de fi ja ha passat, cap.
     /// </summary>
-    public static int EventDays(ScheduledEvent ev) =>
-        ev.Recurrence is EventRecurrence.DaysOfMonth or EventRecurrence.Dates ? Weekdays.All : ev.DaysMask;
+    public static int EventDays(ScheduledEvent ev, DateOnly today)
+    {
+        if (ev.EndDate is { } end && end < today) return 0;
+        if (ev.Recurrence == EventRecurrence.Dates)
+            return ev.IncludedDates.Where(d => d >= today && !ev.ExcludedDates.Contains(d))
+                .Aggregate(0, (mask, d) => mask | Weekdays.Bit(d.DayOfWeek));
+        return ev.Recurrence == EventRecurrence.DaysOfMonth ? Weekdays.All : ev.DaysMask;
+    }
+
+    /// <summary>Les dates soltes d'avui en endavant (per dir-les a la casella), en ordre.</summary>
+    public static IReadOnlyList<DateOnly> UpcomingDates(ScheduledEvent ev, DateOnly today) =>
+        ev.Recurrence == EventRecurrence.Dates
+            ? ev.IncludedDates.Where(d => d >= today && !ev.ExcludedDates.Contains(d)).Order().ToList()
+            : [];
 
     /// <summary>La pista (<c>songId</c>) d'una acció PISTA, o null.</summary>
     public static long? TrackOf(EventAction action)
@@ -60,10 +74,14 @@ public static class TrackCalendar
     public static bool IsMarked(ScheduledEvent ev, long trackId, int day) =>
         ev.Actions.Any(a => TrackOf(a) == trackId && (a.DaysMask is not { } mask || (mask & (1 << day)) != 0));
 
-    /// <summary>La graella de la pista: una fila per hora, en ordre.</summary>
-    public static IReadOnlyList<CalendarRow> Build(IEnumerable<ScheduledEvent> events, long trackId)
+    /// <summary>
+    /// La graella de la pista: una fila per hora, en ordre. Només els esdeveniments que encara poden sonar a partir de
+    /// <paramref name="today"/> (els que ja s'han acabat o les dates soltes passades, no).
+    /// </summary>
+    public static IReadOnlyList<CalendarRow> Build(IEnumerable<ScheduledEvent> events, long trackId, DateOnly today)
     {
-        var carrying = events.Where(Carries).ToList();
+        // Un bloc de falques buit no hi surt (D-105: no n'hauria d'haver cap; s'esborren sols)
+        var carrying = events.Where(Carries).Where(e => EventDays(e, today) != 0 && !IsEmptyBlock(e)).ToList();
 
         // Franges ocupades: els TALLA amb durada màxima ocupen des de la seva hora fins a hora + durada (planificador.md 3)
         var busy = carrying.Where(e => e.Mode == EventMode.Cut && e.MaxDurationSeconds is > 0)
@@ -73,7 +91,7 @@ public static class TrackCalendar
         var slots = new Dictionary<(TimeOnly Time, int Day), List<ScheduledEvent>>();
         foreach (var ev in carrying)
         {
-            int days = EventDays(ev);
+            int days = EventDays(ev, today);
             foreach (var time in Recurrences.TimesOfDay(ev))
                 for (int day = 0; day < 7; day++)
                 {
@@ -93,7 +111,7 @@ public static class TrackCalendar
                 // Si n'hi ha diversos, el que es fa servir: el de més prioritat; a igualtat, l'actiu i el més antic
                 var ordered = list.OrderByDescending(e => e.Priority).ThenByDescending(e => e.Enabled).ThenBy(e => e.Id).ToList();
                 var chosen = ordered[0];
-                string? busyBy = busy.FirstOrDefault(b => b.Event.Id != chosen.Id && (EventDays(b.Event) & (1 << day)) != 0
+                string? busyBy = busy.FirstOrDefault(b => b.Event.Id != chosen.Id && (EventDays(b.Event, today) & (1 << day)) != 0
                     && time.ToTimeSpan() > b.Start && time.ToTimeSpan() < b.End).Event?.Name;
                 cells[day] = new CalendarCell(chosen, IsMarked(chosen, trackId, day), ordered.Skip(1).Select(e => e.Name).ToList(), busyBy);
             }
@@ -102,29 +120,57 @@ public static class TrackCalendar
         return rows;
     }
 
+    /// <summary>Un bloc de falques sense cap pista (D-105: s'esborra sol).</summary>
+    public static bool IsEmptyBlock(ScheduledEvent ev) => ev.CommercialBlock && !ev.IsTemplate && ev.Actions.Count == 0;
+
+    /// <summary>La casella d'una hora i un dia (0 = dilluns), o null si no n'hi ha cap (no hi ha cap esdeveniment).</summary>
+    public static CalendarCell? CellAt(IReadOnlyList<CalendarRow> rows, TimeOnly time, int day) =>
+        day is >= 0 and <= 6 ? rows.FirstOrDefault(r => r.Time == time)?.Days[day] : null;
+
+    /// <summary>
+    /// Un bloc de falques nou (D-105), encara sense pistes ni dies: el crea el calendari en marcar una casella on no hi
+    /// ha cap esdeveniment. Els seus dies són sempre els de les seves pistes (<see cref="Set"/>).
+    /// </summary>
+    public static ScheduledEvent NewBlock(TimeOnly time) => new()
+    {
+        Name = $"Bloc de falques {time:HH\\:mm}",
+        Mode = EventMode.Queue,
+        StartTime = time,
+        DaysMask = 0,
+        CommercialBlock = true,
+        Enabled = true,
+    };
+
     /// <summary>
     /// Marca o desmarca la pista a l'esdeveniment el dia <paramref name="day"/> (0 = dilluns) i retorna l'esdeveniment
     /// canviat (sense desar). Una pista nova va abans de la primera de tipus Programa (si no n'hi ha, al final), perquè no
     /// quedi mai darrere d'un programa (D-028). Si ja hi era, només canvien els seus dies.
+    /// Un bloc de falques (D-105) es pot marcar qualsevol dia: els dies del bloc passen a ser els de les seves pistes (cada
+    /// pista amb els seus dies, sempre explícits). Si es queda sense pistes, té 0 dies i qui el desa l'ha d'esborrar.
     /// </summary>
     /// <param name="typeOf">El tipus de cada pista de l'esdeveniment (per trobar el primer programa); null si no hi és.</param>
     /// <exception cref="ArgumentException">Si l'esdeveniment no pot portar pistes o no sona aquell dia.</exception>
-    public static ScheduledEvent Set(ScheduledEvent ev, long trackId, int day, bool marked, Func<long, TrackType?> typeOf)
+    public static ScheduledEvent Set(ScheduledEvent ev, long trackId, int day, bool marked, Func<long, TrackType?> typeOf, DateOnly today)
     {
         if (!Carries(ev)) throw new ArgumentException("Aquest esdeveniment no pot portar pistes (només TALLA i ENCUA).");
         if (day is < 0 or > 6) throw new ArgumentException("El dia ha de ser de 0 (dilluns) a 6 (diumenge).");
-        int eventDays = EventDays(ev);
+        bool block = ev.CommercialBlock;
+        // Dies de la setmana per als dies propis de l'acció: en una data solta, els d'aquella data (i, si ja ha passat, cap).
+        // Un bloc de falques, qualsevol dia (els seus dies surten de les pistes).
+        int eventDays = block ? Weekdays.All : EventDays(ev, today);
         int bit = 1 << day;
         if ((eventDays & bit) == 0) throw new ArgumentException($"«{ev.Name}» no sona aquest dia.");
 
-        int? Normalize(int mask) => (mask & eventDays) == eventDays ? null : mask & eventDays;
+        // Dies d'una acció sense dies propis: els de l'esdeveniment (en un bloc, els que tenia el bloc)
+        int ActionDays(EventAction a) => a.DaysMask ?? (block ? ev.DaysMask : eventDays);
+        int? Normalize(int mask) => block ? mask & Weekdays.All : (mask & eventDays) == eventDays ? null : mask & eventDays;
         var actions = ev.Actions.ToList();
         int index = actions.FindIndex(a => TrackOf(a) == trackId);
         if (marked)
         {
             if (index >= 0)
             {
-                int mask = (actions[index].DaysMask ?? eventDays) | bit;
+                int mask = ActionDays(actions[index]) | bit;
                 actions[index] = actions[index] with { DaysMask = Normalize(mask) };
             }
             else
@@ -141,11 +187,16 @@ public static class TrackCalendar
         }
         else if (index >= 0)
         {
-            int mask = (actions[index].DaysMask ?? eventDays) & ~bit;
+            int mask = ActionDays(actions[index]) & ~bit;
             if ((mask & eventDays) == 0) actions.RemoveAt(index);
             else actions[index] = actions[index] with { DaysMask = Normalize(mask) };
         }
-        return ev with { Actions = actions };
+        if (!block) return ev with { Actions = actions };
+
+        // Bloc de falques: sona els dies que té alguna acció (una sense dies propis, p. ex. posada des del Planificador,
+        // compta amb els dies que tenia el bloc). Sense cap acció, 0 dies: s'ha d'esborrar.
+        int blockDays = actions.Aggregate(0, (m, a) => m | (a.DaysMask ?? ev.DaysMask));
+        return ev with { Actions = actions, DaysMask = blockDays & Weekdays.All };
     }
 
     /// <summary>
@@ -153,7 +204,8 @@ public static class TrackCalendar
     /// dates reals: només els esdeveniments actius, les seves recurrències i excepcions, els dies propis de l'acció i les
     /// dates de la pista. També els d'una setmana tipus (per dia de la setmana) i quants dies estan marcats en esdeveniments desactivats.
     /// </summary>
-    public static CalendarCounts Count(IEnumerable<ScheduledEvent> events, Track track, DateOnly from, DateOnly to)
+    /// <param name="today">Per a la setmana tipus: les dates soltes que ja han passat no hi compten.</param>
+    public static CalendarCounts Count(IEnumerable<ScheduledEvent> events, Track track, DateOnly from, DateOnly to, DateOnly today)
     {
         var carrying = events.Where(Carries).Where(e => e.Actions.Any(a => TrackOf(a) == track.Id)).ToList();
         var active = carrying.Where(e => e.Enabled).ToList();
@@ -185,7 +237,7 @@ public static class TrackCalendar
         foreach (var ev in carrying)
             for (int day = 0; day < 7; day++)
             {
-                if ((EventDays(ev) & (1 << day)) == 0 || !IsMarked(ev, track.Id, day)) continue;
+                if ((EventDays(ev, today) & (1 << day)) == 0 || !IsMarked(ev, track.Id, day)) continue;
                 if (ev.Enabled) perWeekday[day] += Recurrences.TimesOfDay(ev).Count;
                 else markedInDisabled++;
             }

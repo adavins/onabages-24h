@@ -23,6 +23,7 @@ import { ImportView } from './ui/import.js';
 import { FoldersView } from './ui/folders.js';
 import { RerootView } from './ui/reroot.js';
 import { RotationsView } from './ui/rotations.js';
+import { CalendarView } from './ui/calendar.js';
 import { folderWarnings } from './folders-text.js';
 import { setupZoom, applyZoom } from './ui/zoom.js';
 import { setupWindowFrame } from './ui/window-frame.js';
@@ -121,6 +122,7 @@ const notes = new NotesView(send);
 const processor = new ProcessorView(send);
 const folders = new FoldersView(send, (path) => bridge.chooseFolder(path));
 const rotationsView = new RotationsView(send);
+const calendarView = new CalendarView(send);
 const trackManager = new TrackManagerView(send, (path) => bridge.chooseAudioFile(path), folders);
 new RerootView(send, (path) => bridge.chooseFolder(path));
 const importView = new ImportView(send, (path) => bridge.chooseFolder(path), (path) => bridge.chooseAudioFiles(path),
@@ -234,9 +236,9 @@ async function refreshNowPlayingStatus() {
 
 // --- Pantalles: Emissió i Planificador (fase 2, pas 8a). L'emissió continua igual, es mostri la que es mostri. ---
 
-/** @param {'emissio' | 'planificador' | 'biblioteca' | 'rotacions'} name */
+/** @param {'emissio' | 'planificador' | 'biblioteca' | 'rotacions' | 'calendari'} name */
 function showView(name) {
-  for (const view of /** @type {const} */ (['emissio', 'planificador', 'biblioteca', 'rotacions'])) {
+  for (const view of /** @type {const} */ (['emissio', 'planificador', 'biblioteca', 'rotacions', 'calendari'])) {
     const active = view === name;
     $(`view-${view}`).classList.toggle('d-none', !active);
     const tab = $(`nav-${view}`);
@@ -250,11 +252,14 @@ function showView(name) {
   else trackManager.hide();
   if (name === 'rotacions') rotationsView.show();
   else rotationsView.hide();
+  if (name === 'calendari') calendarView.show();
+  else calendarView.hide();
 }
 $('nav-emissio').addEventListener('click', () => showView('emissio'));
 $('nav-planificador').addEventListener('click', () => showView('planificador'));
 $('nav-biblioteca').addEventListener('click', () => showView('biblioteca'));
 $('nav-rotacions').addEventListener('click', () => showView('rotacions'));
+$('nav-calendari').addEventListener('click', () => showView('calendari'));
 
 // Saltar a la següent: interromp la cançó, per tant demana confirmació
 // «Regenera la cua» (D-034): només canvia les pistes que ha posat l'AutoDJ i no interromp res, per això no demana confirmació
@@ -406,6 +411,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   client.addEventListener('ev:scheduler.changed', () => {
     planner.refresh();
     upcoming.refresh();
+    calendarView.refresh(); // només si es mostra (p. ex. s'ha canviat un esdeveniment al Planificador)
   });
   client.addEventListener('ev:scheduler.fired', () => upcoming.refresh());
   client.addEventListener('ev:scheduler.paused', (e) => eventsPause.show(detail(e).paused));
@@ -431,6 +437,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   client.addEventListener('ev:library.changed', (e) => {
     const trackId = detail(e).trackId ?? null;
     trackManager.libraryChanged(trackId);
+    calendarView.refresh(); // el títol o les dates de la pista triada poden haver canviat
     if (trackId == null) library.refresh(); // els filtres de la cerca de l'Emissió (noms i comptes)
   });
   client.addEventListener('ev:meters', (e) => {

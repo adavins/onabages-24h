@@ -177,7 +177,6 @@ public sealed class CommandRouter
                 "separation.set" => SeparationSet(msg),
                 "calendar.get" => CalendarGet(msg),
                 "calendar.set" => CalendarSet(msg),
-                "calendar.addBlock" => CalendarAddBlock(msg),
                 "reserve.get" => ReserveJson(AutoDjOrError().Reserve),
                 "reserve.set" => ReserveSet(msg),
                 "history.list" => HistoryList(msg),
@@ -1578,8 +1577,8 @@ public sealed class CommandRouter
         if (to.DayNumber - from.DayNumber > 400) to = from.AddDays(400);
 
         var all = events.List();
-        var rows = TrackCalendar.Build(all, track.Id);
-        var counts = TrackCalendar.Count(all, track, from, to);
+        var rows = TrackCalendar.Build(all, track.Id, today);
+        var counts = TrackCalendar.Count(all, track, from, to, today);
         JsonNode? Cell(CalendarCell? c) => c is null ? null : new JsonObject
         {
             ["eventId"] = c.Event.Id,
@@ -1589,13 +1588,18 @@ public sealed class CommandRouter
             ["commercialBlock"] = c.Event.CommercialBlock,
             ["repeats"] = c.Event.Repeat != EventRepeat.None, // marcar-la la posa a totes les hores de l'esdeveniment
             ["nonWeekly"] = c.Event.Recurrence != EventRecurrence.Weekly, // no sona totes les setmanes
+            // Dates soltes: quines (d'avui en endavant), per dir-ho a la casella
+            ["dates"] = new JsonArray(TrackCalendar.UpcomingDates(c.Event, today).Select(d => (JsonNode)JsonValue.Create(d.ToString("yyyy-MM-dd"))!).ToArray()),
             ["marked"] = c.Marked,
             ["busyBy"] = c.BusyBy,
             ["others"] = new JsonArray(c.Others.Select(o => (JsonNode)JsonValue.Create(o)!).ToArray()),
         };
+        var trackJson = QueueJson.Track(track);
+        trackJson["validFrom"] = track.ValidFrom?.ToString("yyyy-MM-dd");
+        trackJson["validUntil"] = track.ValidUntil?.ToString("yyyy-MM-dd");
         return new JsonObject
         {
-            ["track"] = QueueJson.Track(track),
+            ["track"] = trackJson,
             ["rows"] = new JsonArray(rows.Select(r => (JsonNode)new JsonObject
             {
                 ["time"] = r.Time.ToString("HH:mm:ss"),
@@ -1616,55 +1620,47 @@ public sealed class CommandRouter
     }
 
     /// <summary>
-    /// Marca o desmarca una casella: <c>trackId</c>, <c>eventId</c>, <c>day</c> (0 = dilluns … 6 = diumenge) i <c>marked</c>.
-    /// L'esdeveniment es desa sencer d'una vegada i el planificador el té en compte de seguida. Retorna el calendari (com
-    /// <c>calendar.get</c>, amb el mateix <c>from</c> i <c>to</c> si s'envien).
+    /// Marca o desmarca una casella: <c>trackId</c>, <c>time</c> («HH:MM» o «HH:MM:SS»), <c>day</c> (0 = dilluns … 6 =
+    /// diumenge) i <c>marked</c>. Si a la casella hi ha un esdeveniment, la pista hi entra o en surt; si no n'hi ha cap
+    /// (D-105), va al bloc de falques d'aquella hora, que es crea si no existeix. Un bloc que es queda sense pistes s'esborra.
+    /// Tot es desa d'una vegada i el planificador ho té en compte de seguida. Retorna el calendari (com <c>calendar.get</c>,
+    /// amb el mateix <c>from</c> i <c>to</c> si s'envien).
     /// </summary>
     private JsonObject CalendarSet(JsonObject msg)
     {
         var library = LibraryOrError();
         var events = EventsOrError();
         var track = TrackOrError(library, RequiredId(msg, "trackId"));
-        long eventId = RequiredId(msg, "eventId");
-        var ev = events.Get(eventId) ?? throw new BadParamsException($"No existeix l'esdeveniment {eventId}.");
+        string text = (ReadString(msg["time"]) ?? "").Trim();
+        if (!TimeOnly.TryParseExact(text, ["HH:mm", "HH:mm:ss"], out var time))
+            throw new BadParamsException("Falta 'time' (l'hora de la casella, HH:MM).");
         int day = ReadInt(msg["day"]) ?? -1;
+        if (day is < 0 or > 6) throw new BadParamsException("El dia ha de ser de 0 (dilluns) a 6 (diumenge).");
         if (msg["marked"] is not JsonValue mv || !mv.TryGetValue(out bool marked)) throw new BadParamsException("Falta 'marked' (true o false).");
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var all = events.List();
+        // L'esdeveniment de la casella; si no n'hi ha cap, el bloc de falques d'aquella hora (un de nou si no n'hi ha)
+        var ev = TrackCalendar.CellAt(TrackCalendar.Build(all, track.Id, today), time, day)?.Event;
+        if (ev is null)
+        {
+            if (!marked) return CalendarGet(msg); // treure-la d'on no hi és: res a fer
+            ev = all.FirstOrDefault(e => e.CommercialBlock && !e.IsTemplate && e.StartTime == time) ?? TrackCalendar.NewBlock(time);
+        }
         try
         {
-            var changed = TrackCalendar.Set(ev, track.Id, day, marked, id => library.GetTrack(id)?.Type);
-            events.Save(changed);
+            var changed = TrackCalendar.Set(ev, track.Id, day, marked, id => library.GetTrack(id)?.Type, today);
+            if (TrackCalendar.IsEmptyBlock(changed)) { if (changed.Id != 0) events.Delete(changed.Id); }
+            else events.Save(changed);
         }
         catch (ArgumentException ex)
         {
             throw new BadParamsException(ex.Message);
         }
+        // Els blocs de falques buits (p. ex. d'abans, o si s'han buidat des del Planificador) s'esborren (D-105)
+        foreach (var empty in events.List().Where(TrackCalendar.IsEmptyBlock)) events.Delete(empty.Id);
         _scheduler?.Reload();
         return CalendarGet(msg);
-    }
-
-    /// <summary>
-    /// «+ Afegeix una hora» (D-029): crea un bloc de falques (ENCUA) a l'hora <c>time</c> («HH:MM», en múltiples de 5
-    /// minuts), tots els dies, sense contingut. Retorna <c>{ eventId }</c>.
-    /// </summary>
-    private JsonObject CalendarAddBlock(JsonObject msg)
-    {
-        var events = EventsOrError();
-        string text = (ReadString(msg["time"]) ?? "").Trim();
-        if (!TimeOnly.TryParseExact(text, "HH:mm", out var time) || time.Minute % 5 != 0)
-            throw new BadParamsException("L'hora ha de ser HH:MM, en múltiples de 5 minuts (p. ex. 08:05 o 13:35).");
-        if (events.List().Any(e => e.CommercialBlock && !e.IsTemplate && e.StartTime == time))
-            throw new BadParamsException($"Ja hi ha un bloc de falques a les {text}.");
-        long id = events.Save(new ScheduledEvent
-        {
-            Name = $"Bloc de falques {text}",
-            Mode = EventMode.Queue,
-            StartTime = time,
-            DaysMask = Weekdays.All,
-            CommercialBlock = true,
-            Enabled = true,
-        });
-        _scheduler?.Reload();
-        return new JsonObject { ["eventId"] = id };
     }
 
     // --- Reserva de l'AutoDJ (fase 3, pas 8d; D-099) ---
