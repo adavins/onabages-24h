@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 7d (motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 7e (motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -112,6 +112,9 @@ El `message` és en català i es pot mostrar a l'operador.
 | `folders.status` | — | `{ folders: [ … ] }` (4.11): com estan les carpetes vigilades a l'última revisió | fase 3, pas 7c |
 | `folders.scan` | — | `{ scanning: true }`: revisa les carpetes ara (el resultat arriba amb `folders.changed`) | fase 3, pas 7c |
 | `folders.log` | `subcategoryId` (opcional), `limit` (per defecte 100, com a molt 1.000) | `{ entries: [ { id, time, subcategoryId, subcategory, path, action, detail } ] }`, els més recents primer. `action`: `imported`, `recovered`, `missing`, `deleted`, `updated`, `error` o `folder` (problema de la carpeta, o que s'ha resolt) | fase 3, pas 7c |
+| `library.waveform` | `trackId`, `fromMs` i `toMs` (el tros; per defecte tota la pista), `buckets` (per defecte 800, com a molt 2.000) | `{ trackId, fromMs, toMs, floorDb, peaks: [ … ] }`: el pic de cada tros, de 0 a 255 en una escala de dB (`floorDb` = −60 dB → 0; 0 dB → 255). Només es descodifica el tros demanat. Si el fitxer falta, `bad_params` | fase 3, pas 7e |
+| `library.setCues` | `trackId`, `startMs`, `mixMs`, `endMs` (0 ≤ inici ≤ mescla ≤ final ≤ durada) | `{ track }` (la fitxa sencera, `cueSource: manual`) i `library.changed`. L'analitzador no els tornarà a tocar (D-042). El que ja és a la cua no canvia | fase 3, pas 7e |
+| `library.recalculateCues` | `trackId` | `{ track }` (`cueSource: analyzer`) i `library.changed`: torna a calcular els punts amb l'analitzador, també si eren manuals | fase 3, pas 7e |
 | `library.missingFolders` | — | `{ folders: [ { folder, count } ] }`: les carpetes on hi ha pistes amb el fitxer que falta, les que més primer (40), per triar l'arrel d'un canvi d'arrel | fase 3, pas 7d |
 | `library.rerootPreview` | `from` (el principi de les rutes d'ara), `to` (l'arrel nova: una carpeta que existeixi) | `{ from, to, tracks, found, notFound, conflicts, examples: [ { from, to, exists, conflict } ] }` (10 exemples): què passaria, sense canviar res. Mira si cada fitxer hi és | fase 3, pas 7d |
 | `library.reroot` | `from`, `to`, `onlyFound` (per defecte `true`: només les que trobaran el fitxer) | El mateix que `library.rerootPreview` i, a més, `changed`, `changedFound`, `skipped`, `foldersMoved`; i `library.changed`. Tot en una transacció (o canvien totes o cap). La fitxa, els punts i l'historial es conserven; les que xoquen amb una altra pista no es toquen; les carpetes vigilades dins de l'arrel antiga passen a la nova | fase 3, pas 7d |

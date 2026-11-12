@@ -2,7 +2,29 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTags, trackChanges, trackProblems, guessType } from '../renderer/js/track-form.js';
+import { parseTags, trackChanges, trackProblems, guessType, parseSeconds, formatSeconds, cueProblems } from '../renderer/js/track-form.js';
+
+test('parseSeconds i formatSeconds: segons amb coma i minuts', () => {
+  assert.equal(parseSeconds('62,5'), 62500);
+  assert.equal(parseSeconds('62.5'), 62500);
+  assert.equal(parseSeconds('1:02,345'), 62345);
+  assert.equal(parseSeconds(' 0,12 '), 120);
+  assert.equal(parseSeconds('1:75'), null);
+  assert.equal(parseSeconds('abc'), null);
+  assert.equal(parseSeconds(''), null);
+  assert.equal(formatSeconds(62345), '1:02,345');
+  assert.equal(formatSeconds(7250), '7,250');
+  assert.equal(formatSeconds(null), '');
+  assert.equal(parseSeconds(formatSeconds(215432)), 215432);
+});
+
+test('cueProblems: inici ≤ mescla ≤ final ≤ durada', () => {
+  assert.deepEqual(cueProblems(100, 200000, 210000, 215000), []);
+  assert.equal(cueProblems(5000, 1000, 210000, 215000).length, 1);
+  assert.equal(cueProblems(100, 200000, 190000, 215000).length, 1);
+  assert.match(cueProblems(100, 200000, 220000, 215000)[0], /durada/);
+  assert.equal(cueProblems(null, 1, 2, 3).length, 1);
+});
 
 test('guessType: el tipus que proposa segons la categoria de l\'emissora', () => {
   assert.equal(guessType('Music'), 'music');

@@ -75,6 +75,44 @@ export function trackChanges(track, values) {
 }
 
 /**
+ * Un temps escrit a mà a mil·lisegons (editor de punts, fase 3, pas 7e): «62,5», «62.5» o «1:02,5». Null si no és vàlid.
+ * @param {string} text
+ * @returns {number | null}
+ */
+export function parseSeconds(text) {
+  const t = text.trim().replace(',', '.');
+  const m = /^(?:(\d+):)?(\d+(?:\.\d+)?)$/.exec(t);
+  if (!m) return null;
+  const minutes = m[1] ? Number(m[1]) : 0;
+  const seconds = Number(m[2]);
+  if (m[1] && seconds >= 60) return null;
+  return Math.round((minutes * 60 + seconds) * 1000);
+}
+
+/** Mil·lisegons a «1:02,345» (o «7,250» per sota del minut). @param {number | null | undefined} ms */
+export function formatSeconds(ms) {
+  if (ms == null || !Number.isFinite(ms)) return '';
+  const total = Math.max(0, Math.round(ms));
+  const minutes = Math.floor(total / 60000);
+  const rest = ((total % 60000) / 1000).toFixed(3).replace('.', ',');
+  return minutes > 0 ? `${minutes}:${rest.padStart(6, '0')}` : rest;
+}
+
+/**
+ * Problemes dels punts d'una pista (inici ≤ mescla ≤ final ≤ durada).
+ * @param {number | null} start @param {number | null} mix @param {number | null} end @param {number | null | undefined} duration
+ * @returns {string[]}
+ */
+export function cueProblems(start, mix, end, duration) {
+  if (start == null || mix == null || end == null) return ['Escriu els tres punts (en segons, p. ex. 1,250 o 3:05,5).'];
+  const problems = [];
+  if (mix < start) problems.push('La mescla no pot ser abans de l\'inici.');
+  if (end < mix) problems.push('El final no pot ser abans de la mescla.');
+  if (duration != null && end > duration) problems.push(`El final no pot passar de la durada (${formatSeconds(duration)} s).`);
+  return problems;
+}
+
+/**
  * Problemes que impedeixen desar (en català, per mostrar-los).
  * @param {TrackFormValues} values
  * @returns {string[]}

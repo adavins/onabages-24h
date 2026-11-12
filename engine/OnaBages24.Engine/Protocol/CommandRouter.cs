@@ -148,6 +148,9 @@ public sealed class CommandRouter
                 "folders.status" => new JsonObject { ["folders"] = QueueJson.Folders(WatcherOrError().Status) },
                 "folders.scan" => FoldersScan(),
                 "folders.log" => FoldersLog(msg),
+                "library.waveform" => LibraryWaveform(msg),
+                "library.setCues" => LibrarySetCues(msg),
+                "library.recalculateCues" => LibraryRecalculateCues(msg),
                 "library.missingFolders" => LibraryMissingFolders(),
                 "library.rerootPreview" => LibraryReroot(msg, apply: false),
                 "library.reroot" => LibraryReroot(msg, apply: true),
@@ -627,6 +630,83 @@ public sealed class CommandRouter
         result["keptForEvents"] = kept;
         LibraryChanged?.Invoke(null);
         return result;
+    }
+
+    // --- Editor de punts (fase 3, pas 7e; D-093) ---
+
+    /// <summary>
+    /// Forma d'ona d'una pista: <c>trackId</c>, <c>fromMs</c> i <c>toMs</c> (el tros; per defecte, tota la pista) i
+    /// <c>buckets</c> (quants trossos; per defecte 800, com a molt 2.000). Els pics van de 0 a 255 en una escala de dB
+    /// (de −60 a 0 dB). Només es descodifica el tros demanat.
+    /// </summary>
+    private JsonObject LibraryWaveform(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        var track = TrackOrError(library, RequiredId(msg, "trackId"));
+        if (track.FileState == FileState.Missing) throw new BadParamsException("El fitxer d'aquesta pista falta: no se'n pot veure la forma d'ona.");
+        long duration = track.DurationMs ?? 0;
+        long from = Math.Max(0, msg["fromMs"] is JsonValue f && f.TryGetValue(out long fv) ? fv : 0);
+        long to = msg["toMs"] is JsonValue t && t.TryGetValue(out long tv) ? tv : duration;
+        if (duration > 0) to = Math.Min(to, duration);
+        if (to <= from) throw new BadParamsException("El tros és buit ('toMs' ha de ser més gran que 'fromMs').");
+        int buckets = Math.Clamp(ReadInt(msg["buckets"]) ?? 800, 1, LibraryTools.CueWaveform.MaxBuckets);
+        byte[] peaks;
+        try { peaks = LibraryTools.CueWaveform.Compute(track.Path, TimeSpan.FromMilliseconds(from), TimeSpan.FromMilliseconds(to), buckets); }
+        catch (Exception ex) when (ex is AudioFileException or IOException or UnauthorizedAccessException)
+        {
+            throw new BadParamsException($"No es pot llegir el fitxer: {ex.Message}");
+        }
+        return new JsonObject
+        {
+            ["trackId"] = track.Id,
+            ["fromMs"] = from,
+            ["toMs"] = to,
+            ["floorDb"] = LibraryTools.CueWaveform.FloorDb,
+            ["peaks"] = new JsonArray(peaks.Select(p => (JsonNode)JsonValue.Create((int)p)).ToArray()),
+        };
+    }
+
+    /// <summary>
+    /// Desa els punts editats a mà: <c>trackId</c>, <c>startMs</c>, <c>mixMs</c>, <c>endMs</c> (0 ≤ inici ≤ mescla ≤ final ≤
+    /// durada). Queden com a «editats a mà»: l'analitzador no els tornarà a tocar (D-042).
+    /// </summary>
+    private JsonObject LibrarySetCues(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        var track = TrackOrError(library, RequiredId(msg, "trackId"));
+        long Ms(string field) => msg[field] is JsonValue v && v.TryGetValue(out long ms)
+            ? ms : throw new BadParamsException($"Falta '{field}' (mil·lisegons).");
+        long start = Ms("startMs"), mix = Ms("mixMs"), end = Ms("endMs");
+        if (start < 0 || mix < start || end < mix)
+            throw new BadParamsException("Els punts han d'anar en ordre: inici ≤ mescla ≤ final.");
+        if (track.DurationMs is { } duration && end > duration)
+            throw new BadParamsException($"El final no pot passar de la durada de la pista ({duration} ms).");
+        library.UpdateTrack(track with { StartMs = start, MixMs = mix, EndMs = end, CueSource = CueSource.Manual });
+        LibraryChanged?.Invoke(track.Id);
+        return TrackDetail(library, TrackOrError(library, track.Id));
+    }
+
+    /// <summary>
+    /// Torna a calcular els punts amb l'analitzador: <c>trackId</c>. També si eren manuals (se substitueixen: és el que es
+    /// demana en prémer «Recalcula»).
+    /// </summary>
+    private JsonObject LibraryRecalculateCues(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        var track = TrackOrError(library, RequiredId(msg, "trackId"));
+        TrackCuePoints? cues;
+        try { cues = CueAnalyzer.AnalyzeFile(track.Path); }
+        catch (Exception ex) when (ex is AudioFileException or IOException or UnauthorizedAccessException)
+        {
+            throw new BadParamsException($"No es pot llegir el fitxer: {ex.Message}");
+        }
+        static long? Ms(TimeSpan? t) => t is { } v ? (long)Math.Round(v.TotalMilliseconds) : null;
+        library.UpdateTrack(track with
+        {
+            StartMs = Ms(cues?.Start), MixMs = Ms(cues?.Mix), EndMs = Ms(cues?.End), CueSource = CueSource.Analyzer,
+        });
+        LibraryChanged?.Invoke(track.Id);
+        return TrackDetail(library, TrackOrError(library, track.Id));
     }
 
     // --- Canvi d'arrel (fase 3, pas 7d; D-092) ---

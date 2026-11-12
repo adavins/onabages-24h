@@ -1066,6 +1066,70 @@ body {
   font-size: 0.9rem;
 }
 
+/* Editor de punts (fase 3, pas 7e) */
+.cue-dialog {
+  width: min(64rem, 96vw);
+}
+
+.cue-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.cue-key::before {
+  content: "";
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-right: 0.3rem;
+  vertical-align: -0.1rem;
+  border-radius: 0.15rem;
+}
+
+.cue-key-start::before { background: #4cc38a; }
+.cue-key-mix::before { background: #f0b44c; }
+.cue-key-end::before { background: #e5534b; }
+
+.cue-view-label {
+  font-size: 0.8rem;
+  color: var(--ob-muted);
+  margin: 0.4rem 0 0.15rem;
+}
+
+.cue-canvas {
+  display: block;
+  width: 100%;
+  height: 7rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.3rem;
+  touch-action: none;
+}
+
+.cue-canvas-overview {
+  height: 5rem;
+}
+
+.cue-zooms {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.cue-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.cue-duration {
+  align-self: end;
+  padding-bottom: 0.3rem;
+}
+
 /* Pantalla estreta: l'arbre a dalt, la fitxa a sota */
 @media (max-width: 1200px) {
   .tm-main {

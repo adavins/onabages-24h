@@ -8,6 +8,7 @@ import { confirmAction } from './confirm.js';
 import { askText } from './ask-text.js';
 import { formatDuration, typeName, playedAgo } from '../format.js';
 import { TRACK_TYPES, parseTags, trackChanges, trackProblems } from '../track-form.js';
+import { CueEditor } from './cue-editor.js';
 
 const PAGE = 100;
 const SEARCH_DELAY_MS = 250;
@@ -44,6 +45,8 @@ export class TrackManagerView {
 
   /** Carpetes vigilades (marques a l'arbre i el diàleg de la carpeta). @type {import('./folders.js').FoldersView} */
   #folders;
+  /** Editor de punts (fase 3, pas 7e). @type {CueEditor} */
+  #cueEditor;
 
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
@@ -54,6 +57,7 @@ export class TrackManagerView {
     this.#send = send;
     this.#chooseFile = chooseFile;
     this.#folders = folders;
+    this.#cueEditor = new CueEditor(send);
     folders.onChange(() => this.#renderTree());
     $('tm-folder').addEventListener('click', () => this.#folder());
     $('tm-search').addEventListener('input', () => {
@@ -604,7 +608,17 @@ export class TrackManagerView {
     const cues = t.mixMs == null ? 'encara no calculats'
       : `inici ${seconds(t.startMs)} · mescla ${seconds(t.mixMs)} · final ${seconds(t.endMs)}`;
     const source = { radiodj: 'de RadioDJ', analyzer: 'calculats', manual: 'editats a mà' }[/** @type {'radiodj'} */ (t.cueSource)] ?? '';
-    row('Punts', `${cues}${source ? ` (${source})` : ''}`);
+    const cueBox = el('span', '');
+    cueBox.append(`${cues}${source ? ` (${source})` : ''} `);
+    if (t.fileState !== 'missing') {
+      const edit = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-link btn-sm p-0 align-baseline'));
+      edit.type = 'button';
+      edit.textContent = 'Edita…';
+      edit.title = 'Editor de punts: forma d\'ona, inici, mescla i final';
+      edit.addEventListener('click', () => this.#editCues());
+      cueBox.append(edit);
+    }
+    row('Punts', cueBox);
     row('Ha sonat', t.playCount ? `${t.playCount} ${t.playCount === 1 ? 'vegada' : 'vegades'}, l'última ${playedAgo(t.lastPlayed, new Date())}` : 'mai');
     if ((t.usedBy ?? []).length > 0) {
       const list = el('ul', 'tm-used');
@@ -612,6 +626,21 @@ export class TrackManagerView {
       row('Esdeveniments', list);
     }
     return box;
+  }
+
+  /** Obre l'editor de punts de la pista oberta; si s'hi desa alguna cosa, la fitxa es torna a dibuixar. */
+  async #editCues() {
+    const t = this.#track;
+    if (!t) return;
+    if (this.dirty) {
+      await confirmAction({ title: 'Canvis sense desar', message: 'Desa o descarta primer els canvis de la fitxa.', confirm: 'D\'acord', info: true });
+      return;
+    }
+    const saved = await this.#cueEditor.open(t);
+    if (!saved || this.#track?.id !== saved.id) return;
+    this.#track = saved;
+    this.#renderDetail();
+    this.#updateRow(saved);
   }
 
   async #save() {

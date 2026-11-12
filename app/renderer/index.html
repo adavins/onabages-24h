@@ -451,6 +451,49 @@
     </form>
   </dialog>
 
+  <!-- Editor de punts (fase 3, pas 7e; D-093): sense escolta (la interfície no fa sonar res) -->
+  <dialog id="cue-dialog" class="ob-dialog cue-dialog">
+    <form method="dialog">
+      <h2 class="h5"><i class="bi bi-sliders" aria-hidden="true"></i> Punts: <span id="cue-title"></span></h2>
+      <p class="ob-dialog-message">Arrossega els punts damunt de la forma d'ona (en qualsevol de les tres vistes) o escriu-los. Les línies discontínues són els llindars de l'analitzador.</p>
+
+      <div class="cue-legend">
+        <span class="cue-key cue-key-start">I · Inici</span>
+        <span class="cue-key cue-key-mix">M · Mescla (entra la següent)</span>
+        <span class="cue-key cue-key-end">F · Final</span>
+      </div>
+
+      <div class="cue-view-label">Tota la pista</div>
+      <canvas id="cue-overview" class="cue-canvas cue-canvas-overview"></canvas>
+      <div class="cue-zooms">
+        <div>
+          <div class="cue-view-label">Principi <span id="cue-start-range" class="text-body-secondary"></span></div>
+          <canvas id="cue-zoom-start" class="cue-canvas"></canvas>
+        </div>
+        <div>
+          <div class="cue-view-label">Final <span id="cue-end-range" class="text-body-secondary"></span></div>
+          <canvas id="cue-zoom-end" class="cue-canvas"></canvas>
+        </div>
+      </div>
+      <p id="cue-loading" class="form-text"></p>
+
+      <div class="cue-fields">
+        <div><label for="cue-start" class="form-label">Inici (s)</label><input id="cue-start" class="form-control form-control-sm font-monospace" type="text" inputmode="decimal"></div>
+        <div><label for="cue-mix" class="form-label">Mescla (s)</label><input id="cue-mix" class="form-control form-control-sm font-monospace" type="text" inputmode="decimal"></div>
+        <div><label for="cue-end" class="form-label">Final (s)</label><input id="cue-end" class="form-control form-control-sm font-monospace" type="text" inputmode="decimal"></div>
+        <div class="cue-duration"><span class="form-label d-block">Durada</span><span id="cue-duration" class="font-monospace"></span></div>
+      </div>
+      <p id="cue-problem" class="form-text text-warning"></p>
+      <p id="cue-source" class="form-text"></p>
+
+      <div class="d-flex justify-content-end gap-2 flex-wrap">
+        <button id="cue-recalculate" class="btn btn-outline-secondary me-auto" type="button" title="Torna a calcular els punts amb l'analitzador (substitueix els que hi ha)"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Recalcula</button>
+        <button class="btn btn-secondary" value="cancel" formnovalidate>Tanca</button>
+        <button id="cue-save" class="btn btn-primary" type="button">Desa</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Demanar un text (p. ex. el nom d'una categoria) -->
   <dialog id="text-dialog" class="ob-dialog">
     <form method="dialog">
