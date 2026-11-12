@@ -36,10 +36,18 @@ public static class QueueJson
         var upcoming = player.Upcoming;
         var forecast = player.Forecast();
         var starts = forecast.Starts.ToDictionary(s => s.Id, s => s.StartsIn);
+        var pause = player.Pause;
         return new JsonObject
         {
             ["current"] = player.Current is { } current ? Item(current) : null,
             ["currentEndsAt"] = forecast.CurrentEndsIn is { } ends ? (now + ends).ToString("O") : null,
+            // Pausa (D-103): on s'ha aturat i quan continuarà sola; null si no n'hi ha
+            ["paused"] = pause is null ? null : new JsonObject
+            {
+                ["positionMs"] = (long)pause.Position.TotalMilliseconds,
+                ["autoResumeAt"] = (now + pause.AutoResumeIn).ToString("O"),
+            },
+            ["pauseNotice"] = player.PauseNotice,
             ["upcoming"] = new JsonArray(upcoming.Select(i =>
             {
                 var json = Item(i);
@@ -327,6 +335,7 @@ public static class QueueJson
             ["remainingMs"] = (long)position.Remaining.TotalMilliseconds,
             ["mixInMs"] = (long)position.UntilMix.TotalMilliseconds,
             ["durationMs"] = (long)position.Duration.TotalMilliseconds,
+            ["paused"] = position.Paused, // D-103: la posició no avança
         };
         return ev;
     }

@@ -4,7 +4,7 @@
 
 import { EngineClient } from './engine-client.js';
 import { formatClock, formatLongDate } from './format.js';
-import { $, setText } from './ui/dom.js';
+import { $, el, setText } from './ui/dom.js';
 import { confirmAction } from './ui/confirm.js';
 import { OutputMeters } from './ui/meters.js';
 import { NowPlaying } from './ui/now-playing.js';
@@ -98,7 +98,14 @@ function send(cmd, params = {}) {
 }
 
 const meters = new OutputMeters($('meter-left'), $('meter-right'));
-const nowPlaying = new NowPlaying();
+// Fent clic a la barra de progrés, la pista va a aquell punt (D-103). No interromp l'emissió: no demana confirmació
+const nowPlaying = new NowPlaying(async (itemId, positionMs) => {
+  try {
+    await send('player.seek', { itemId, positionMs });
+  } catch (err) {
+    await confirmAction({ title: 'No s\'ha pogut anar a aquell punt', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+  }
+});
 const queueView = new QueueView(send);
 const historyView = new HistoryView(send);
 const autoDjView = new AutoDjView(send);
@@ -171,6 +178,8 @@ const problems = {
   output: /** @type {string | null} */ (null),
   /** Les carpetes vigilades que no es poden revisar o tenen fitxers que falten (fase 3, pas 7c-2). @type {string[]} */
   folders: [],
+  /** Una pausa que ha continuat sola (D-103). @type {string | null} */
+  pause: null,
 };
 renderWarnings(problems);
 folders.onChange((list) => {
@@ -181,9 +190,25 @@ folders.onChange((list) => {
 /** @param {any} queue  docs/protocol.md, 4.2 */
 function showQueue(queue) {
   nowPlaying.setCurrent(queue.current);
+  nowPlaying.setPaused(queue.paused ?? null);
   lastQueue = queue;
   queueView.render(queue, upcoming.events);
   /** @type {HTMLButtonElement} */ ($('btn-skip')).disabled = !queue.current;
+  // Pausa (D-103): el botó passa a ser «Continua» mentre dura
+  const pause = /** @type {HTMLButtonElement} */ ($('btn-pause'));
+  pause.disabled = !queue.current;
+  const paused = !!queue.paused;
+  pause.classList.toggle('btn-danger', paused);
+  pause.classList.toggle('btn-outline-light', !paused);
+  pause.title = paused ? 'Continua la pista des d\'on s\'havia aturat' : 'Atura la pista que sona (la ràdio queda en silenci fins que continuï)';
+  const icon = document.createElement('i');
+  icon.className = paused ? 'bi bi-play-fill' : 'bi bi-pause-fill';
+  icon.setAttribute('aria-hidden', 'true');
+  pause.replaceChildren(icon, el('span', '', paused ? 'Continua' : 'Pausa'));
+  if (problems.pause !== (queue.pauseNotice ?? null)) {
+    problems.pause = queue.pauseNotice ?? null;
+    renderWarnings(problems);
+  }
 }
 
 /** @param {any} state */
@@ -261,9 +286,34 @@ $('btn-skip').addEventListener('click', async () => {
   }
 });
 
+// Pausa (D-103): deixa la ràdio en silenci, per tant demana confirmació; continuar, no
+$('btn-pause').addEventListener('click', async () => {
+  if (lastQueue?.paused) {
+    try {
+      await send('player.resume');
+    } catch (err) {
+      await confirmAction({ title: 'No s\'ha pogut continuar', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+    }
+    return;
+  }
+  const title = $('np-title').textContent;
+  const ok = await confirmAction({
+    title: 'Fer pausa',
+    message: `«${title}» s'aturarà i la ràdio quedarà en silenci fins que premis «Continua». ` +
+      'Si en 5 minuts ningú no ho fa, continuarà sola. Un esdeveniment TALLA sonarà igualment a la seva hora.',
+    confirm: 'Fes pausa',
+  });
+  if (!ok) return;
+  try {
+    await send('player.pause');
+  } catch (err) {
+    await confirmAction({ title: 'No s\'ha pogut fer pausa', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+  }
+});
+
 // Els avisos, sencers, en clicar el comptador de la barra de sota
 $('status-warnings').addEventListener('click', () => {
-  const list = [problems.output, problems.autodj, ...problems.folders].filter(Boolean);
+  const list = [problems.output, problems.autodj, problems.pause, ...problems.folders].filter(Boolean);
   if (list.length === 0) return;
   confirmAction({ title: 'Avisos', message: list.join('\n\n'), confirm: 'D\'acord', info: true });
 });

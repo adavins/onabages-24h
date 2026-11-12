@@ -47,6 +47,11 @@
       <i class="bi bi-skip-end-fill" aria-hidden="true"></i>
       <span>Següent</span>
     </button>
+    <!-- Pausa (D-103): deixa la ràdio en silenci; continua sola als 5 minuts -->
+    <button id="btn-pause" class="btn btn-outline-light transport-button" type="button" title="Atura la pista que sona (la ràdio queda en silenci fins que continuï)" disabled>
+      <i class="bi bi-pause-fill" aria-hidden="true"></i>
+      <span>Pausa</span>
+    </button>
     <div class="now">
       <div class="now-heading">
         <span id="np-title" class="now-title">Res no sona</span>
@@ -55,10 +60,15 @@
       <div class="now-tags">
         <span id="np-type" class="badge text-bg-secondary d-none"></span>
         <span id="np-origin" class="now-origin"></span>
+        <span id="np-paused" class="now-paused d-none" role="status"></span>
       </div>
-      <div class="track-progress" aria-hidden="true">
-        <div id="np-bar" class="track-progress-bar"></div>
-        <div id="np-mix-marker" class="track-progress-mix d-none" title="Punt de mescla: aquí entra la següent"></div>
+      <!-- Fent clic a la barra, la pista va a aquell punt (D-103) -->
+      <div id="np-progress" class="track-progress-hit" title="Fes clic per anar a un altre punt de la pista">
+        <div class="track-progress">
+          <div id="np-bar" class="track-progress-bar"></div>
+          <div id="np-mix-marker" class="track-progress-mix d-none" title="Punt de mescla: aquí entra la següent"></div>
+          <div id="np-hover" class="track-progress-hover d-none" aria-hidden="true"></div>
+        </div>
       </div>
       <div class="now-times">
         <span id="np-elapsed">–</span>

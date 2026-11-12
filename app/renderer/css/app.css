@@ -177,6 +177,51 @@ body {
   background: #2a2e34;
 }
 
+/* Zona clicable de la barra (D-103): més alta que la barra, perquè sigui fàcil d'encertar */
+.track-progress-hit {
+  padding: 6px 0;
+  cursor: pointer;
+}
+
+.track-progress-hit.is-disabled {
+  cursor: default;
+}
+
+/* On aniria la pista en fer clic: una ratlla i el temps */
+.track-progress-hover {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  border-left: 2px solid #fff;
+  pointer-events: none;
+}
+
+.track-progress-hover::after {
+  content: attr(data-time);
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  transform: translateX(-50%);
+  padding: 0 0.3rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  background: #000;
+  border-radius: 0.2rem;
+}
+
+/* En pausa (D-103): la barra grisa i l'indicador vermell, amb icona i text */
+.track-progress.is-paused .track-progress-bar {
+  background: #6c757d;
+}
+
+.now-paused {
+  color: #fff;
+  background: #b02a37;
+  font-weight: 600;
+  padding: 0.05rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
 .track-progress-bar {
   height: 100%;
   width: 0;

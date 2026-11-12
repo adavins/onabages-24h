@@ -14,7 +14,22 @@ public sealed record QueueSettings
 
     /// <summary>Marge per començar quan no sonava res (perquè la veu ja tingui dades quan la sortida les demani).</summary>
     public TimeSpan StartMargin { get; init; } = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>Pausa (D-103): com a molt, quant pot durar; després la pista continua sola (mai un silenci llarg per oblit).</summary>
+    public TimeSpan MaxPause { get; init; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>Fos de la pausa: en fer pausa la pista baixa en aquest temps, i en continuar puja en el mateix temps.</summary>
+    public TimeSpan PauseFade { get; init; } = TimeSpan.FromMilliseconds(200);
+
+    /// <summary>Encadenament en anar a un altre punt de la pista (D-103): la veu vella baixa i la nova puja en aquest temps, sense clic.</summary>
+    public TimeSpan SeekCrossfade { get; init; } = TimeSpan.FromMilliseconds(20);
 }
+
+/// <summary>
+/// La pista en pausa (D-103): quina és, on s'ha aturat (des del punt d'inici de la pista), quant hi ha de l'inici fins a
+/// la mescla i fins al final, i d'aquí a quant continuarà sola.
+/// </summary>
+public sealed record QueuePause(QueueItem Item, TimeSpan Position, TimeSpan UntilMix, TimeSpan Duration, TimeSpan AutoResumeIn);
 
 /// <summary>
 /// Una pista que ha començat a sonar. Si és la primera d'un tall (TALLA), <paramref name="CutFrame"/> és el fotograma
@@ -32,7 +47,11 @@ public sealed record QueueFailed(QueueItem Item, string Message);
 /// <summary>Previsió de la cua: d'aquí a quant s'acaba la que sona i d'aquí a quant comença cada pista que espera (null = no se sap).</summary>
 public sealed record QueueForecast(TimeSpan? CurrentEndsIn, IReadOnlyList<(Guid Id, TimeSpan? StartsIn)> Starts);
 
-public sealed record QueuePosition(Guid ItemId, TimeSpan Elapsed, TimeSpan Remaining, TimeSpan UntilMix, TimeSpan Duration);
+public sealed record QueuePosition(Guid ItemId, TimeSpan Elapsed, TimeSpan Remaining, TimeSpan UntilMix, TimeSpan Duration)
+{
+    /// <summary>La pista està en pausa (D-103): la posició no avança.</summary>
+    public bool Paused { get; init; }
+}
 
 /// <summary>
 /// Reproductor de la cua d'emissió (docs/disseny-motor.md, secció 4). Treballa al fil de control: el motor el crida
@@ -62,6 +81,20 @@ public sealed class QueuePlayer : IDisposable
     private PendingCut? _cut;  // tall programat que encara no s'ha pogut aplicar (la següent ja començava abans)
     private long _cutFrame;    // si no és 0: la pròxima pista no pot començar abans d'aquest fotograma (és la del tall)
 
+    // Pausa i salt dins de la pista (D-103)
+    private Paused? _paused;   // la pista en pausa (llavors _current és null)
+    private Playing? _resume;  // la mateixa pista oberta en un altre punt: substitueix _current (o la pausa) quan és a punt
+    private long _pauseChangedAt; // última vegada que s'ha avisat del canvi de la previsió durant la pausa (fotograma)
+
+    /// <summary>
+    /// Avís de l'última pausa que ha continuat sola (o que no s'ha pogut continuar), en català; null si no n'hi ha. Es
+    /// manté fins a la pausa següent.
+    /// </summary>
+    public string? PauseNotice { get; private set; }
+
+    /// <summary>Un problema en fer pausa o anar a un altre punt (el fitxer no s'ha pogut tornar a obrir…), per al registre.</summary>
+    public event Action<string>? Problem;
+
     /// <summary>Quantes veus es poden reservar per a talls alhora (n'hi ha 8: cal deixar lloc per a la cua).</summary>
     private const int MaxReserved = 2;
 
@@ -88,7 +121,7 @@ public sealed class QueuePlayer : IDisposable
     /// <summary>La pista que sona ara (la que ha començat més tard), o null.</summary>
     public QueueItem? Current
     {
-        get { lock (_sync) return _current?.Item; }
+        get { lock (_sync) return _current?.Item ?? _paused?.Item; } // la que està en pausa també és «la que sona» (D-103)
     }
 
     /// <summary>Les pistes que esperen per sonar, en ordre (inclosa la que ja s'està preparant).</summary>
@@ -117,6 +150,9 @@ public sealed class QueuePlayer : IDisposable
         {
             lock (_sync)
             {
+                if (_paused is { } p) // en pausa (D-103): la posició no avança
+                    return new QueuePosition(p.Item.Id, FramesToTime(p.OffsetFrames), FramesToTime(Math.Max(0, p.EndOffsetFrames - p.OffsetFrames)),
+                        FramesToTime(Math.Max(0, p.MixOffsetFrames - p.OffsetFrames)), FramesToTime(p.EndOffsetFrames)) { Paused = true };
                 if (_current is not { Scheduled: true } c) return null;
                 long now = _mixer.FramesRendered;
                 return new QueuePosition(
@@ -145,6 +181,12 @@ public sealed class QueuePlayer : IDisposable
             // On comença la següent: al punt de mescla de la que sona, o de seguida si no sona res
             long? nextStart = _current is { Scheduled: true } c ? Math.Max(now, c.MixFrame) : now;
             TimeSpan? currentEndsIn = _current is { Scheduled: true } cur ? FramesToTime(Math.Max(0, cur.EndFrame - now)) : null;
+            if (_paused is { } p)
+            {
+                // En pausa (D-103): com si continués ara mateix (la previsió es mou mentre dura la pausa)
+                nextStart = now + Math.Max(0, p.MixOffsetFrames - p.OffsetFrames);
+                currentEndsIn = FramesToTime(Math.Max(0, p.EndOffsetFrames - p.OffsetFrames));
+            }
 
             // Les pistes en l'ordre de Upcoming, amb el fotograma on han de començar si ja se sap (la preparada o la d'un tall)
             var entries = new List<(QueueItem Item, Playing? Prepared, long? FixedStart)>();
@@ -221,7 +263,12 @@ public sealed class QueuePlayer : IDisposable
     /// <summary>Hi ha una pista preparant-se que encara no s'ha pogut programar (el fitxer s'està obrint). Per a les proves.</summary>
     public bool IsPreparing
     {
-        get { lock (_sync) return _next is { Scheduled: false, Reader.State: ReaderState.Opening }; }
+        get
+        {
+            lock (_sync)
+                return _next is { Scheduled: false, Reader.State: ReaderState.Opening }
+                    || _resume is { Scheduled: false, Reader.State: ReaderState.Opening }; // pausa o salt (D-103)
+        }
     }
 
     // --- Canvis a la cua ---
@@ -332,7 +379,7 @@ public sealed class QueuePlayer : IDisposable
                 skipped.AddRange(_upcoming.Take(index));
                 _upcoming.RemoveRange(0, index);
             }
-            Skip(fade); // la que sona fa el fos; la triada és ara la primera de la cua i es prepara de seguida
+            SkipLocked(fade, events); // la que sona fa el fos; la triada és ara la primera de la cua i es prepara de seguida
         }
         Raise(events);
         Changed?.Invoke();
@@ -449,6 +496,8 @@ public sealed class QueuePlayer : IDisposable
         var removed = new List<QueueItem>();
         lock (_sync)
         {
+            // Un TALLA sona sempre a la seva hora (D-103): si hi ha una pausa, s'acaba; un salt pendent ja no es fa
+            EndPause(events);
             Playing? reserved = null;
             if (reservation is { } r && _reserved.Remove(r, out var res)) reserved = res;
             if (_cut?.First is { } previous) Retire(previous); // dos talls seguits en pocs segons: mana el darrer
@@ -507,22 +556,167 @@ public sealed class QueuePlayer : IDisposable
     /// </summary>
     public void Skip(TimeSpan fade)
     {
-        lock (_sync)
+        var events = new List<Action>();
+        lock (_sync) SkipLocked(fade, events);
+        Raise(events);
+    }
+
+    /// <summary><see cref="Skip"/> dins del bloqueig. Si hi ha una pausa (D-103), s'acaba: la pista en pausa es dona per acabada.</summary>
+    private void SkipLocked(TimeSpan fade, List<Action> events)
+    {
+        EndPause(events);
+        if (_current is null) return;
+        long now = _mixer.FramesRendered;
+        int fadeFrames = Frames(fade);
+        _current.Voice.Stop(now, fadeFrames);
+        _current.MixFrame = now;
+        _current.EndFrame = now + fadeFrames;
+        _cutFrame = 0; // qui passa a la següent a mà mana més que el tall
+        if (_next is { Scheduled: true, HasStarted: false })
         {
-            if (_current is null) return;
-            long now = _mixer.FramesRendered;
-            int fadeFrames = Frames(fade);
-            _current.Voice.Stop(now, fadeFrames);
-            _current.MixFrame = now;
-            _current.EndFrame = now + fadeFrames;
-            _cutFrame = 0; // qui passa a la següent a mà mana més que el tall
-            if (_next is { Scheduled: true, HasStarted: false })
+            _next.StartFrame = now + Frames(_settings.StartMargin);
+            _next.CutFrame = null;
+            _next.Voice.Start(_next.StartFrame);
+        }
+    }
+
+    // --- Pausa i salt dins de la pista (D-103) ---
+
+    /// <summary>La pista que sona està en pausa.</summary>
+    public bool IsPaused
+    {
+        get { lock (_sync) return _paused is not null; }
+    }
+
+    /// <summary>La pausa d'ara (quina pista, on, quant falta perquè continuï sola), o null si no n'hi ha.</summary>
+    public QueuePause? Pause
+    {
+        get
+        {
+            lock (_sync)
             {
-                _next.StartFrame = now + Frames(_settings.StartMargin);
-                _next.CutFrame = null;
-                _next.Voice.Start(_next.StartFrame);
+                if (_paused is not { } p) return null;
+                long autoResume = Math.Max(0, p.Since + Frames(_settings.MaxPause) - _mixer.FramesRendered);
+                return new QueuePause(p.Item, FramesToTime(p.OffsetFrames), FramesToTime(Math.Max(0, p.MixOffsetFrames - p.OffsetFrames)),
+                    FramesToTime(p.EndOffsetFrames), FramesToTime(autoResume));
             }
         }
+    }
+
+    /// <summary>
+    /// Fa pausa a la pista que sona: baixa amb un fos curt i es recorda on era. La següent es deixa de preparar (la previsió
+    /// es mou mentre dura la pausa). Retorna el motiu si no es pot (en català), o null.
+    /// </summary>
+    public string? PauseCurrent()
+    {
+        var events = new List<Action>();
+        lock (_sync)
+        {
+            if (_paused is not null) return null;
+            if (_cut is not null || _cutFrame > 0) return "Hi ha un tall programat d'aquí a uns segons: no es pot fer pausa ara.";
+            if (_current is not { HasStarted: true } c || c.Voice.State == VoiceState.Finished) return "No sona cap pista.";
+            if (_next is { HasStarted: true }) return "La pista següent ja ha començat a sonar.";
+            long now = _mixer.FramesRendered;
+            long stop = now + Frames(_settings.StartMargin);
+            if (stop >= c.MixFrame) return "La pista ja s'està acabant.";
+
+            if (_resume is not null) // un salt que encara no s'havia fet: ja no cal
+            {
+                Retire(_resume);
+                _resume = null;
+            }
+            UnprepareNext(events);
+            c.Voice.Stop(stop, Frames(_settings.PauseFade));
+            c.Silent = true;
+            _ending.Add(c);
+            _current = null;
+            _paused = new Paused(c.Item, stop - c.StartFrame, c.MixFrame - c.StartFrame, c.EndFrame - c.StartFrame, c.Played, now);
+            _pauseChangedAt = now;
+            PauseNotice = null;
+        }
+        Raise(events);
+        Changed?.Invoke();
+        return null;
+    }
+
+    /// <summary>Continua la pista en pausa des d'on era (amb un fos d'entrada curt). Retorna el motiu si no es pot, o null.</summary>
+    public string? ResumePaused()
+    {
+        lock (_sync) return StartResume();
+    }
+
+    /// <summary>
+    /// Va a un altre punt de la pista que sona (o de la que està en pausa): <paramref name="position"/> des del punt d'inici
+    /// de la pista. La mateixa pista s'obre en una veu nova en aquell punt i, quan és a punt, substitueix l'altra amb un
+    /// encadenament molt curt. Retorna el motiu si no es pot (en català), o null.
+    /// </summary>
+    public string? Seek(Guid itemId, TimeSpan position)
+    {
+        var events = new List<Action>();
+        lock (_sync)
+        {
+            if (_paused is { } p)
+            {
+                if (p.Item.Id != itemId) return "Aquesta pista ja no és la que sona.";
+                _paused = p with { OffsetFrames = Math.Clamp(Frames(position), 0, Math.Max(0, p.EndOffsetFrames - Frames(TimeSpan.FromSeconds(1)))) };
+            }
+            else
+            {
+                if (_cut is not null || _cutFrame > 0) return "Hi ha un tall programat d'aquí a uns segons: no es pot moure la pista ara.";
+                if (_current is not { HasStarted: true } c || c.Item.Id != itemId || c.Voice.State == VoiceState.Finished)
+                    return "Aquesta pista ja no és la que sona.";
+                if (_next is { HasStarted: true }) return "La pista següent ja ha començat a sonar.";
+                if (_next is { Scheduled: true } n && FramesToTime(n.StartFrame - _mixer.FramesRendered) < LockedBeforeStart)
+                    return "La pista següent està a punt de començar.";
+                long offset = Math.Clamp(Frames(position), 0, Math.Max(0, c.EndFrame - c.StartFrame - Frames(TimeSpan.FromSeconds(1))));
+                if (_resume is not null) Retire(_resume);
+                UnprepareNext(events); // el punt de mescla canviarà: es tornarà a preparar
+                _resume = OpenAt(c.Item, offset, c.Played);
+                if (_resume is null) return "No hi ha cap veu lliure (torna-ho a provar).";
+            }
+        }
+        Raise(events);
+        Changed?.Invoke();
+        return null;
+    }
+
+    /// <summary>Obre la pista en pausa al seu punt (dins del bloqueig). La pausa s'acaba quan la veu nova comença a sonar.</summary>
+    private string? StartResume()
+    {
+        if (_paused is not { } p) return null;
+        if (_resume is not null) return null; // ja s'està obrint
+        _resume = OpenAt(p.Item, p.OffsetFrames, p.Played);
+        return _resume is null ? "No hi ha cap veu lliure (torna-ho a provar)." : null;
+    }
+
+    /// <summary>
+    /// Obre una pista a un punt (<paramref name="offsetFrames"/> des del punt d'inici) per continuar la mateixa emissió:
+    /// <see cref="Playing.Played"/> és el comptador compartit. El punt es recorda a <c>ResumeOffset</c>.
+    /// </summary>
+    private Playing? OpenAt(QueueItem item, long offsetFrames, PlayCounter played)
+    {
+        var voice = _mixer.AcquireVoice();
+        if (voice is null) return null;
+        long startMs = (item.StartMs ?? 0) + (long)Math.Round(offsetFrames * 1000.0 / _mixer.SampleRate);
+        var reader = new VoiceReader(voice, item.Path, _mixer.SampleRate, Ms(startMs), item.EndMs is { } end ? Ms(end) : null);
+        return new Playing(item, voice, reader) { Played = played, ResumeOffset = offsetFrames };
+    }
+
+    /// <summary>
+    /// S'acaba la pausa sense continuar (s'ha passat a una altra pista o hi ha un tall): la pista es dona per acabada amb
+    /// el que havia sonat (no sencera).
+    /// </summary>
+    private void EndPause(List<Action> events)
+    {
+        if (_resume is not null)
+        {
+            Retire(_resume);
+            _resume = null;
+        }
+        if (_paused is not { } p) return;
+        _paused = null;
+        var played = FramesToTime(p.Played.Frames);
+        events.Add(() => Ended?.Invoke(new QueueEnded(p.Item, played, false)));
     }
 
     // --- Fil de control ---
@@ -573,11 +767,14 @@ public sealed class QueuePlayer : IDisposable
                 var ending = _ending[i];
                 if (ending.Voice.State != VoiceState.Finished) continue;
                 var item = ending.Item;
-                var played = TimeSpan.FromSeconds((double)ending.Voice.FramesPlayed / _mixer.SampleRate);
-                bool complete = ending.PlannedEndFrame - ending.StartFrame <= ending.Voice.FramesPlayed + Frames(TimeSpan.FromMilliseconds(50));
+                long playedFrames = ending.Played.Frames + ending.Voice.FramesPlayed; // també el que havia sonat abans d'una pausa o d'un salt
+                var played = TimeSpan.FromSeconds((double)playedFrames / _mixer.SampleRate);
+                bool complete = ending.PlannedEndFrame - ending.StartFrame <= playedFrames + Frames(TimeSpan.FromMilliseconds(50));
+                bool silent = ending.Silent;
+                if (silent) ending.Played.Frames = playedFrames; // la continua una altra veu (D-103): encara no s'ha acabat
                 Retire(ending);
                 _ending.RemoveAt(i);
-                events.Add(() => Ended?.Invoke(new QueueEnded(item, played, complete)));
+                if (!silent) events.Add(() => Ended?.Invoke(new QueueEnded(item, played, complete)));
             }
 
             _toRelease.RemoveAll(v => _mixer.ReleaseVoice(v));
@@ -585,8 +782,65 @@ public sealed class QueuePlayer : IDisposable
             // Un tall que esperava que comencés la pista següent: ara ja es pot aplicar
             ApplyCut();
 
-            // 4. Preparar la següent: si no sona res, de seguida; si no, uns segons abans del punt de mescla
-            if (_next is null && _upcoming.Count > 0
+            // Pausa i salt (D-103)
+            if (_paused is { } paused)
+            {
+                // Massa estona en pausa: continua sola (mai un silenci llarg per oblit)
+                if (_resume is null && now - paused.Since >= Frames(_settings.MaxPause))
+                {
+                    PauseNotice = $"La pista «{paused.Item}» ha estat en pausa {_settings.MaxPause.TotalMinutes:0} minuts i ha continuat sola.";
+                    StartResume();
+                    events.Add(() => Problem?.Invoke(PauseNotice));
+                }
+                // La previsió de la cua es mou mentre dura la pausa: s'avisa cada segon
+                if (now - _pauseChangedAt >= _mixer.SampleRate)
+                {
+                    _pauseChangedAt = now;
+                    events.Add(() => Changed?.Invoke());
+                }
+            }
+            if (_resume is { } resume)
+            {
+                if (resume.Reader.State == ReaderState.Failed)
+                {
+                    // No s'ha pogut tornar a obrir: la que sonava continua; si era en pausa, s'acaba i passa a la següent
+                    string message = $"No s'ha pogut tornar a obrir «{resume.Item}»: {resume.Reader.Error}";
+                    Retire(resume);
+                    _resume = null;
+                    if (_paused is not null)
+                    {
+                        PauseNotice = message;
+                        EndPause(events);
+                    }
+                    events.Add(() => Problem?.Invoke(message));
+                    events.Add(() => Changed?.Invoke());
+                }
+                else if (resume.Reader.State is ReaderState.Ready or ReaderState.Finished)
+                {
+                    long start = now + Frames(_settings.StartMargin);
+                    if (_current is { } old)
+                    {
+                        // Salt: la veu vella baixa just quan la nova puja (encadenament molt curt, sense clic)
+                        int crossfade = Frames(_settings.SeekCrossfade);
+                        old.Voice.Stop(start, crossfade);
+                        old.Silent = true;
+                        _ending.Add(old);
+                        Schedule(resume, start, resume.ResumeOffset, crossfade);
+                    }
+                    else
+                    {
+                        Schedule(resume, start, resume.ResumeOffset, Frames(_settings.PauseFade)); // continua després d'una pausa
+                    }
+                    _current = resume;
+                    _resume = null;
+                    _paused = null;
+                    events.Add(() => Changed?.Invoke());
+                }
+            }
+
+            // 4. Preparar la següent: si no sona res, de seguida; si no, uns segons abans del punt de mescla.
+            // No durant una pausa ni mentre s'obre la pista en un altre punt (el punt de mescla encara no se sap).
+            if (_next is null && _upcoming.Count > 0 && _paused is null && _resume is null
                 && (_current is null || now >= _current.MixFrame - Frames(_settings.PrepareAhead)))
             {
                 var item = _upcoming[0];
@@ -626,7 +880,11 @@ public sealed class QueuePlayer : IDisposable
     /// Programa una pista preparada per començar al fotograma <paramref name="start"/>, i també el seu final:
     /// fos de sortida entre el punt de mescla i el final, amb el solapament màxim (D-024).
     /// </summary>
-    private void Schedule(Playing p, long start)
+    /// <param name="offsetFrames">Si la veu no comença pel punt d'inici de la pista sinó més endavant (pausa o salt, D-103):
+    /// quants fotogrames més endavant. <see cref="Playing.StartFrame"/> és llavors on hauria començat la pista sencera, de
+    /// manera que la posició, el punt de mescla i el final es calculen igual.</param>
+    /// <param name="fadeInFrames">Fos d'entrada (0 = sense).</param>
+    private void Schedule(Playing p, long start, long offsetFrames = 0, int fadeInFrames = 0)
     {
         long fileMs = (long)(p.Reader.FileDuration ?? TimeSpan.Zero).TotalMilliseconds;
         long startMs = Math.Clamp(p.Item.StartMs ?? 0, 0, fileMs);
@@ -635,12 +893,14 @@ public sealed class QueuePlayer : IDisposable
         long maxOverlapMs = (long)_settings.MaxOverlap.TotalMilliseconds;
         if (endMs - mixMs > maxOverlapMs) mixMs = endMs - maxOverlapMs;
 
-        p.StartFrame = start;
-        p.MixFrame = start + FramesFromMs(mixMs - startMs);
-        p.EndFrame = start + FramesFromMs(endMs - startMs);
+        long trackStart = start - Math.Max(0, offsetFrames);
+        p.StartFrame = trackStart;
+        p.MixFrame = trackStart + FramesFromMs(mixMs - startMs);
+        p.EndFrame = trackStart + FramesFromMs(endMs - startMs);
         p.PlannedEndFrame = p.EndFrame;
-        p.Voice.Start(start);
-        p.Voice.Stop(p.MixFrame, (int)(p.EndFrame - p.MixFrame));
+        p.Voice.Start(start, fadeInFrames);
+        // Si s'ha saltat més enllà del punt de mescla, el fos comença de seguida (i la següent entra en quant sigui a punt)
+        p.Voice.Stop(Math.Max(p.MixFrame, start), (int)Math.Max(0, p.EndFrame - Math.Max(p.MixFrame, start)));
         p.Scheduled = true;
     }
 
@@ -685,6 +945,9 @@ public sealed class QueuePlayer : IDisposable
         {
             if (_next is not null) Retire(_next);
             if (_current is not null) Retire(_current);
+            if (_resume is not null) Retire(_resume);
+            _resume = null;
+            _paused = null;
             if (_cut?.First is { } cutFirst) Retire(cutFirst);
             foreach (var r in _reserved.Values) Retire(r);
             _reserved.Clear();
@@ -710,7 +973,28 @@ public sealed class QueuePlayer : IDisposable
         public bool HasStarted => Voice.ActualStartFrame >= 0;
         /// <summary>Si és la primera d'un tall, el fotograma on havia de començar.</summary>
         public long? CutFrame { get; set; }
+
+        /// <summary>
+        /// Fotogrames que ha sonat la mateixa pista en veus anteriors (D-103: abans d'una pausa o d'un salt). Compartit
+        /// entre totes les veus de la mateixa emissió, perquè a l'historial sigui una sola emissió amb el temps sencer.
+        /// </summary>
+        public PlayCounter Played { get; init; } = new();
+
+        /// <summary>La substitueix una altra veu de la mateixa pista (pausa o salt): en acabar, no és el final de l'emissió.</summary>
+        public bool Silent { get; set; }
+
+        /// <summary>Si continua una emissió (D-103), el punt on comença (fotogrames des de l'inici de la pista); si no, -1.</summary>
+        public long ResumeOffset { get; init; } = -1;
     }
+
+    /// <summary>Fotogrames sonats d'una emissió en veus que ja s'han acabat (D-103).</summary>
+    private sealed class PlayCounter
+    {
+        public long Frames { get; set; }
+    }
+
+    /// <summary>Una pista en pausa (D-103): on s'ha aturat (fotogrames des de l'inici de la pista) i quan.</summary>
+    private sealed record Paused(QueueItem Item, long OffsetFrames, long MixOffsetFrames, long EndOffsetFrames, PlayCounter Played, long Since);
 
     /// <summary>Un tall programat: on, amb quin fos i quina pista comença (null si l'esdeveniment no en té cap o no s'ha pogut obrir).</summary>
     private sealed record PendingCut(long Frame, int FadeFrames, Playing? First);

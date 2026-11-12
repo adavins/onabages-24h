@@ -120,6 +120,9 @@ public sealed class CommandRouter
                 "queue.regenerate" => QueueRegenerate(),
                 "player.playItem" => PlayerPlayItem(msg),
                 "player.next" => PlayerNext(msg),
+                "player.pause" => PlayerResult(Queue().PauseCurrent()),
+                "player.resume" => PlayerResult(Queue().ResumePaused()),
+                "player.seek" => PlayerSeek(msg),
                 "aux.get" => new JsonObject { ["aux"] = QueueJson.Aux(Aux()), ["loaded"] = QueueJson.AuxLoaded(Aux()) },
                 "aux.load" => AuxLoad(msg),
                 "aux.unload" => AuxUnload(msg),
@@ -386,6 +389,21 @@ public sealed class CommandRouter
             ["skipped"] = new JsonArray(skipped.Select(i => (JsonNode)QueueJson.Item(i)).ToArray()),
             ["queue"] = QueueJson.Queue(queue),
         };
+    }
+
+    // --- Pausa i salt dins de la pista (D-103) ---
+
+    /// <summary>La cua, o l'error amb el motiu si l'ordre no s'ha pogut fer.</summary>
+    private JsonObject PlayerResult(string? problem) =>
+        problem is null ? new JsonObject { ["queue"] = QueueJson.Queue(Queue()) } : throw new BadParamsException(problem);
+
+    /// <summary>Va a un altre punt de la pista que sona (o de la que està en pausa): <c>itemId</c> i <c>positionMs</c> (des del punt d'inici).</summary>
+    private JsonObject PlayerSeek(JsonObject msg)
+    {
+        if (!Guid.TryParse(RequireString(msg, "itemId"), out var itemId)) throw new BadParamsException("El camp 'itemId' no és vàlid.");
+        if (msg["positionMs"] is not JsonValue v || !v.TryGetValue(out long ms) || ms < 0)
+            throw new BadParamsException("Falta 'positionMs' (un nombre de mil·lisegons, 0 o més).");
+        return PlayerResult(Queue().Seek(itemId, TimeSpan.FromMilliseconds(ms)));
     }
 
     private JsonObject PlayerNext(JsonObject msg)

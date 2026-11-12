@@ -119,6 +119,8 @@ Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al
    - 8d. ✔ Rotació de reserva i subcategories «no de reserva» (D-099): requadre «Reserva» a la pantalla Rotacions, `reserve.get` / `reserve.set`; les pistes de la reserva ho diuen a la cua i a la previsualització.
 9. Prova de tancament (criteri de sota).
 
+Afegit després (durant la fase 4): ✔ pausa i anar a un altre punt de la pista que sona, amb la previsió de la cua recalculada (D-103).
+
 **Criteri de tancament:** un operador pot fer servir l'aplicació un dia sencer sense obrir RadioDJ.
 
 ## Fase 4 — Falques, campanyes i certificats

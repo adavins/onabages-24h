@@ -116,6 +116,8 @@ public sealed class PlaybackEvents
             ev["queue"] = QueueJson.Queue(queue);
             broadcast(ev);
         };
+        // Pausa i salt (D-103): la pausa que continua sola, o la pista que no s'ha pogut tornar a obrir
+        queue.Problem += message => log.LogWarning("{Message}", message);
 
         outputs.Changed += () =>
         {
