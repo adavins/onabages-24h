@@ -158,3 +158,7 @@ Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al
 - **Directes de YouTube** (el ple de l'Ajuntament): espera del directe, connexió, detecció del final i botons manuals (context operatiu, 2.10).
 
 **Criteri de tancament:** per concretar quan s'hi arribi.
+
+## Millores anotades (sense fase assignada)
+
+- **Agenda de bosses** (demanada el 2026-11-12, després del pas 8c): programar els canvis de subcategoria de les bosses des de la pantalla de les bosses, amb una **rotació mensual automàtica**. Cas real: hi ha 9 bosses «Adult» i cada mes n'han de sonar 2, rotant d'una en una (mes 1: Adult 1 i 2; mes 2: Adult 2 i 3; mes 3: Adult 3 i 4…; després d'Adult 9 es torna a Adult 1). Per dins es pot fer amb esdeveniments BOSSA (D-096). De moment es pot fer a mà, amb un esdeveniment SISTEMA de data solta i l'acció BOSSA.
