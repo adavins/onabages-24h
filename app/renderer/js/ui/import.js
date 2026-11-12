@@ -115,10 +115,12 @@ export class ImportView {
     }
 
     // Resum: noves, ja hi eren, recuperades, sense so i errors
-    const counts = [`${status.added} ${status.added === 1 ? 'nova' : 'noves'}`, `${status.alreadyThere} ja hi eren`];
+    const counts = [`${status.added} ${status.added === 1 ? 'nova' : 'noves'}`];
+    if (status.renew) counts.push(`${status.moved} es mantenen (ara apunten a la carpeta nova)`);
+    else counts.push(`${status.alreadyThere} ja hi eren`);
     if (status.reactivated) counts.push(`${status.reactivated} recuperades (el fitxer faltava o s'havia mogut)`);
     if (status.withoutSound) counts.push(`${status.withoutSound} sense so`);
-    if (status.removed) counts.push(`${status.removed} esborrades en buidar la subcategoria`);
+    if (status.removed) counts.push(`${status.removed} esborrades ${status.renew ? '(han sortit de la bossa)' : 'en buidar la subcategoria'}`);
     if (status.keptForEvents) counts.push(`${status.keptForEvents} conservades (les fan servir esdeveniments)`);
     const summary = el('div', 'tm-import-summary', counts.join(' · '));
     if (status.unreadableCount > 0)

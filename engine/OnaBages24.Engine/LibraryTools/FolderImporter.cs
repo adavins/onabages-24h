@@ -29,8 +29,24 @@ public sealed class FolderImportReport
 /// <paramref name="EmptySubcategory"/>: en acabar bé, les pistes de la subcategoria que no són a la carpeta s'esborren (com
 /// «buidar la subcategoria» de RadioDJ; les que fan servir esdeveniments es queden com eren).
 /// </summary>
+/// <paramref name="Renew"/>: renovar la bossa (D-091): abans d'importar, les cançons de la subcategoria que són a la carpeta
+/// (pel nom de fitxer) hi passen a apuntar; en acabar bé, les altres s'esborren (com <paramref name="EmptySubcategory"/>) i,
+/// amb <paramref name="WatchAfter"/>, la subcategoria passa a vigilar aquesta carpeta.
 public sealed record ImportDefaults(long SubcategoryId, TrackType Type = TrackType.Music, IReadOnlyList<string>? Tags = null,
-    bool VariableDuration = false, bool EmptySubcategory = false);
+    bool VariableDuration = false, bool EmptySubcategory = false, bool Renew = false, bool WatchAfter = false);
+
+/// <summary>
+/// Què passaria en renovar una bossa (fase 3, pas 7c-3; D-091) amb una carpeta nova: les cançons de la subcategoria que hi
+/// són (pel nom de fitxer) es mantenen, els fitxers nous entren i les que no hi són surten.
+/// </summary>
+/// <param name="Keep">Pistes de la subcategoria amb un fitxer del mateix nom a la carpeta nova, i aquest fitxer.</param>
+/// <param name="Enter">Fitxers de la carpeta nova que no són de la subcategoria (s'importaran).</param>
+/// <param name="Leave">Pistes de la subcategoria que no són a la carpeta nova (s'esborraran, excepte les dels esdeveniments).</param>
+/// <param name="LeaveInEvents">De les que surten, les que fan servir esdeveniments (no es toquen).</param>
+/// <param name="ElsewhereCount">Fitxers de la carpeta nova que ja són a la biblioteca en una altra subcategoria (no es toquen).</param>
+public sealed record RenewPlan(
+    IReadOnlyList<(Track Track, string NewPath)> Keep, IReadOnlyList<string> Enter, IReadOnlyList<Track> Leave,
+    IReadOnlyList<Track> LeaveInEvents, int ElsewhereCount);
 
 /// <summary>Què ha passat amb un fitxer en importar-lo.</summary>
 public enum ImportOutcome
@@ -178,6 +194,75 @@ public static class FolderImporter
             // Un fitxer dolent no atura la importació dels altres
             return (ImportOutcome.Unreadable, false, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Compara una subcategoria amb una carpeta nova per renovar-la (D-091): quines cançons es mantenen (mateix nom de fitxer,
+    /// sense distingir majúscules; si n'hi ha diverses amb el mateix nom, la més antiga), quines entren i quines surten.
+    /// No canvia res.
+    /// </summary>
+    public static RenewPlan PlanRenewal(Library library, long subcategoryId, IReadOnlyList<string> files)
+    {
+        var tracks = library.TracksInSubcategory(subcategoryId);
+        var keep = new List<(Track, string)>();
+        var enter = new List<string>();
+        var kept = new HashSet<long>();
+        var pending = new List<string>();
+        int elsewhere = 0;
+
+        // 1. Els fitxers que ja són a la biblioteca amb aquesta ruta exacta: d'aquesta subcategoria (es mantenen) o d'una altra (no es toquen)
+        foreach (string file in files)
+        {
+            if (library.FindByPath(file) is { } existing)
+            {
+                if (existing.SubcategoryId == subcategoryId && kept.Add(existing.Id)) keep.Add((existing, file));
+                else if (existing.SubcategoryId != subcategoryId) elsewhere++;
+                continue;
+            }
+            pending.Add(file);
+        }
+
+        // 2. La resta, pel nom de fitxer entre les pistes de la subcategoria que encara no s'han fet servir (la més antiga primer)
+        var byName = new Dictionary<string, Track>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in tracks.Where(t => !kept.Contains(t.Id)).OrderBy(t => t.Id)) byName.TryAdd(Path.GetFileName(t.Path), t);
+        foreach (string file in pending)
+        {
+            if (byName.Remove(Path.GetFileName(file), out var track) && kept.Add(track.Id)) keep.Add((track, file));
+            else enter.Add(file);
+        }
+        var leaving = tracks.Where(t => !kept.Contains(t.Id)).ToList();
+        var inEvents = leaving.Where(t => library.EventsUsingTrack(t.Id).Count > 0).ToList();
+        return new RenewPlan(keep, enter, leaving.Except(inEvents).ToList(), inEvents, elsewhere);
+    }
+
+    /// <summary>
+    /// Les cançons que es mantenen en renovar una bossa passen a apuntar al fitxer de la carpeta nova (D-091): mateixa fitxa i
+    /// historial; durada nova i punts recalculats en segon pla (excepte els manuals), per si el fitxer no és idèntic.
+    /// Retorna quantes s'han mogut.
+    /// </summary>
+    public static int MoveKept(Library library, RenewPlan plan, CancellationToken cancel = default)
+    {
+        int moved = 0;
+        foreach (var (track, newPath) in plan.Keep)
+        {
+            cancel.ThrowIfCancellationRequested();
+            if (string.Equals(track.Path, newPath, StringComparison.OrdinalIgnoreCase) && track.FileState == FileState.Ok) continue;
+            var info = new FileInfo(newPath);
+            long? duration = track.DurationMs;
+            try { duration = (long)TrackInfo.ReadMetadata(newPath).Duration.TotalMilliseconds; }
+            catch (Exception ex) when (ex is AudioFileException or IOException or UnauthorizedAccessException) { }
+            library.UpdateTrack(track with
+            {
+                Path = newPath,
+                FileState = FileState.Ok,
+                DurationMs = duration,
+                FileSize = info.Length,
+                FileModified = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero),
+                CueSource = track.CueSource == CueSource.Manual ? CueSource.Manual : null,
+            });
+            moved++;
+        }
+        return moved;
     }
 
     /// <summary>

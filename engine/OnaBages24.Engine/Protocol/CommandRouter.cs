@@ -148,6 +148,8 @@ public sealed class CommandRouter
                 "folders.status" => new JsonObject { ["folders"] = QueueJson.Folders(WatcherOrError().Status) },
                 "folders.scan" => FoldersScan(),
                 "folders.log" => FoldersLog(msg),
+                "folders.renewPreview" => FoldersRenewPreview(msg),
+                "folders.renew" => FoldersRenew(msg),
                 "library.import" => LibraryImport(msg),
                 "library.importStatus" => new JsonObject { ["import"] = ImporterOrError().Status is { } s ? QueueJson.Import(s) : null },
                 "library.importCancel" => new JsonObject { ["cancelled"] = ImporterOrError().Cancel() },
@@ -649,20 +651,7 @@ public sealed class CommandRouter
         if (library.GetFolderSettings(id) is null) throw new BadParamsException($"No existeix la subcategoria {id}.");
         string? folder = ReadString(msg["folder"])?.Trim();
         if (string.IsNullOrEmpty(folder)) folder = null;
-        if (folder is not null)
-        {
-            if (!Path.IsPathFullyQualified(folder)) throw new BadParamsException("La carpeta ha de ser una ruta completa (p. ex. O:\\musica\\BOSSA 9).");
-            if (!Directory.Exists(folder)) throw new BadParamsException($"No es troba la carpeta: {folder}");
-            folder = folder.TrimEnd('\\', '/');
-            if (folder.Length == 2 && folder[1] == ':') throw new BadParamsException("No es pot vigilar una unitat sencera: tria una carpeta.");
-            string normalized = folder + "\\";
-            foreach (var other in library.WatchedFolders().Where(f => f.SubcategoryId != id))
-            {
-                string otherFolder = other.Folder!.TrimEnd('\\', '/') + "\\";
-                if (normalized.StartsWith(otherFolder, StringComparison.OrdinalIgnoreCase) || otherFolder.StartsWith(normalized, StringComparison.OrdinalIgnoreCase))
-                    throw new BadParamsException($"Aquesta carpeta ja la vigila «{other.Name}» (o hi és a dins, o la conté): {other.Folder}");
-            }
-        }
+        if (folder is not null) folder = CheckWatchableFolder(library, id, folder);
         var type = TrackType.Music;
         if (msg["type"] is not null)
         {
@@ -683,6 +672,86 @@ public sealed class CommandRouter
         _watcher?.Poke();
         LibraryChanged?.Invoke(null);
         return new JsonObject { ["folder"] = QueueJson.FolderSettings(library.GetFolderSettings(id)!) };
+    }
+
+    /// <summary>
+    /// Comprova que la carpeta es pot vigilar des de la subcategoria <paramref name="subcategoryId"/>: ruta completa, que existeixi,
+    /// que no sigui una unitat sencera i que no se solapi amb la d'una altra subcategoria. Retorna la ruta sense «\» al final.
+    /// </summary>
+    private static string CheckWatchableFolder(Library library, long subcategoryId, string folder)
+    {
+        if (!Path.IsPathFullyQualified(folder)) throw new BadParamsException("La carpeta ha de ser una ruta completa (p. ex. O:\\musica\\BOSSA 9).");
+        if (!Directory.Exists(folder)) throw new BadParamsException($"No es troba la carpeta: {folder}");
+        folder = folder.TrimEnd('\\', '/');
+        if (folder.Length == 2 && folder[1] == ':') throw new BadParamsException("No es pot vigilar una unitat sencera: tria una carpeta.");
+        string normalized = folder + "\\";
+        foreach (var other in library.WatchedFolders().Where(f => f.SubcategoryId != subcategoryId))
+        {
+            string otherFolder = other.Folder!.TrimEnd('\\', '/') + "\\";
+            if (normalized.StartsWith(otherFolder, StringComparison.OrdinalIgnoreCase) || otherFolder.StartsWith(normalized, StringComparison.OrdinalIgnoreCase))
+                throw new BadParamsException($"Aquesta carpeta ja la vigila «{other.Name}» (o hi és a dins, o la conté): {other.Folder}");
+        }
+        return folder;
+    }
+
+    /// <summary>
+    /// «Renova la bossa» (D-091), sense canviar res: què passaria amb la carpeta nova. <c>subcategoryId</c>, <c>folder</c>.
+    /// Retorna quantes es mantenen, entren i surten (i les que surten però fan servir esdeveniments), amb els noms (com a
+    /// molt 300 de cada).
+    /// </summary>
+    private JsonObject FoldersRenewPreview(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        long id = RequiredId(msg, "subcategoryId");
+        var settings = library.GetFolderSettings(id) ?? throw new BadParamsException($"No existeix la subcategoria {id}.");
+        string folder = CheckWatchableFolder(library, id, (ReadString(msg["folder"]) ?? "").Trim());
+        List<string> files;
+        try { files = LibraryTools.FolderImporter.ListAudioFiles(folder); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { throw new BadParamsException($"No es pot llegir la carpeta: {ex.Message}"); }
+        var plan = LibraryTools.FolderImporter.PlanRenewal(library, id, files);
+        static JsonArray Names(IEnumerable<string> names) => new(names.Take(300).Select(n => (JsonNode)JsonValue.Create(n)!).ToArray());
+        static string Label(Track t) => string.IsNullOrEmpty(t.Artist) ? t.Title : $"{t.Artist} - {t.Title}";
+        return new JsonObject
+        {
+            ["subcategoryId"] = id,
+            ["name"] = settings.Name,
+            ["folder"] = folder,
+            ["files"] = files.Count,
+            ["keep"] = plan.Keep.Count,
+            ["enter"] = plan.Enter.Count,
+            ["leave"] = plan.Leave.Count,
+            ["leaveInEvents"] = plan.LeaveInEvents.Count,
+            ["elsewhere"] = plan.ElsewhereCount,
+            ["keepNames"] = Names(plan.Keep.Select(k => Label(k.Track))),
+            ["enterNames"] = Names(plan.Enter.Select(p => Path.GetFileNameWithoutExtension(p) ?? p)),
+            ["leaveNames"] = Names(plan.Leave.Select(Label)),
+            ["leaveInEventsNames"] = Names(plan.LeaveInEvents.Select(Label)),
+        };
+    }
+
+    /// <summary>
+    /// «Renova la bossa» (D-091): en segon pla, com una importació (el progrés arriba amb <c>library.importProgress</c>).
+    /// <c>subcategoryId</c>, <c>folder</c>, <c>watch</c> (true = a partir d'ara la subcategoria vigila aquesta carpeta).
+    /// Les cançons noves es queden com diu la configuració de la carpeta de la subcategoria (tipus, etiquetes…).
+    /// </summary>
+    private JsonObject FoldersRenew(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        var importer = ImporterOrError();
+        long id = RequiredId(msg, "subcategoryId");
+        var settings = library.GetFolderSettings(id) ?? throw new BadParamsException($"No existeix la subcategoria {id}.");
+        string folder = CheckWatchableFolder(library, id, (ReadString(msg["folder"]) ?? "").Trim());
+        bool watch = msg["watch"] is JsonValue v && v.TryGetValue(out bool w) && w;
+        try
+        {
+            var status = importer.Start(folder, new LibraryTools.ImportDefaults(id, settings.DefaultType, settings.DefaultTags,
+                settings.DefaultVariableDuration, EmptySubcategory: true, Renew: true, WatchAfter: watch), settings.Name);
+            return new JsonObject { ["import"] = QueueJson.Import(status) };
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new BadParamsException(ex.Message);
+        }
     }
 
     private JsonObject FoldersScan()

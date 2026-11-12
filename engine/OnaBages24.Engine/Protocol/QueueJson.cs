@@ -176,6 +176,8 @@ public static class QueueJson
         ["emptySubcategory"] = s.EmptySubcategory,
         ["removed"] = s.Removed,
         ["keptForEvents"] = s.KeptForEvents,
+        ["renew"] = s.Renew,
+        ["moved"] = s.Moved,
         ["warning"] = s.Warning,
         ["started"] = s.Started.ToString("O"),
         ["finished"] = s.Finished?.ToString("O"),

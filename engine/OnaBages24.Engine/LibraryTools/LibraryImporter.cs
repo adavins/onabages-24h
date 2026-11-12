@@ -32,6 +32,12 @@ public sealed record ImportStatus(
 
     /// <summary>Un avís que no és un error (p. ex. «no s'ha buidat la subcategoria perquè…»), o null.</summary>
     public string? Warning { get; init; }
+
+    /// <summary>És una renovació de la bossa (D-091).</summary>
+    public bool Renew { get; init; }
+
+    /// <summary>En una renovació: les cançons que es mantenen i han passat a apuntar a la carpeta nova.</summary>
+    public int Moved { get; init; }
 }
 
 /// <summary>
@@ -82,7 +88,8 @@ public sealed class LibraryImporter : IDisposable
             _cancel = new CancellationTokenSource();
             _status = new ImportStatus(folder, subcategoryName, ImportState.Listing, 0, 0, 0, 0, 0, 0, [], DateTimeOffset.UtcNow, null, null)
             {
-                EmptySubcategory = defaults.EmptySubcategory,
+                EmptySubcategory = defaults.EmptySubcategory || defaults.Renew,
+                Renew = defaults.Renew,
             };
             var token = _cancel.Token;
             _thread = new Thread(() => Run(folder, defaults, token)) { IsBackground = true, Name = "Importació de carpeta", Priority = ThreadPriority.Lowest };
@@ -108,7 +115,7 @@ public sealed class LibraryImporter : IDisposable
     private void Run(string folder, ImportDefaults defaults, CancellationToken cancel)
     {
         var report = new FolderImportReport();
-        int total = 0, done = 0, removed = 0, kept = 0;
+        int total = 0, done = 0, removed = 0, kept = 0, moved = 0;
         string? warning = null;
         long lastProgress = 0;
         void Publish(ImportState state, string? error = null, bool force = false)
@@ -127,6 +134,7 @@ public sealed class LibraryImporter : IDisposable
                     Error = error,
                     Removed = removed,
                     KeptForEvents = kept,
+                    Moved = moved,
                     Warning = warning,
                 };
                 _status = status;
@@ -140,7 +148,17 @@ public sealed class LibraryImporter : IDisposable
             _log?.Invoke($"Importació de {folder}: buscant fitxers");
             Publish(ImportState.Listing, force: true);
             var files = FolderImporter.ListAudioFiles(folder);
-            total = files.Count;
+            var toImport = files;
+            if (defaults.Renew)
+            {
+                // Renovar la bossa (D-091): mai amb una carpeta sense àudio (seria esborrar tota la bossa)
+                if (files.Count == 0) throw new InvalidOperationException("La carpeta nova no té cap fitxer d'àudio: no s'ha renovat res.");
+                var plan = FolderImporter.PlanRenewal(_library, defaults.SubcategoryId, files);
+                moved = FolderImporter.MoveKept(_library, plan, cancel);
+                toImport = plan.Enter.ToList();
+                _log?.Invoke($"Renovació de la bossa amb {folder}: {plan.Keep.Count} es mantenen ({moved} mogudes a la carpeta nova), {plan.Enter.Count} entren, {plan.Leave.Count} surten");
+            }
+            total = toImport.Count;
             Publish(ImportState.Running, force: true);
 
             // Dos fitxers alhora (D-089), cadascun en un fil de prioritat baixa: es van repartint la llista
@@ -152,9 +170,9 @@ public sealed class LibraryImporter : IDisposable
                 try
                 {
                     int i;
-                    while (!cancel.IsCancellationRequested && (i = Interlocked.Increment(ref next)) < files.Count)
+                    while (!cancel.IsCancellationRequested && (i = Interlocked.Increment(ref next)) < toImport.Count)
                     {
-                        string path = files[i];
+                        string path = toImport[i];
                         var (outcome, withoutSound, error) = FolderImporter.ImportFile(_library, path, defaults, _thresholds, cancel);
                         lock (sync)
                         {
@@ -176,7 +194,8 @@ public sealed class LibraryImporter : IDisposable
 
             // Buidar la subcategoria (com RadioDJ): només si la importació ha acabat bé, perquè una importació aturada o
             // fallada no deixi la bossa sense música. Amb una carpeta sense àudio no es buida (seria esborrar-ho tot).
-            if (defaults.EmptySubcategory && end == ImportState.Done)
+            bool empty = defaults.EmptySubcategory || defaults.Renew;
+            if (empty && end == ImportState.Done)
             {
                 if (files.Count == 0)
                     warning = "La carpeta no té cap fitxer d'àudio: no s'ha buidat la subcategoria.";
@@ -185,9 +204,14 @@ public sealed class LibraryImporter : IDisposable
                     (removed, kept) = FolderImporter.RemoveOthers(_library, defaults.SubcategoryId, files);
                     _log?.Invoke($"Importació de {folder}: subcategoria buidada ({removed} pistes esborrades, {kept} conservades perquè les fan servir esdeveniments)");
                 }
+                // Renovació: a partir d'ara, la subcategoria vigila la carpeta nova (amb la mateixa configuració)
+                if (defaults.Renew && defaults.WatchAfter && files.Count > 0 && _library.GetFolderSettings(defaults.SubcategoryId) is { } s)
+                    _library.SetFolderSettings(s.SubcategoryId, folder.TrimEnd('\\', '/'), s.Renewable, s.DefaultType, s.DefaultTags, s.DefaultVariableDuration);
             }
-            else if (defaults.EmptySubcategory)
-                warning = "La importació no ha acabat: no s'ha buidat la subcategoria.";
+            else if (empty)
+                warning = defaults.Renew
+                    ? "La renovació no ha acabat: les cançons que sortien no s'han esborrat (les que entraven fins aquí ja hi són)."
+                    : "La importació no ha acabat: no s'ha buidat la subcategoria.";
 
             Publish(end, force: true);
             _log?.Invoke($"Importació de {folder} {(end == ImportState.Cancelled ? "aturada" : "acabada")}: {report.ToString().Split('\n')[0]}");

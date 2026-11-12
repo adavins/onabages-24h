@@ -112,11 +112,76 @@ export class FoldersView {
     dialog.showModal();
     for (;;) {
       const choice = await new Promise((resolve) => dialog.addEventListener('close', () => resolve(dialog.returnValue), { once: true }));
+      if (choice === 'renew') {
+        const open = /** @type {{ id: number, name: string }} */ (this.#open);
+        this.#open = null;
+        await this.#renew(open, settings);
+        return;
+      }
       if (choice !== 'save' || (await this.#save(settings))) break;
       dialog.returnValue = '';
       dialog.showModal(); // no s'ha pogut desar: el diàleg torna a sortir amb el motiu
     }
     this.#open = null;
+  }
+
+  /**
+   * «Renova la bossa» (D-091): es tria la carpeta nova, el motor diu què es mantindrà, què entrarà i què sortirà, i en
+   * confirmar-ho ho fa en segon pla (el progrés surt a la Biblioteca, com una importació).
+   * @param {{ id: number, name: string }} sub @param {any} settings  la configuració de la carpeta vigilada
+   */
+  async #renew(sub, settings) {
+    const input = /** @type {HTMLInputElement} */ ($('renew-folder'));
+    const ok = /** @type {HTMLButtonElement} */ ($('renew-ok'));
+    $('renew-name').textContent = sub.name;
+    input.value = '';
+    ok.disabled = true;
+    $('renew-preview').replaceChildren();
+    $('renew-problem').textContent = '';
+    /** @type {HTMLInputElement} */ ($('renew-watch')).checked = !!settings.folder;
+    /** @type {any} */
+    let preview = null;
+
+    $('renew-choose').onclick = async () => {
+      const folder = await this.#chooseFolder(input.value || settings.folder || undefined);
+      if (!folder) return;
+      input.value = folder;
+      ok.disabled = true;
+      $('renew-problem').textContent = '';
+      $('renew-preview').replaceChildren(statusLabel('text-info', 'bi-hourglass-split', 'Comparant la carpeta nova amb la bossa d\'ara…'));
+      try {
+        preview = await this.#send('folders.renewPreview', { subcategoryId: sub.id, folder });
+        renderPreview(preview);
+        ok.disabled = preview.files === 0;
+        if (preview.files === 0) $('renew-problem').textContent = 'La carpeta no té cap fitxer d\'àudio: no es pot renovar amb aquesta.';
+      } catch (err) {
+        preview = null;
+        $('renew-preview').replaceChildren();
+        $('renew-problem').textContent = /** @type {Error} */ (err).message;
+      }
+    };
+
+    const dialog = /** @type {HTMLDialogElement} */ ($('renew-dialog'));
+    dialog.returnValue = '';
+    dialog.showModal();
+    const choice = await new Promise((resolve) => dialog.addEventListener('close', () => resolve(dialog.returnValue), { once: true }));
+    if (choice !== 'ok' || !preview) return;
+
+    if (preview.leave > 0 && !(await confirmAction({
+      title: 'Renovar la bossa',
+      message: `${preview.leave} ${preview.leave === 1 ? 'cançó sortirà' : 'cançons sortiran'} de «${sub.name}» i s'esborraran de la biblioteca ` +
+        '(l\'historial les conserva; els fitxers no es toquen). No es pot desfer.',
+      confirm: 'Renova',
+    }))) return;
+
+    try {
+      await this.#send('folders.renew', {
+        subcategoryId: sub.id, folder: input.value, watch: /** @type {HTMLInputElement} */ ($('renew-watch')).checked,
+      });
+      // El progrés i l'informe surten al requadre d'importació de la Biblioteca (library.importProgress)
+    } catch (err) {
+      await confirmAction({ title: 'No s\'ha pogut renovar la bossa', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+    }
   }
 
   /** @param {any} before  la configuració d'abans (per confirmar els canvis delicats) */
@@ -190,6 +255,31 @@ export class FoldersView {
         })));
     } catch { /* sense connexió */ }
   }
+}
+
+/** La previsualització de «Renova la bossa»: què es manté, què entra i què surt, amb les llistes plegades. @param {any} p */
+function renderPreview(p) {
+  /** @param {string} css @param {string} iconName @param {string} title @param {string[]} names @param {number} count */
+  const block = (css, iconName, title, names, count) => {
+    const details = /** @type {HTMLDetailsElement} */ (el('details', 'renew-block'));
+    const summary = el('summary', '');
+    summary.append(statusLabel(css, iconName, `${title}: ${count}`));
+    const list = el('ul', 'renew-list');
+    list.append(...names.map((n) => el('li', '', n)));
+    if (count > names.length) list.append(el('li', 'text-body-secondary', `… i ${count - names.length} més`));
+    details.append(summary, list);
+    return details;
+  };
+  const parts = [
+    block('text-success', 'bi-check2-circle', 'Es mantenen (amb la fitxa i l\'historial)', p.keepNames, p.keep),
+    block('text-info', 'bi-plus-circle', 'Entren', p.enterNames, p.enter),
+    block('text-warning', 'bi-dash-circle', 'Surten (s\'esborraran)', p.leaveNames, p.leave),
+  ];
+  if (p.leaveInEvents > 0)
+    parts.push(block('text-body-secondary', 'bi-calendar-check', 'Surten però les fan servir esdeveniments (no es toquen)', p.leaveInEventsNames, p.leaveInEvents));
+  if (p.elsewhere > 0)
+    parts.push(el('div', 'form-text', `${p.elsewhere} fitxers de la carpeta ja són a la biblioteca en una altra subcategoria: no es toquen.`));
+  $('renew-preview').replaceChildren(...parts);
 }
 
 /** @param {string} path */

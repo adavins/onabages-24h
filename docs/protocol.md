@@ -112,6 +112,8 @@ El `message` és en català i es pot mostrar a l'operador.
 | `folders.status` | — | `{ folders: [ … ] }` (4.11): com estan les carpetes vigilades a l'última revisió | fase 3, pas 7c |
 | `folders.scan` | — | `{ scanning: true }`: revisa les carpetes ara (el resultat arriba amb `folders.changed`) | fase 3, pas 7c |
 | `folders.log` | `subcategoryId` (opcional), `limit` (per defecte 100, com a molt 1.000) | `{ entries: [ { id, time, subcategoryId, subcategory, path, action, detail } ] }`, els més recents primer. `action`: `imported`, `recovered`, `missing`, `deleted`, `updated`, `error` o `folder` (problema de la carpeta, o que s'ha resolt) | fase 3, pas 7c |
+| `folders.renewPreview` | `subcategoryId`, `folder` (la carpeta nova) | `{ subcategoryId, name, folder, files, keep, enter, leave, leaveInEvents, elsewhere, keepNames, enterNames, leaveNames, leaveInEventsNames }`: què passaria en renovar la bossa (D-091), sense canviar res. Les llistes de noms, com a molt 300 | fase 3, pas 7c-3 |
+| `folders.renew` | `subcategoryId`, `folder`, `watch` (`true` = després, la subcategoria vigila aquesta carpeta) | `{ import }` (4.10, amb `renew: true`): es fa en segon pla com una importació. Primer les que es mantenen passen a apuntar a la carpeta nova (`moved`), després s'importen les noves i, només si acaba bé, s'esborren les que surten (`removed`; les dels esdeveniments, `keptForEvents`). Amb una carpeta sense àudio, `failed` i no es toca res | fase 3, pas 7c-3 |
 | `library.import` | `folder` (ruta completa d'una carpeta que existeixi), `subcategoryId` i, per a les pistes noves, `type` (per defecte `music`), `tags` (llista) i `variableDuration`; `emptySubcategory` (`true` = en acabar bé, esborra les pistes de la subcategoria que no són a la carpeta) | `{ import }` (4.10). Comença a importar en segon pla els fitxers d'àudio de la carpeta i les subcarpetes; el progrés arriba amb `library.importProgress`. Una sola importació alhora (si n'hi ha una en curs, `bad_params`) | fase 3, pas 7b |
 | `library.importStatus` | — | `{ import }`: la importació en curs o l'última (`null` si no se n'ha fet cap des que ha arrencat el motor) | fase 3, pas 7b |
 | `library.importCancel` | — | `{ cancelled }`: `false` si no n'hi havia cap en curs. El que ja s'ha importat es queda | fase 3, pas 7b |
@@ -362,6 +364,7 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 - Una pista nova que coincideix amb una de la mateixa subcategoria que falta (o retirada) amb el **mateix nom de fitxer** no es duplica: aquella es recupera amb el fitxer nou i compta a `reactivated`.
 - `emptySubcategory`, `removed`, `keptForEvents`: si s'ha demanat buidar la subcategoria, quantes s'han esborrat i quantes s'han conservat tal com eren perquè les fan servir esdeveniments. Només es buida si la importació acaba bé i la carpeta té àudio; si no, `warning` diu per què no.
 - `warning`: un avís que no és un error, o `null`.
+- `renew`, `moved` (fase 3, pas 7c-3): és una renovació de la bossa (`folders.renew`), i quantes cançons que continuen han passat a apuntar a la carpeta nova.
 - `unreadable`: els que no es poden llegir, amb el motiu (com a molt els 200 primers; el total és `unreadableCount`, i tots surten al registre del motor).
 - Es fa en un fil de prioritat baixa, un fitxer cada vegada: l'emissió va primer.
 

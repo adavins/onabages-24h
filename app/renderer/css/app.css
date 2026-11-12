@@ -1024,6 +1024,26 @@ body {
   color: var(--ob-muted);
 }
 
+/* «Renova la bossa» (fase 3, pas 7c-3) */
+.renew-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.renew-block summary {
+  cursor: pointer;
+}
+
+.renew-list {
+  max-height: 9rem;
+  overflow-y: auto;
+  margin: 0.25rem 0 0.4rem;
+  padding-left: 1.5rem;
+  font-size: 0.85rem;
+  user-select: text;
+}
+
 /* Pantalla estreta: l'arbre a dalt, la fitxa a sota */
 @media (max-width: 1200px) {
   .tm-main {

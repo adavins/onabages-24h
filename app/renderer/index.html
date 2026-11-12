@@ -373,9 +373,38 @@
       <p id="folder-problem" class="form-text text-warning"></p>
 
       <div class="d-flex justify-content-end gap-2 flex-wrap">
-        <button id="folder-scan" class="btn btn-outline-secondary me-auto" type="button"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Revisa ara</button>
+        <button id="folder-scan" class="btn btn-outline-secondary" type="button"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Revisa ara</button>
+        <button class="btn btn-outline-primary me-auto" value="renew" formnovalidate title="Canvia la bossa per una carpeta nova: mostra què entra, què surt i què es manté"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Renova la bossa…</button>
         <button class="btn btn-secondary" value="cancel" formnovalidate>Tanca</button>
         <button id="folder-save" class="btn btn-primary" value="save">Desa</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- «Renova la bossa» (fase 3, pas 7c-3; D-091) -->
+  <dialog id="renew-dialog" class="ob-dialog ob-dialog-wide">
+    <form method="dialog">
+      <h2 class="h5"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Renova la bossa: <span id="renew-name"></span></h2>
+      <p class="ob-dialog-message">Tria la carpeta amb la bossa nova (preparada amb temps). Abans de fer res es mostra què canviarà. Les cançons que continuen (mateix nom de fitxer) conserven la fitxa i l'historial.</p>
+
+      <label for="renew-folder" class="form-label">Carpeta nova</label>
+      <div class="d-flex gap-2 mb-3">
+        <input id="renew-folder" class="form-control" type="text" readonly placeholder="Tria la carpeta…">
+        <button id="renew-choose" class="btn btn-outline-secondary" type="button">Tria…</button>
+      </div>
+
+      <div id="renew-preview" class="renew-preview mb-3"></div>
+
+      <div class="form-check form-switch mb-1">
+        <input id="renew-watch" class="form-check-input" type="checkbox" checked>
+        <label for="renew-watch" class="form-check-label">A partir d'ara, vigila aquesta carpeta</label>
+      </div>
+      <p class="form-text mb-3">Les cançons noves entren amb la configuració de la carpeta vigilada de la subcategoria (tipus i etiquetes). Si la renovació s'atura o falla, no s'esborra res.</p>
+      <p id="renew-problem" class="form-text text-warning"></p>
+
+      <div class="d-flex justify-content-end gap-2">
+        <button class="btn btn-secondary" value="cancel" formnovalidate>Cancel·la</button>
+        <button id="renew-ok" class="btn btn-primary" value="ok" disabled>Renova</button>
       </div>
     </form>
   </dialog>

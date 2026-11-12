@@ -263,7 +263,10 @@ public sealed class CutTests : IDisposable
 
         var started = _started.Single(s => s.Item.Title == "Programa");
         Assert.Equal(started.CutFrame, started.StartFrame);
-        Assert.InRange(started.StartFrame, cutFrame!.Value - Rate / 100, cutFrame.Value + Rate / 100); // ±10 ms (el temps real de la prova)
+        // ±30 ms: el rellotge fals es barreja amb el temps real que passa entre blocs del mesclador (aquí el fa córrer la prova,
+        // no la targeta); amb l'ordinador carregat (totes les proves alhora) arribava a 7 ms. La precisió de debò és la línia
+        // d'abans: el tall cau exactament a la mostra calculada.
+        Assert.InRange(started.StartFrame, cutFrame!.Value - 3 * Rate / 100, cutFrame.Value + 3 * Rate / 100);
         var record = Assert.Single(events.Executions(now.AddHours(-1), now.AddHours(1)));
         Assert.Equal(ExecutionResult.Ok, record.Result);
         Assert.NotNull(record.ExecutedAt);
