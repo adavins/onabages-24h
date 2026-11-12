@@ -133,7 +133,7 @@ public class FolderImportTests : IDisposable
     }
 
     [Fact]
-    public void Buidar_la_subcategoria_esborra_les_que_no_son_a_la_carpeta_i_retira_les_dels_esdeveniments()
+    public void Buidar_la_subcategoria_esborra_les_que_no_son_a_la_carpeta_i_no_toca_les_dels_esdeveniments()
     {
         string kept = Wav("Es queda.wav");
         long sub = _library.EnsureSubcategory(_library.EnsureCategory("Music"), "Actualitat");
@@ -150,10 +150,10 @@ public class FolderImportTests : IDisposable
         Assert.True(importer.Wait(TimeSpan.FromSeconds(30)));
 
         var status = importer.Status!;
-        Assert.Equal((1, 1, 1), (status.Added, status.Removed, status.RetiredInstead));
+        Assert.Equal((1, 1, 1), (status.Added, status.Removed, status.KeptForEvents));
         Assert.NotNull(_library.GetTrack(keptId));
         Assert.Null(_library.GetTrack(free));
-        Assert.Equal(FileState.Retired, _library.GetTrack(used)!.FileState);
+        Assert.Equal(FileState.Ok, _library.GetTrack(used)!.FileState); // la de l'esdeveniment, com era
         Assert.NotNull(_library.GetTrack(elsewhere)); // d'una altra subcategoria: no es toca
     }
 

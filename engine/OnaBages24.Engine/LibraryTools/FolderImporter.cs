@@ -27,7 +27,7 @@ public sealed class FolderImportReport
 /// <summary>
 /// Com queden les pistes noves d'una importació (fase 3, pas 7b): subcategoria, tipus, etiquetes i durada variable.
 /// <paramref name="EmptySubcategory"/>: en acabar bé, les pistes de la subcategoria que no són a la carpeta s'esborren (com
-/// «buidar la subcategoria» de RadioDJ; les que fan servir esdeveniments queden retirades).
+/// «buidar la subcategoria» de RadioDJ; les que fan servir esdeveniments es queden com eren).
 /// </summary>
 public sealed record ImportDefaults(long SubcategoryId, TrackType Type = TrackType.Music, IReadOnlyList<string>? Tags = null,
     bool VariableDuration = false, bool EmptySubcategory = false);
@@ -181,31 +181,27 @@ public static class FolderImporter
     }
 
     /// <summary>
-    /// Buida la subcategoria després d'importar (com RadioDJ): les pistes que no són a <paramref name="keepPaths"/> (els fitxers
-    /// de la carpeta importada) s'esborren de la biblioteca. Les que fan servir esdeveniments no es poden esborrar: queden
-    /// retirades (l'AutoDJ no les tria). Els fitxers no es toquen mai.
+    /// Buida una subcategoria (com RadioDJ): les pistes que no són a <paramref name="keepPaths"/> (p. ex. els fitxers de la
+    /// carpeta importada; buit = totes) s'esborren de la biblioteca. Les que fa servir algun esdeveniment <b>no es toquen</b>
+    /// (decisió del desenvolupador, D-089): es queden tal com eren. Els fitxers no es toquen mai.
     /// </summary>
-    /// <returns>Quantes s'han esborrat i quantes han quedat retirades.</returns>
-    public static (int Removed, int Retired) RemoveOthers(Library library, long subcategoryId, IEnumerable<string> keepPaths)
+    /// <returns>Quantes s'han esborrat i quantes s'han conservat perquè les fan servir esdeveniments.</returns>
+    public static (int Removed, int KeptForEvents) RemoveOthers(Library library, long subcategoryId, IEnumerable<string> keepPaths)
     {
         var keep = new HashSet<string>(keepPaths, StringComparer.OrdinalIgnoreCase);
-        int removed = 0, retired = 0;
+        int removed = 0, kept = 0;
         foreach (var track in library.TracksInSubcategory(subcategoryId))
         {
             if (keep.Contains(track.Path)) continue;
             if (library.EventsUsingTrack(track.Id).Count > 0)
             {
-                if (track.FileState != FileState.Retired)
-                {
-                    library.UpdateTrack(track with { FileState = FileState.Retired });
-                    retired++;
-                }
+                kept++;
                 continue;
             }
             library.DeleteTrack(track.Id);
             removed++;
         }
-        return (removed, retired);
+        return (removed, kept);
     }
 
     /// <summary>

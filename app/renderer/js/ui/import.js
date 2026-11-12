@@ -119,7 +119,7 @@ export class ImportView {
     if (status.reactivated) counts.push(`${status.reactivated} recuperades (el fitxer faltava o s'havia mogut)`);
     if (status.withoutSound) counts.push(`${status.withoutSound} sense so`);
     if (status.removed) counts.push(`${status.removed} esborrades en buidar la subcategoria`);
-    if (status.retiredInstead) counts.push(`${status.retiredInstead} retirades (les fan servir esdeveniments)`);
+    if (status.keptForEvents) counts.push(`${status.keptForEvents} conservades (les fan servir esdeveniments)`);
     const summary = el('div', 'tm-import-summary', counts.join(' · '));
     if (status.unreadableCount > 0)
       summary.append(' · ', statusLabel('text-warning', 'bi-exclamation-triangle-fill', `${status.unreadableCount} no es poden llegir`));
@@ -184,7 +184,7 @@ export class ImportView {
       const confirmed = await confirmAction({
         title: 'Buidar la subcategoria',
         message: `«${category?.name ?? ''} / ${sub?.name ?? ''}» té ara ${sub?.count ?? 0} pistes. En acabar la importació, les que no ` +
-          'siguin a la carpeta s\'esborraran de la biblioteca (les que fan servir esdeveniments quedaran retirades). ' +
+          'siguin a la carpeta s\'esborraran de la biblioteca (les que fan servir esdeveniments es quedaran com són). ' +
           'L\'historial les conserva i els fitxers no es toquen, però no es pot desfer.',
         confirm: 'Importa i buida',
       });

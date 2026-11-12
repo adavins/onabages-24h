@@ -26,9 +26,9 @@ public sealed record ImportStatus(
     /// <summary>S'ha demanat buidar la subcategoria (les pistes que no són a la carpeta).</summary>
     public bool EmptySubcategory { get; init; }
 
-    /// <summary>En buidar-la: quantes s'han esborrat i quantes han quedat retirades (les fan servir esdeveniments).</summary>
+    /// <summary>En buidar-la: quantes s'han esborrat i quantes s'han conservat perquè les fan servir esdeveniments.</summary>
     public int Removed { get; init; }
-    public int RetiredInstead { get; init; }
+    public int KeptForEvents { get; init; }
 
     /// <summary>Un avís que no és un error (p. ex. «no s'ha buidat la subcategoria perquè…»), o null.</summary>
     public string? Warning { get; init; }
@@ -108,7 +108,7 @@ public sealed class LibraryImporter : IDisposable
     private void Run(string folder, ImportDefaults defaults, CancellationToken cancel)
     {
         var report = new FolderImportReport();
-        int total = 0, done = 0, removed = 0, retired = 0;
+        int total = 0, done = 0, removed = 0, kept = 0;
         string? warning = null;
         long lastProgress = 0;
         void Publish(ImportState state, string? error = null, bool force = false)
@@ -126,7 +126,7 @@ public sealed class LibraryImporter : IDisposable
                     Finished = state is ImportState.Done or ImportState.Cancelled or ImportState.Failed ? DateTimeOffset.UtcNow : null,
                     Error = error,
                     Removed = removed,
-                    RetiredInstead = retired,
+                    KeptForEvents = kept,
                     Warning = warning,
                 };
                 _status = status;
@@ -182,8 +182,8 @@ public sealed class LibraryImporter : IDisposable
                     warning = "La carpeta no té cap fitxer d'àudio: no s'ha buidat la subcategoria.";
                 else
                 {
-                    (removed, retired) = FolderImporter.RemoveOthers(_library, defaults.SubcategoryId, files);
-                    _log?.Invoke($"Importació de {folder}: subcategoria buidada ({removed} pistes esborrades, {retired} retirades perquè les fan servir esdeveniments)");
+                    (removed, kept) = FolderImporter.RemoveOthers(_library, defaults.SubcategoryId, files);
+                    _log?.Invoke($"Importació de {folder}: subcategoria buidada ({removed} pistes esborrades, {kept} conservades perquè les fan servir esdeveniments)");
                 }
             }
             else if (defaults.EmptySubcategory)

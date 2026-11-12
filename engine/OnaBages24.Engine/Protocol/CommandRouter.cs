@@ -585,8 +585,8 @@ public sealed class CommandRouter
     }
 
     /// <summary>
-    /// Buida una subcategoria (fase 3, pas 7b; D-089): esborra totes les seves pistes de la biblioteca; les que fan servir
-    /// esdeveniments queden retirades. Amb <c>dryRun: true</c> no fa res i només diu què faria (per confirmar-ho): quantes
+    /// Buida una subcategoria (fase 3, pas 7b; D-089): esborra de la biblioteca les seves pistes que no fa servir cap
+    /// esdeveniment; les altres es queden com eren. Amb <c>dryRun: true</c> no fa res i només diu què faria (per confirmar-ho): quantes
     /// pistes hi ha, quantes fan servir esdeveniments i quines rotacions hi tenen algun pas.
     /// </summary>
     private JsonObject SubcategoryEmpty(JsonObject msg)
@@ -609,9 +609,9 @@ public sealed class CommandRouter
         };
         if (dryRun) return result;
 
-        var (removed, retired) = LibraryTools.FolderImporter.RemoveOthers(library, id, []);
+        var (removed, kept) = LibraryTools.FolderImporter.RemoveOthers(library, id, []);
         result["removed"] = removed;
-        result["retired"] = retired;
+        result["keptForEvents"] = kept;
         LibraryChanged?.Invoke(null);
         return result;
     }

@@ -128,7 +128,7 @@ public static class QueueJson
         ["unreadableCount"] = s.Unreadable.Count,
         ["emptySubcategory"] = s.EmptySubcategory,
         ["removed"] = s.Removed,
-        ["retiredInstead"] = s.RetiredInstead,
+        ["keptForEvents"] = s.KeptForEvents,
         ["warning"] = s.Warning,
         ["started"] = s.Started.ToString("O"),
         ["finished"] = s.Finished?.ToString("O"),

@@ -192,7 +192,7 @@ public sealed class TrackManagerTests : IDisposable
     }
 
     [Fact]
-    public void Buidar_una_subcategoria_primer_diu_que_fara_i_despres_esborra_i_retira()
+    public void Buidar_una_subcategoria_primer_diu_que_fara_i_despres_esborra_les_que_no_son_en_cap_esdeveniment()
     {
         long free = Track("Lliure", _adult5);
         long used = Track("En un esdeveniment", _adult5);
@@ -208,9 +208,10 @@ public sealed class TrackManagerTests : IDisposable
         Assert.Empty(_changed);
 
         var done = Result(Send($$"""{ "v": 1, "id": 2, "cmd": "subcategory.empty", "subcategoryId": {{_adult5}} }"""));
-        Assert.Equal((1, 1), (done["removed"]!.GetValue<int>(), done["retired"]!.GetValue<int>()));
+        Assert.Equal((1, 1), (done["removed"]!.GetValue<int>(), done["keptForEvents"]!.GetValue<int>()));
         Assert.Null(_library.GetTrack(free));
-        Assert.Equal(FileState.Retired, _library.GetTrack(used)!.FileState);
+        Assert.Equal(FileState.Ok, _library.GetTrack(used)!.FileState); // la de l'esdeveniment, com era
+        Assert.Equal(_adult5, _library.GetTrack(used)!.SubcategoryId);
         Assert.NotNull(_library.GetTrack(other));
         Assert.Equal([null], _changed);
     }

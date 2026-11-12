@@ -241,14 +241,24 @@ export class TrackManagerView {
       await confirmAction({ title: 'Buidar la subcategoria', message: `«${preview.name}» ja és buida.`, confirm: 'D\'acord', info: true });
       return;
     }
-    const lines = [`S'esborraran de la biblioteca les ${preview.tracks} pistes de «${preview.name}». ` +
+    const toDelete = preview.tracks - preview.usedByEvents;
+    if (toDelete === 0) {
+      await confirmAction({
+        title: 'Buidar la subcategoria',
+        message: `Les ${preview.tracks} pistes de «${preview.name}» les fan servir esdeveniments del planificador: no se n'esborra cap.`,
+        confirm: 'D\'acord',
+        info: true,
+      });
+      return;
+    }
+    const lines = [`S'esborraran de la biblioteca ${toDelete} pistes de «${preview.name}». ` +
       'L\'historial (i els certificats) les conserven i els fitxers no es toquen, però no es pot desfer.'];
     if (preview.usedByEvents > 0)
-      lines.push(`${preview.usedByEvents} les fan servir esdeveniments: no s'esborraran, quedaran retirades.`);
+      lines.push(`${preview.usedByEvents} les fan servir esdeveniments: no s'esborraran i es quedaran com són.`);
     if (preview.rotations.length > 0)
       lines.push(`⚠ Les rotacions ${preview.rotations.map((/** @type {string} */ r) => `«${r}»`).join(', ')} tenen passos d'aquesta ` +
         'subcategoria: fins que no s\'hi importi música nova, l\'AutoDJ saltarà aquests passos (amb un avís).');
-    const ok = await confirmAction({ title: 'Buidar la subcategoria', message: lines.join('\n\n'), confirm: `Esborra les ${preview.tracks} pistes` });
+    const ok = await confirmAction({ title: 'Buidar la subcategoria', message: lines.join('\n\n'), confirm: `Esborra ${toDelete} ${toDelete === 1 ? 'pista' : 'pistes'}` });
     if (!ok) return;
     const done = await this.#try('No s\'ha pogut buidar la subcategoria', () => this.#send('subcategory.empty', { subcategoryId: scope.id }));
     if (!done) return;
@@ -260,7 +270,7 @@ export class TrackManagerView {
     await this.#search();
     await confirmAction({
       title: 'Subcategoria buidada',
-      message: `«${done.name}»: ${done.removed} pistes esborrades${done.retired ? `, ${done.retired} retirades (les fan servir esdeveniments)` : ''}.`,
+      message: `«${done.name}»: ${done.removed} pistes esborrades${done.keptForEvents ? `, ${done.keptForEvents} conservades (les fan servir esdeveniments)` : ''}.`,
       confirm: 'D\'acord',
       info: true,
     });
