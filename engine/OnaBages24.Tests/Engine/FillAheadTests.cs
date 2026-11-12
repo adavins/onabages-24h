@@ -59,6 +59,12 @@ public sealed class FillAheadTests : IDisposable
         _autoDj.Configure(true, _rotations.Create("A", [new RotationStep { SubcategoryId = _a }]), "a mà");
         Fill();
         Assert.Equal(9, _queue.Upcoming.Count); // 9 × 3:20 = 30 minuts
+        // Cada pista sap de quin pas surt, per mostrar-ho a la cua
+        Assert.All(_queue.Upcoming, i =>
+        {
+            Assert.Equal(0, i.RotationStep);
+            Assert.Equal("Music / Adult 5", i.RotationStepName);
+        });
     }
 
     [Fact]

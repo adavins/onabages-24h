@@ -560,6 +560,15 @@ body {
 }
 
 /* El sweeper que sonarà a sobre de l'inici (trepitjador, D-084) */
+/* El pas de la rotació d'on surt la pista (D-097) */
+.queue-step {
+  font-size: 0.85rem;
+  color: var(--ob-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .queue-sweeper {
   font-size: 0.85rem;
   color: #b9a8f0;

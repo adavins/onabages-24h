@@ -189,7 +189,7 @@ El `message` és en català i es pot mostrar a l'operador.
 - `origin` (D-034): `autodj`, `manual` o `event`.
 - `sweeper` (fase 3, pas 5a; D-084): el sweeper que sonarà **a sobre de l'inici** d'aquesta pista (trepitjador), amb els mateixos camps que una pista de la cua (sense `sweeper`), o `null`. El tria l'AutoDJ en posar-la a la cua.
 - `durationMs`: quant sonarà, del punt d'inici al final (sense restar el solapament amb la següent), o `null` si no se sap (p. ex. un fitxer que no és a la biblioteca). Des del pas 10c.
-- `rotationId` i `rotationStep` (fase 3, pas 8c; D-097): la rotació i el pas (índex des de 0) d'on l'ha triada l'AutoDJ, o `null` (manual, esdeveniment o música de reserva). En tornar a triar la cua, la rotació continua per aquest pas. Els fa servir la consola de diagnòstic.
+- `rotationId` i `rotationStep` (fase 3, pas 8c; D-097): la rotació i el pas (índex des de 0) d'on l'ha triada l'AutoDJ, o `null` (manual, esdeveniment o música de reserva). En tornar a triar la cua, la rotació continua per aquest pas. `rotationStepName`: com era el pas quan s'ha triat (p. ex. «Bossa «Generalista A» (Music / Adult 6)»), o `null`. La interfície ho mostra a cada pista de la cua («Pas 3 · …»).
 
 ### 4.3. Sortida (D-038)
 

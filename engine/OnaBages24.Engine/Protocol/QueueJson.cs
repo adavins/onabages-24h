@@ -23,6 +23,7 @@ public static class QueueJson
         // D'on l'ha triada l'AutoDJ (D-097): la rotació i el pas (des de 0), o null (per al diagnòstic)
         ["rotationId"] = item.RotationId,
         ["rotationStep"] = item.RotationStep,
+        ["rotationStepName"] = item.RotationStepName,
     };
 
     /// <summary>

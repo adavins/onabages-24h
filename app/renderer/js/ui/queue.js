@@ -161,6 +161,14 @@ export class QueueView {
     time.title = 'Hora prevista';
     const text = el('div', 'queue-text');
     text.append(el('div', 'queue-title', item.title || '(sense títol)'), el('div', 'queue-artist', item.artist || ''));
+    // El pas de la rotació d'on l'ha triada l'AutoDJ (D-097), p. ex. «Pas 3 · Music / Adult 5»
+    if (item.rotationStep != null) {
+      const step = el('div', 'queue-step');
+      step.append(icon('bi-arrow-repeat'), ' ',
+        el('span', '', `Pas ${item.rotationStep + 1}${item.rotationStepName ? ` · ${item.rotationStepName}` : ''}`));
+      step.title = 'El pas de la rotació d\'on l\'ha triada l\'AutoDJ';
+      text.append(step);
+    }
     // Trepitjador (fase 3, pas 5b; D-084): el sweeper que sonarà a sobre de l'inici
     if (item.sweeper) {
       const sweeper = el('div', 'queue-sweeper');

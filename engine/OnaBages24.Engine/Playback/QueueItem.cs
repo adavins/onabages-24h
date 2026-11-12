@@ -42,6 +42,9 @@ public sealed record QueueItem
     public long? RotationId { get; init; }
     public int? RotationStep { get; init; }
 
+    /// <summary>Com era el pas quan s'ha triat, p. ex. «Bossa «Generalista A» (Music / Adult 6)», per mostrar-ho a la cua.</summary>
+    public string? RotationStepName { get; init; }
+
     public static QueueItem FromTrack(Track track, QueueOrigin origin, string? eventName = null) => new()
     {
         TrackId = track.Id,

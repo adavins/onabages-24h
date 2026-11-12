@@ -417,7 +417,8 @@ async function showQueue(engine) {
     return subcategories.get(item.trackId);
   }
   const step = (item) => item?.rotationStep != null
-    ? (item.rotationId === rotation?.id ? `pas ${item.rotationStep + 1}` : `pas ${item.rotationStep + 1} d'una altra rotació`)
+    ? (item.rotationId === rotation?.id ? `pas ${item.rotationStep + 1}` : `pas ${item.rotationStep + 1} d'una altra rotació`) +
+      (item.rotationStepName ? ` (${item.rotationStepName})` : '')
     : item?.origin;
 
   console.log(`\nSona:   ${describe(queue.current)} · ${await subcategory(queue.current)} · ${step(queue.current) ?? ''}`);

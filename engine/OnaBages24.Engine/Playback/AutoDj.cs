@@ -385,7 +385,7 @@ public sealed class AutoDj
 
         var item = QueueItem.FromTrack(pick.Track, QueueOrigin.AutoDj);
         if (pick.StepIndex >= 0 && Rotation is { } rotation)
-            item = item with { RotationId = rotation.Id, RotationStep = pick.StepIndex };
+            item = item with { RotationId = rotation.Id, RotationStep = pick.StepIndex, RotationStepName = pick.Step?.ToString() };
         if (pick.Step?.Sweeper == true)
         {
             // Trepitjador (fase 3, pas 5): si no n'hi ha cap, la pista sona igual, sense sweeper, i es diu
