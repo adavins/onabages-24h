@@ -125,6 +125,23 @@ public sealed class AutoDj
     }
 
     /// <summary>
+    /// S'han editat les rotacions (editor, fase 3, pas 8a): si la rotació activa ha canviat, es torna a llegir (amb els passos
+    /// nous). El pas següent es manté si encara existeix; si no, torna al primer. Les pistes que ja són a la cua no canvien.
+    /// </summary>
+    public void RotationsEdited()
+    {
+        if (Rotation is not { } current) return;
+        var fresh = _rotations.Get(current.Id);
+        lock (_sync)
+        {
+            if (fresh is null) return; // l'activa no es pot esborrar (ho comprova qui l'esborra)
+            Rotation = fresh;
+            if (NextStep >= fresh.Steps.Count) NextStep = 0;
+        }
+        Changed?.Invoke();
+    }
+
+    /// <summary>
     /// Activa o desactiva l'AutoDJ i tria la rotació. Sense <paramref name="rotationId"/>, es fa servir la primera rotació
     /// (la de l'id més baix). Retorna false, sense canviar res, si la rotació demanada no existeix.
     /// </summary>

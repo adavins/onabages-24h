@@ -17,6 +17,7 @@
       <button id="nav-emissio" class="section active" type="button" aria-current="page"><i class="bi bi-broadcast" aria-hidden="true"></i> Emissió</button>
       <button id="nav-planificador" class="section" type="button"><i class="bi bi-calendar-week" aria-hidden="true"></i> Planificador</button>
       <button id="nav-biblioteca" class="section" type="button"><i class="bi bi-collection-play" aria-hidden="true"></i> Biblioteca</button>
+      <button id="nav-rotacions" class="section" type="button"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Rotacions</button>
     </nav>
     <span id="zoom-indicator" class="zoom-indicator" aria-live="polite"></span>
     <span id="engine-status" class="engine-status status-connecting" role="status">
@@ -259,6 +260,21 @@
       </section>
 
       <aside id="tm-detail" class="tm-detail" aria-label="Fitxa de la pista"></aside>
+    </div>
+  </div>
+
+  <!-- Rotacions (fase 3, pas 8a; D-094): la llista a l'esquerra i l'editor a la dreta -->
+  <div id="view-rotacions" class="view d-none">
+    <div class="rt-main">
+      <aside class="rt-side" aria-label="Rotacions">
+        <div class="tm-tree-tools">
+          <button id="rt-new" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
+          <button id="rt-duplicate" class="btn btn-sm btn-outline-secondary" type="button" title="Fes-ne una còpia per provar canvis sense tocar l'original"><i class="bi bi-copy" aria-hidden="true"></i> Duplica</button>
+          <button id="rt-delete" class="btn btn-sm btn-outline-danger" type="button" title="Esborra la rotació triada"><i class="bi bi-trash" aria-hidden="true"></i><span class="visually-hidden">Esborra</span></button>
+        </div>
+        <ul id="rt-list" class="rt-list"></ul>
+      </aside>
+      <section id="rt-editor" class="rt-editor" aria-label="Editor de la rotació"></section>
     </div>
   </div>
 

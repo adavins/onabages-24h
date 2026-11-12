@@ -244,6 +244,10 @@ public static class QueueJson
         ["name"] = rotation.Name,
         ["steps"] = new JsonArray(rotation.Steps.Select(s => (JsonNode)new JsonObject
         {
+            // Fase 3, pas 8a: els ids, per a l'editor de rotacions
+            ["categoryId"] = s.CategoryId,
+            ["subcategoryId"] = s.SubcategoryId,
+            ["tagId"] = s.TagId,
             ["category"] = s.CategoryName,
             ["subcategory"] = s.SubcategoryName,
             ["tag"] = s.TagName,

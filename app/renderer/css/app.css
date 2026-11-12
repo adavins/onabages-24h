@@ -1130,6 +1130,108 @@ body {
   padding-bottom: 0.3rem;
 }
 
+/* --- Rotacions (fase 3, pas 8a) --- */
+.rt-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr);
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.rt-side,
+.rt-editor {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.5rem;
+  background: var(--ob-panel);
+}
+
+.rt-editor {
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.rt-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0;
+}
+
+.rt-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.6rem;
+  width: 100%;
+  padding: 0.35rem 0.75rem;
+  border: 0;
+  background: none;
+  color: var(--bs-body-color);
+  text-align: left;
+}
+
+.rt-item:hover { background: #22262c; }
+.rt-item.active { background: #2c3440; font-weight: 600; }
+.rt-item-meta { color: var(--ob-muted); font-size: 0.8rem; font-weight: normal; }
+.rt-item-active { font-size: 0.8rem; font-weight: normal; }
+
+.rt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.rt-name {
+  max-width: 22rem;
+}
+
+.rt-table-wrap {
+  overflow-x: auto;
+}
+
+.rt-steps {
+  --bs-table-bg: transparent;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.rt-steps th {
+  color: var(--ob-muted);
+  font-weight: normal;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.rt-steps td {
+  vertical-align: middle;
+}
+
+.rt-steps td:nth-child(2) { min-width: 16rem; }
+.rt-steps td:nth-child(3) { min-width: 8rem; }
+.rt-steps td:nth-child(4) { min-width: 13rem; }
+.rt-steps td:nth-child(5),
+.rt-steps td:nth-child(6) { text-align: center; }
+
+.rt-index {
+  color: var(--ob-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.rt-tools {
+  display: inline-flex;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
 /* Pantalla estreta: l'arbre a dalt, la fitxa a sota */
 @media (max-width: 1200px) {
   .tm-main {

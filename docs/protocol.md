@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 7e (motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 8a (motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -128,7 +128,9 @@ El `message` és en català i es pot mostrar a l'operador.
 | `autodj.get` | — | `{ autodj }` (vegeu 4.5) | fase 1, pas 8 |
 | `sweepers.set` | `subcategoryId` (un número, o `null` perquè no n'hi hagi cap; obligatori) | `{ autodj }`, amb la categoria nova a `sweepers` (4.5). La categoria de sweepers del trepitjador: d'on surten els sweepers dels passos de rotació amb `sweeper` (com el desplegable de RadioDJ). Es desa i es manté en tornar a arrencar. Les pistes que ja són a la cua es queden amb el sweeper que tenien. Si la subcategoria no existeix, `bad_params`. També la canvia l'acció `SWEEPERS` dels esdeveniments; tots dos avisen amb `autodj.changed` | fase 3, pas 5a |
 | `autodj.set` | `enabled` (`true`/`false`), `rotationId`, `minutes` (si s'atura: quant temps, d'1 a 720; per defecte 120). Tots opcionals: el que no s'envia es queda com està. Aturat, es torna a activar sol quan s'acaba el temps o si la cua es queda sense res (D-073) | `{ autodj }`. La rotació es desa i es manté en tornar a arrencar; `enabled` no: el motor sempre arrenca amb l'AutoDJ actiu (D-053). Si la rotació no existeix, `bad_params` | fase 1, pas 8 |
-| `rotations.list` | — | `{ rotations: [ … ] }` (vegeu 4.5) | fase 1, pas 8 |
+| `rotations.list` | — | `{ rotations: [ … ] }` (vegeu 4.5). Cada pas porta també `categoryId`, `subcategoryId` i `tagId` (fase 3, pas 8a) | fase 1, pas 8 |
+| `rotations.save` | `name`, `steps` (en ordre: `{ subcategoryId }` o `{ categoryId }` —qualsevol subcategoria de la categoria—, i opcionals `tagId`, `selection` (`leastRecent`, `leastPlayed`, `random`), `repeatRule`, `sweeper`); `rotationId` per substituir-ne una (sense, en crea una) | `{ rotation }` i `rotations.changed`. Com a mínim un pas. Nom repetit: `database_error`. Si és l'activa, l'AutoDJ agafa els passos nous de seguida (el que ja és a la cua no canvia) | fase 3, pas 8a |
+| `rotations.delete` | `rotationId` | `{ deleted }` i `rotations.changed`. No es pot si és la rotació activa de l'AutoDJ o si la posa algun esdeveniment (es diu quins): `bad_params` | fase 3, pas 8a |
 | `history.list` | `from`, `to`: una hora ISO 8601 amb zona (`"2026-11-10T12:00:00Z"`) o un dia (`"2026-11-10"`, en hora local; a `to`, el dia hi és inclòs). `search`: text de l'artista o del títol. `limit`: per defecte 100, com a molt 2.000. Tots opcionals | `{ entries: [ … ], more }` (vegeu 4.6): les més recents primer. `more`: n'hi ha més que les retornades | fase 1, pas 9 |
 | `nowplaying.get` | — | `{ nowPlaying }` (vegeu 4.6) | fase 1, pas 9 |
 | `nowplaying.set` | `enabled`, `path` (ruta completa del fitxer; `null` o `""` = el per defecte), `template` (ha de tenir `$artist$` o `$title$`), `types` (llista de tipus de pista, 4.2). Tots opcionals: el que no s'envia es queda com està | `{ nowPlaying }`. Es desa a la configuració i es torna a escriure el títol de seguida | fase 1, pas 9 |
@@ -410,6 +412,7 @@ Estat (`folders.status`, `folders.changed`), una entrada per subcategoria amb ca
 | `aux.failed` | `player`, `item`, `message` | quan el fitxer d'un auxiliar no es pot fer sonar (la música continua) | fase 2, pas 5a |
 | `aux.loaded` | `player` (el que ha canviat), `loaded` (4.8) | quan es carrega o es treu la pista d'un reproductor | fase 3, pas 4a |
 | `notes.changed` | `text` | quan algú desa les notes | fase 3, pas 4a |
+| `rotations.changed` | — | quan es desa o s'esborra una rotació (les interfícies tornen a demanar `rotations.list`) | fase 3, pas 8a |
 | `folders.changed` | `folders` (4.11) | després de cada revisió de les carpetes vigilades (si ha canviat alguna pista, també `library.changed`) | fase 3, pas 7c |
 | `library.importProgress` | `import` (4.10) | unes 2 vegades per segon mentre s'importa, i una última en acabar | fase 3, pas 7b |
 | `library.changed` | `trackId` (la pista editada, canviada de fitxer o esborrada), o `null` si han canviat les categories o s'ha acabat una importació | quan es canvia la biblioteca des d'una ordre (les interfícies tornen a demanar el que mostren) | fase 3, pas 7a |

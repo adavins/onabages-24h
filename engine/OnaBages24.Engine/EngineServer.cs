@@ -224,6 +224,8 @@ public static class EngineServer
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
             events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher);
+        // Editor de rotacions (fase 3, pas 8a): les interfícies tornen a demanar les rotacions
+        router.RotationsChanged += () => Broadcast(Messages.Event("rotations.changed"));
         // Gestor de pistes (fase 3, pas 7a): quan es canvia una pista o les categories, les interfícies tornen a demanar el que mostren
         router.LibraryChanged += trackId =>
         {

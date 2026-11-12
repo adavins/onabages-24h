@@ -163,6 +163,8 @@ public sealed class CommandRouter
                 "autodj.set" => AutoDjSet(msg),
                 "sweepers.set" => SweepersSet(msg),
                 "rotations.list" => RotationsList(),
+                "rotations.save" => RotationsSave(msg),
+                "rotations.delete" => RotationsDelete(msg),
                 "history.list" => HistoryList(msg),
                 "nowplaying.get" => new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(NowPlayingOrError()) },
                 "nowplaying.set" => NowPlayingSet(msg),
@@ -1309,6 +1311,80 @@ public sealed class CommandRouter
     {
         var rotations = _rotations ?? throw new BadParamsException("El motor no té rotacions.");
         return new JsonObject { ["rotations"] = new JsonArray(rotations.List().Select(r => (JsonNode)QueueJson.Rotation(r)).ToArray()) };
+    }
+
+    // --- Editor de rotacions (fase 3, pas 8a; D-094) ---
+
+    /// <summary>Quan es desa o s'esborra una rotació: les interfícies tornen a demanar les rotacions (<c>rotations.changed</c>).</summary>
+    public event Action? RotationsChanged;
+
+    /// <summary>
+    /// Crea una rotació (sense <c>rotationId</c>) o la substitueix (amb <c>rotationId</c>): <c>name</c> i <c>steps</c>, una
+    /// llista en ordre de <c>{ subcategoryId }</c> o <c>{ categoryId }</c> (qualsevol subcategoria de la categoria), amb
+    /// <c>tagId</c>, <c>selection</c> (<c>leastRecent</c>, <c>leastPlayed</c>, <c>random</c>), <c>repeatRule</c> i
+    /// <c>sweeper</c> opcionals. Si és l'activa, l'AutoDJ agafa els passos nous de seguida.
+    /// </summary>
+    private JsonObject RotationsSave(JsonObject msg)
+    {
+        var rotations = _rotations ?? throw new BadParamsException("El motor no té rotacions.");
+        var library = LibraryOrError();
+        string name = RequiredName(msg);
+        if (msg["steps"] is not JsonArray list || list.Count == 0) throw new BadParamsException("Una rotació ha de tenir com a mínim un pas ('steps').");
+        if (list.Count > 200) throw new BadParamsException("Una rotació pot tenir com a molt 200 passos.");
+        var (categories, tags) = library.SearchFilters();
+        var steps = new List<RotationStep>();
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (list[i] is not JsonObject s) throw new BadParamsException($"El pas {i + 1} no és vàlid.");
+            long? sub = s["subcategoryId"] is JsonValue sv && sv.TryGetValue(out long subId) ? subId : null;
+            long? cat = s["categoryId"] is JsonValue cv && cv.TryGetValue(out long catId) ? catId : null;
+            long? tag = s["tagId"] is JsonValue tv && tv.TryGetValue(out long tagId) ? tagId : null;
+            if (sub is { } su && library.GetSubcategory(su) is null) throw new BadParamsException($"Pas {i + 1}: no existeix la subcategoria {su}.");
+            if (sub is null && cat is null) throw new BadParamsException($"Pas {i + 1}: falta d'on surt la pista (una subcategoria o una categoria).");
+            if (sub is null && cat is { } ca && categories.All(c => c.Id != ca)) throw new BadParamsException($"Pas {i + 1}: no existeix la categoria {ca}.");
+            if (tag is { } ta && tags.All(t => t.Id != ta)) throw new BadParamsException($"Pas {i + 1}: no existeix l'etiqueta {ta}.");
+            var selection = ReadString(s["selection"]) switch
+            {
+                null or "leastRecent" => RotationSelection.LeastRecent,
+                "leastPlayed" => RotationSelection.LeastPlayed,
+                "random" => RotationSelection.Random,
+                var other => throw new BadParamsException($"Pas {i + 1}: la selecció «{other}» no existeix (leastRecent, leastPlayed o random)."),
+            };
+            bool Flag(string field, bool fallback) => s[field] is JsonValue fv && fv.TryGetValue(out bool b) ? b : fallback;
+            steps.Add(new RotationStep
+            {
+                SubcategoryId = sub,
+                CategoryId = sub is null ? cat : null,
+                TagId = tag,
+                Selection = selection,
+                RepeatRule = Flag("repeatRule", true),
+                Sweeper = Flag("sweeper", false),
+            });
+        }
+
+        long id;
+        if (msg["rotationId"] is null) id = rotations.Create(name, steps);
+        else rotations.Update(id = RequiredId(msg, "rotationId"), name, steps);
+        _autoDj?.RotationsEdited();
+        RotationsChanged?.Invoke();
+        return new JsonObject { ["rotation"] = QueueJson.Rotation(rotations.Get(id)!) };
+    }
+
+    /// <summary>Esborra una rotació: <c>rotationId</c>. No es pot si és l'activa o si la posa algun esdeveniment (es diu quins).</summary>
+    private JsonObject RotationsDelete(JsonObject msg)
+    {
+        var rotations = _rotations ?? throw new BadParamsException("El motor no té rotacions.");
+        long id = RequiredId(msg, "rotationId");
+        var rotation = rotations.Get(id) ?? throw new BadParamsException($"No existeix la rotació {id}.");
+        if (_autoDj?.Rotation?.Id == id)
+            throw new BadParamsException($"«{rotation.Name}» és la rotació activa de l'AutoDJ: canvia-la primer.");
+        var events = rotations.EventsUsingRotation(id);
+        if (events.Count > 0)
+            throw new BadParamsException($"No es pot esborrar: la posa{(events.Count == 1 ? " l'esdeveniment" : "n els esdeveniments")} " +
+                                         string.Join(", ", events.Select(e => $"«{e.Name}»")) + ".");
+        rotations.Delete(id);
+        RotationsChanged?.Invoke();
+        return new JsonObject { ["deleted"] = id };
     }
 
     // --- Historial i títol per a BUTT (fase 1, pas 9) ---

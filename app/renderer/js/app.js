@@ -22,6 +22,7 @@ import { TrackManagerView } from './ui/track-manager.js';
 import { ImportView } from './ui/import.js';
 import { FoldersView } from './ui/folders.js';
 import { RerootView } from './ui/reroot.js';
+import { RotationsView } from './ui/rotations.js';
 import { folderWarnings } from './folders-text.js';
 import { setupZoom, applyZoom } from './ui/zoom.js';
 import { setupWindowFrame } from './ui/window-frame.js';
@@ -111,6 +112,7 @@ const auxPlayers = new AuxPlayersView(send, TRACK_DRAG_TYPE);
 const notes = new NotesView(send);
 const processor = new ProcessorView(send);
 const folders = new FoldersView(send, (path) => bridge.chooseFolder(path));
+const rotationsView = new RotationsView(send);
 const trackManager = new TrackManagerView(send, (path) => bridge.chooseAudioFile(path), folders);
 new RerootView(send, (path) => bridge.chooseFolder(path));
 const importView = new ImportView(send, (path) => bridge.chooseFolder(path), () => trackManager.importContext());
@@ -185,6 +187,7 @@ function showQueue(queue) {
 /** @param {any} state */
 function showAutoDj(state) {
   autoDjView.render(state);
+  rotationsView.setActive(state.rotation?.id ?? null);
   problems.autodj = state.problem;
   renderWarnings(problems);
 }
@@ -204,9 +207,9 @@ async function refreshNowPlayingStatus() {
 
 // --- Pantalles: Emissió i Planificador (fase 2, pas 8a). L'emissió continua igual, es mostri la que es mostri. ---
 
-/** @param {'emissio' | 'planificador' | 'biblioteca'} name */
+/** @param {'emissio' | 'planificador' | 'biblioteca' | 'rotacions'} name */
 function showView(name) {
-  for (const view of /** @type {const} */ (['emissio', 'planificador', 'biblioteca'])) {
+  for (const view of /** @type {const} */ (['emissio', 'planificador', 'biblioteca', 'rotacions'])) {
     const active = view === name;
     $(`view-${view}`).classList.toggle('d-none', !active);
     const tab = $(`nav-${view}`);
@@ -218,10 +221,13 @@ function showView(name) {
   else planner.hide();
   if (name === 'biblioteca') trackManager.show();
   else trackManager.hide();
+  if (name === 'rotacions') rotationsView.show();
+  else rotationsView.hide();
 }
 $('nav-emissio').addEventListener('click', () => showView('emissio'));
 $('nav-planificador').addEventListener('click', () => showView('planificador'));
 $('nav-biblioteca').addEventListener('click', () => showView('biblioteca'));
+$('nav-rotacions').addEventListener('click', () => showView('rotacions'));
 
 // Saltar a la següent: interromp la cançó, per tant demana confirmació
 // «Regenera la cua» (D-034): només canvia les pistes que ha posat l'AutoDJ i no interromp res, per això no demana confirmació
@@ -363,6 +369,12 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   client.addEventListener('ev:processor.changed', (e) => processor.render(detail(e).processor));
   client.addEventListener('ev:library.importProgress', (e) => importView.show(detail(e).import));
   client.addEventListener('ev:folders.changed', (e) => folders.update(detail(e).folders));
+  // Rotacions (fase 3, pas 8a): l'editor, el desplegable de l'AutoDJ i el planificador
+  client.addEventListener('ev:rotations.changed', () => {
+    rotationsView.refresh();
+    send('rotations.list').then((r) => autoDjView.setRotations(r.rotations)).catch(() => {});
+    planner.refresh();
+  });
   // Gestor de pistes (fase 3, pas 7a): una pista o les categories han canviat
   client.addEventListener('ev:library.changed', (e) => {
     const trackId = detail(e).trackId ?? null;
@@ -403,6 +415,7 @@ async function loadState() {
     trackManager.refresh(); // només si es mostra
     importView.refresh();
     folders.refresh();
+    rotationsView.refresh(); // només si es mostra
   } catch (err) {
     console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }

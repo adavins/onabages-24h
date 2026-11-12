@@ -112,7 +112,11 @@ Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al
    - 7c. ✔ Carpetes vigilades i bosses renovables, amb l'assistent «Renova la bossa» (D-090, D-091). En tres parts: 7c-1 ✔ motor (revisió cada 2 minuts, importació, recuperació, fitxers substituïts, desaparicions amb protecció, registre i migració 005); 7c-2 ✔ interfície (botó «Carpeta vigilada» a l'arbre de la Biblioteca amb la carpeta, bossa renovable, valors per defecte, estat, registre i «Revisa ara»; marques a l'arbre; avisos a la barra d'estat); 7c-3 ✔ «Renova la bossa» (previsualització de què es manté, entra i surt; renovació en segon pla).
    - 7d. ✔ Canvi d'arrel de les rutes (D-092): des de la Biblioteca, amb la llista de carpetes on falten fitxers, «Comprova» (quantes trobaran el fitxer, exemples) i el canvi en una sola transacció.
    - 7e. ✔ Editor senzill de punts (D-093): sense escolta; forma d'ona en dB en tres vistes, punts arrossegables o escrits, «Desa» (manuals) i «Recalcula».
-8. Rotacions: editor, separació real, previsualització, bosses amb nom (D-014) i rotació de reserva.
+8. Rotacions: editor, separació real, previsualització, bosses amb nom (D-014) i rotació de reserva. En parts (D-094):
+   - 8a. ✔ Editor de rotacions: pantalla «Rotacions» (llista, nova, duplica, esborra; passos que s'afegeixen, mouen i treuen), `rotations.save` / `rotations.delete`.
+   - 8b. Separació real (cançó 6 h, artista 1 h, configurable; s'afluixa si cal) i previsualització.
+   - 8c. Bosses amb nom, a mà i amb l'acció del planificador «Canvia la bossa».
+   - 8d. Rotació de reserva i subcategories «no de reserva».
 9. Prova de tancament (criteri de sota).
 
 **Criteri de tancament:** un operador pot fer servir l'aplicació un dia sencer sense obrir RadioDJ.
