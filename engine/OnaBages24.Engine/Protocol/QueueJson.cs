@@ -104,6 +104,53 @@ public static class QueueJson
         return json;
     }
 
+    /// <summary>La carpeta vigilada d'una subcategoria (fase 3, pas 7c; docs/protocol.md, 4.11).</summary>
+    public static JsonObject FolderSettings(Data.FolderSettings s) => new()
+    {
+        ["subcategoryId"] = s.SubcategoryId,
+        ["name"] = s.Name,
+        ["folder"] = s.Folder,
+        ["renewable"] = s.Renewable,
+        ["type"] = Type(s.DefaultType),
+        ["tags"] = new JsonArray(s.DefaultTags.Select(t => (JsonNode)JsonValue.Create(t)!).ToArray()),
+        ["variableDuration"] = s.DefaultVariableDuration,
+    };
+
+    /// <summary>Com estan les carpetes vigilades (a l'última revisió).</summary>
+    public static JsonArray Folders(IReadOnlyList<LibraryTools.FolderWatchStatus> list) => new(list.Select(s => (JsonNode)new JsonObject
+    {
+        ["subcategoryId"] = s.SubcategoryId,
+        ["name"] = s.Name,
+        ["folder"] = s.Folder,
+        ["renewable"] = s.Renewable,
+        ["lastScan"] = s.LastScan?.ToString("O"),
+        ["files"] = s.Files,
+        ["tracks"] = s.Tracks,
+        ["missing"] = s.Missing,
+        ["problem"] = s.Problem,
+    }).ToArray());
+
+    /// <summary>Una línia del registre de les carpetes vigilades.</summary>
+    public static JsonObject FolderLog(FolderLogEntry e) => new()
+    {
+        ["id"] = e.Id,
+        ["time"] = e.Time.ToString("O"),
+        ["subcategoryId"] = e.SubcategoryId,
+        ["subcategory"] = e.Subcategory,
+        ["path"] = e.Path,
+        ["action"] = e.Action switch
+        {
+            FolderAction.Imported => "imported",
+            FolderAction.Recovered => "recovered",
+            FolderAction.Missing => "missing",
+            FolderAction.Deleted => "deleted",
+            FolderAction.Updated => "updated",
+            FolderAction.Error => "error",
+            _ => "folder",
+        },
+        ["detail"] = e.Detail,
+    };
+
     /// <summary>Com va una importació de carpeta (fase 3, pas 7b; docs/protocol.md, 4.10).</summary>
     public static JsonObject Import(LibraryTools.ImportStatus s) => new()
     {

@@ -59,6 +59,20 @@ public sealed record TrackStateCounts(int All, int Missing, int Retired, int Dis
 /// <summary>Una subcategoria amb la seva categoria.</summary>
 public sealed record SubcategoryRef(long Id, string Name, long CategoryId, string CategoryName);
 
+/// <summary>
+/// La carpeta vigilada d'una subcategoria (fase 3, pas 7c; D-026, D-033, D-090) i com queden les pistes noves que
+/// s'hi importen soles. <c>Folder</c> null = no en té.
+/// </summary>
+public sealed record FolderSettings(
+    long SubcategoryId, string Name, string? Folder, bool Renewable,
+    TrackType DefaultType, IReadOnlyList<string> DefaultTags, bool DefaultVariableDuration);
+
+/// <summary>Què ha fet la vigilància d'una carpeta amb un fitxer (registre_carpetes).</summary>
+public enum FolderAction { Imported, Recovered, Missing, Deleted, Updated, Error, Folder }
+
+/// <summary>Una línia del registre de les carpetes vigilades.</summary>
+public sealed record FolderLogEntry(long Id, DateTimeOffset Time, long? SubcategoryId, string Subcategory, string Path, FolderAction Action, string? Detail);
+
 /// <summary>Un esdeveniment que fa servir una pista (en una acció PISTA o AUXILIAR).</summary>
 public sealed record TrackUse(long EventId, string EventName);
 
@@ -200,6 +214,104 @@ public sealed class Library(Database database)
             {
                 throw new DatabaseException(duplicate, ex);
             }
+        }
+    }
+
+    // --- Carpetes vigilades (fase 3, pas 7c) ---
+
+    private const string FolderColumns =
+        "s.id, c.nom || ' / ' || s.nom, s.carpeta, s.renovable, s.tipus_defecte, s.etiquetes_defecte, s.durada_variable_defecte";
+
+    /// <summary>La configuració de la carpeta d'una subcategoria, o null si la subcategoria no existeix.</summary>
+    public FolderSettings? GetFolderSettings(long subcategoryId) =>
+        QueryFolders("WHERE s.id = $id", subcategoryId).FirstOrDefault();
+
+    /// <summary>Les subcategories que tenen carpeta vigilada.</summary>
+    public IReadOnlyList<FolderSettings> WatchedFolders() =>
+        QueryFolders("WHERE s.carpeta IS NOT NULL AND s.carpeta <> '' ORDER BY c.nom COLLATE NOCASE, s.nom COLLATE NOCASE", null);
+
+    /// <summary>Desa la carpeta d'una subcategoria (null = deixa de vigilar-ne cap) i com queden les pistes noves.</summary>
+    public void SetFolderSettings(long subcategoryId, string? folder, bool renewable, TrackType defaultType,
+        IEnumerable<string> defaultTags, bool defaultVariableDuration)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "UPDATE subcategoria SET carpeta = $carpeta, renovable = $renovable, tipus_defecte = $tipus, " +
+                "etiquetes_defecte = $etiquetes, durada_variable_defecte = $variable WHERE id = $id;");
+            var tags = defaultTags.Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
+            command.Parameters.AddWithValue("$carpeta", string.IsNullOrWhiteSpace(folder) ? DBNull.Value : folder);
+            command.Parameters.AddWithValue("$renovable", renewable ? 1 : 0);
+            command.Parameters.AddWithValue("$tipus", ToText(defaultType));
+            command.Parameters.AddWithValue("$etiquetes", tags.Count > 0 ? string.Join(", ", tags) : DBNull.Value);
+            command.Parameters.AddWithValue("$variable", defaultVariableDuration ? 1 : 0);
+            command.Parameters.AddWithValue("$id", subcategoryId);
+            if (command.ExecuteNonQuery() == 0) throw new DatabaseException($"No existeix la subcategoria {subcategoryId}.");
+        }
+    }
+
+    private IReadOnlyList<FolderSettings> QueryFolders(string where, long? id)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command($"SELECT {FolderColumns} FROM subcategoria s JOIN categoria c ON c.id = s.categoria_id {where};");
+            if (id is { } value) command.Parameters.AddWithValue("$id", value);
+            using var r = command.ExecuteReader();
+            var list = new List<FolderSettings>();
+            while (r.Read())
+            {
+                list.Add(new FolderSettings(
+                    r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2), r.GetInt64(3) == 1,
+                    r.IsDBNull(4) ? TrackType.Music : ParseType(r.GetString(4)),
+                    r.IsDBNull(5) ? [] : r.GetString(5).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+                    r.GetInt64(6) == 1));
+            }
+            return list;
+        }
+    }
+
+    private static readonly (FolderAction Action, string Text)[] FolderActionNames =
+    [
+        (FolderAction.Imported, "IMPORTADA"), (FolderAction.Recovered, "RECUPERADA"), (FolderAction.Missing, "FALTA"),
+        (FolderAction.Deleted, "ESBORRADA"), (FolderAction.Updated, "ACTUALITZADA"), (FolderAction.Error, "ERROR"),
+        (FolderAction.Folder, "CARPETA"),
+    ];
+
+    /// <summary>Anota una línia al registre de les carpetes vigilades.</summary>
+    public void AddFolderLog(long? subcategoryId, string subcategory, string path, FolderAction action, string? detail = null)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "INSERT INTO registre_carpetes (moment, subcategoria_id, subcategoria, ruta, accio, detall) VALUES ($moment, $sub, $nom, $ruta, $accio, $detall);");
+            command.Parameters.AddWithValue("$moment", DbTime.ToText(DateTimeOffset.UtcNow));
+            command.Parameters.AddWithValue("$sub", (object?)subcategoryId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$nom", subcategory);
+            command.Parameters.AddWithValue("$ruta", path);
+            command.Parameters.AddWithValue("$accio", FolderActionNames.First(a => a.Action == action).Text);
+            command.Parameters.AddWithValue("$detall", (object?)detail ?? DBNull.Value);
+            command.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>El registre de les carpetes vigilades, els més recents primer (d'una subcategoria o de totes).</summary>
+    public IReadOnlyList<FolderLogEntry> FolderLog(int limit, long? subcategoryId = null)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT id, moment, subcategoria_id, subcategoria, ruta, accio, detall FROM registre_carpetes " +
+                (subcategoryId is null ? "" : "WHERE subcategoria_id = $sub ") + "ORDER BY id DESC LIMIT $limit;");
+            if (subcategoryId is { } sub) command.Parameters.AddWithValue("$sub", sub);
+            command.Parameters.AddWithValue("$limit", limit);
+            using var r = command.ExecuteReader();
+            var list = new List<FolderLogEntry>();
+            while (r.Read())
+            {
+                list.Add(new FolderLogEntry(r.GetInt64(0), DbTime.ParseInstant(r.GetString(1)), r.IsDBNull(2) ? null : r.GetInt64(2),
+                    r.GetString(3), r.GetString(4), FolderActionNames.First(a => a.Text == r.GetString(5)).Action, r.IsDBNull(6) ? null : r.GetString(6)));
+            }
+            return list;
         }
     }
 

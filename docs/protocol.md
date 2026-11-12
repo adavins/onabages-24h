@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 7b (motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 7c (motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -107,6 +107,11 @@ El `message` és en català i es pot mostrar a l'operador.
 | `library.relink` | `trackId`, `path` (ruta completa d'un fitxer d'àudio que existeixi) | `{ track }` i `library.changed`. La pista passa a aquest fitxer (`fileState: ok`), amb la durada nova; es conserven la fitxa i l'historial. Si els punts no són manuals, l'analitzador els torna a calcular en segon pla (mentrestant, els d'abans). Si el fitxer ja és d'una altra pista, `database_error` | fase 3, pas 7a |
 | `library.delete` | `trackId` | `{ deleted }` i `library.changed`. Esborra la pista de la biblioteca (el fitxer no es toca mai). L'historial la conserva (artista, títol i ruta). Si la fa servir algun esdeveniment, `database_error` amb els noms | fase 3, pas 7a |
 | `subcategory.empty` | `subcategoryId`, `dryRun` (`true` = només diu què faria) | `{ subcategoryId, name, tracks, usedByEvents, rotations: [noms] }` i, si no és `dryRun`, també `removed` i `keptForEvents`, i `library.changed`. Esborra de la biblioteca les pistes de la subcategoria que no fa servir cap esdeveniment (els fitxers no es toquen; l'historial les conserva); les altres es queden com són. `rotations`: les rotacions amb algun pas d'aquesta subcategoria (per avisar). Mentre s'importa una carpeta, `bad_params` | fase 3, pas 7b |
+| `folders.get` | `subcategoryId` | `{ folder }` (4.11): la carpeta vigilada de la subcategoria i com queden les pistes noves | fase 3, pas 7c |
+| `folders.set` | `subcategoryId`, `folder` (ruta completa d'una carpeta que existeixi; `null` = deixar de vigilar-la), `renewable`, i per a les pistes noves `type`, `tags`, `variableDuration` | `{ folder }` i `library.changed`. Es revisa de seguida. No pot ser una unitat sencera ni una carpeta que ja vigila una altra subcategoria (ni que en contingui una, ni que hi sigui a dins) | fase 3, pas 7c |
+| `folders.status` | — | `{ folders: [ … ] }` (4.11): com estan les carpetes vigilades a l'última revisió | fase 3, pas 7c |
+| `folders.scan` | — | `{ scanning: true }`: revisa les carpetes ara (el resultat arriba amb `folders.changed`) | fase 3, pas 7c |
+| `folders.log` | `subcategoryId` (opcional), `limit` (per defecte 100, com a molt 1.000) | `{ entries: [ { id, time, subcategoryId, subcategory, path, action, detail } ] }`, els més recents primer. `action`: `imported`, `recovered`, `missing`, `deleted`, `updated`, `error` o `folder` (problema de la carpeta, o que s'ha resolt) | fase 3, pas 7c |
 | `library.import` | `folder` (ruta completa d'una carpeta que existeixi), `subcategoryId` i, per a les pistes noves, `type` (per defecte `music`), `tags` (llista) i `variableDuration`; `emptySubcategory` (`true` = en acabar bé, esborra les pistes de la subcategoria que no són a la carpeta) | `{ import }` (4.10). Comença a importar en segon pla els fitxers d'àudio de la carpeta i les subcarpetes; el progrés arriba amb `library.importProgress`. Una sola importació alhora (si n'hi ha una en curs, `bad_params`) | fase 3, pas 7b |
 | `library.importStatus` | — | `{ import }`: la importació en curs o l'última (`null` si no se n'ha fet cap des que ha arrencat el motor) | fase 3, pas 7b |
 | `library.importCancel` | — | `{ cancelled }`: `false` si no n'hi havia cap en curs. El que ja s'ha importat es queda | fase 3, pas 7b |
@@ -360,6 +365,28 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 - `unreadable`: els que no es poden llegir, amb el motiu (com a molt els 200 primers; el total és `unreadableCount`, i tots surten al registre del motor).
 - Es fa en un fil de prioritat baixa, un fitxer cada vegada: l'emissió va primer.
 
+### 4.11. Carpetes vigilades (D-026, D-033, D-090)
+
+Configuració d'una subcategoria (`folders.get`, `folders.set`):
+
+```json
+{ "subcategoryId": 23, "name": "Music / Ona Bages Actualitat", "folder": "I:\\Mi unidad\\…\\ACTUAL-1",
+  "renewable": true, "type": "music", "tags": [], "variableDuration": false }
+```
+
+Estat (`folders.status`, `folders.changed`), una entrada per subcategoria amb carpeta:
+
+```json
+{ "subcategoryId": 23, "name": "Music / Ona Bages Actualitat", "folder": "I:\\…\\ACTUAL-1", "renewable": true,
+  "lastScan": "2026-11-12T15:02:00.0000000+00:00", "files": 150, "tracks": 150, "missing": 0, "problem": null }
+```
+
+- Es revisen cada 2 minuts, en arrencar el motor (als 10 s) i amb `folders.scan`; no mentre s'importa una carpeta des de la pantalla.
+- **Fitxer nou**, quan fa més de 30 s que no canvia i es pot obrir: s'importa amb `type`, `tags` i `variableDuration` (o es recupera una pista de la subcategoria que falta amb el mateix nom de fitxer). **Fitxer que torna**: es recupera. **Fitxer substituït** (mida o data): es torna a llegir la durada i es recalculen els punts (excepte els manuals).
+- **Fitxer que desapareix** (en dues revisions seguides): amb `renewable`, la pista s'esborra (excepte si la fa servir un esdeveniment, que queda com a «el fitxer falta»); sense, queda com a «el fitxer falta».
+- `problem`: si la carpeta no es troba, no s'hi pot accedir o **surt buida** amb pistes que hi eren, no s'hi fa res (mai no s'esborra cap pista així) i es diu aquí. `missing`: pistes de la carpeta amb el fitxer que falta.
+- Una pista d'aquesta carpeta que és d'una altra subcategoria no es toca.
+
 ## 5. Esdeveniments
 
 | Esdeveniment | Camps | Freqüència | Des de |
@@ -374,6 +401,7 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 | `aux.failed` | `player`, `item`, `message` | quan el fitxer d'un auxiliar no es pot fer sonar (la música continua) | fase 2, pas 5a |
 | `aux.loaded` | `player` (el que ha canviat), `loaded` (4.8) | quan es carrega o es treu la pista d'un reproductor | fase 3, pas 4a |
 | `notes.changed` | `text` | quan algú desa les notes | fase 3, pas 4a |
+| `folders.changed` | `folders` (4.11) | després de cada revisió de les carpetes vigilades (si ha canviat alguna pista, també `library.changed`) | fase 3, pas 7c |
 | `library.importProgress` | `import` (4.10) | unes 2 vegades per segon mentre s'importa, i una última en acabar | fase 3, pas 7b |
 | `library.changed` | `trackId` (la pista editada, canviada de fitxer o esborrada), o `null` si han canviat les categories o s'ha acabat una importació | quan es canvia la biblioteca des d'una ordre (les interfícies tornen a demanar el que mostren) | fase 3, pas 7a |
 | `processor.changed` | `processor` (4.9) | quan canvia el preajust o el volum del processador de la sortida | fase 3, pas 6 |

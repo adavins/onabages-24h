@@ -37,6 +37,7 @@ public sealed class CommandRouter
     private readonly SweeperOverlay? _sweepers;
     private readonly OutputProcessor? _processor;
     private readonly LibraryTools.LibraryImporter? _importer;
+    private readonly LibraryTools.FolderWatcher? _watcher;
 
     /// <param name="state">Estat del motor.</param>
     /// <param name="requestShutdown">Atura el motor (s'executa després de respondre).</param>
@@ -53,9 +54,11 @@ public sealed class CommandRouter
     public CommandRouter(EngineState state, Action requestShutdown, Library? library = null, Func<IReadOnlyList<AudioDevice>>? listDevices = null,
         QueuePlayer? queue = null, OutputManager? outputs = null, AutoDj? autoDj = null, Rotations? rotations = null,
         NowPlaying? nowPlaying = null, Events? events = null, Scheduler? scheduler = null, AuxPlayers? aux = null,
-        SweeperOverlay? sweepers = null, OutputProcessor? processor = null, LibraryTools.LibraryImporter? importer = null)
+        SweeperOverlay? sweepers = null, OutputProcessor? processor = null, LibraryTools.LibraryImporter? importer = null,
+        LibraryTools.FolderWatcher? watcher = null)
     {
         _importer = importer;
+        _watcher = watcher;
         _sweepers = sweepers;
         _processor = processor;
         _state = state;
@@ -140,6 +143,11 @@ public sealed class CommandRouter
                 "category.save" => CategorySave(msg),
                 "subcategory.save" => SubcategorySave(msg),
                 "subcategory.empty" => SubcategoryEmpty(msg),
+                "folders.get" => FoldersGet(msg),
+                "folders.set" => FoldersSet(msg),
+                "folders.status" => new JsonObject { ["folders"] = QueueJson.Folders(WatcherOrError().Status) },
+                "folders.scan" => FoldersScan(),
+                "folders.log" => FoldersLog(msg),
                 "library.import" => LibraryImport(msg),
                 "library.importStatus" => new JsonObject { ["import"] = ImporterOrError().Status is { } s ? QueueJson.Import(s) : null },
                 "library.importCancel" => new JsonObject { ["cancelled"] = ImporterOrError().Cancel() },
@@ -614,6 +622,82 @@ public sealed class CommandRouter
         result["keptForEvents"] = kept;
         LibraryChanged?.Invoke(null);
         return result;
+    }
+
+    // --- Carpetes vigilades (fase 3, pas 7c; D-090) ---
+
+    private LibraryTools.FolderWatcher WatcherOrError() => _watcher ?? throw new BadParamsException("El motor no vigila carpetes.");
+
+    /// <summary>La carpeta vigilada d'una subcategoria i com queden les pistes noves: <c>subcategoryId</c>.</summary>
+    private JsonObject FoldersGet(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        long id = RequiredId(msg, "subcategoryId");
+        var settings = library.GetFolderSettings(id) ?? throw new BadParamsException($"No existeix la subcategoria {id}.");
+        return new JsonObject { ["folder"] = QueueJson.FolderSettings(settings) };
+    }
+
+    /// <summary>
+    /// Desa la carpeta vigilada d'una subcategoria: <c>subcategoryId</c>, <c>folder</c> (ruta completa d'una carpeta que
+    /// existeixi, o null per deixar de vigilar-la), <c>renewable</c> i, per a les pistes noves, <c>type</c>, <c>tags</c> i
+    /// <c>variableDuration</c>. Es revisa de seguida.
+    /// </summary>
+    private JsonObject FoldersSet(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        long id = RequiredId(msg, "subcategoryId");
+        if (library.GetFolderSettings(id) is null) throw new BadParamsException($"No existeix la subcategoria {id}.");
+        string? folder = ReadString(msg["folder"])?.Trim();
+        if (string.IsNullOrEmpty(folder)) folder = null;
+        if (folder is not null)
+        {
+            if (!Path.IsPathFullyQualified(folder)) throw new BadParamsException("La carpeta ha de ser una ruta completa (p. ex. O:\\musica\\BOSSA 9).");
+            if (!Directory.Exists(folder)) throw new BadParamsException($"No es troba la carpeta: {folder}");
+            folder = folder.TrimEnd('\\', '/');
+            if (folder.Length == 2 && folder[1] == ':') throw new BadParamsException("No es pot vigilar una unitat sencera: tria una carpeta.");
+            string normalized = folder + "\\";
+            foreach (var other in library.WatchedFolders().Where(f => f.SubcategoryId != id))
+            {
+                string otherFolder = other.Folder!.TrimEnd('\\', '/') + "\\";
+                if (normalized.StartsWith(otherFolder, StringComparison.OrdinalIgnoreCase) || otherFolder.StartsWith(normalized, StringComparison.OrdinalIgnoreCase))
+                    throw new BadParamsException($"Aquesta carpeta ja la vigila «{other.Name}» (o hi és a dins, o la conté): {other.Folder}");
+            }
+        }
+        var type = TrackType.Music;
+        if (msg["type"] is not null)
+        {
+            try { type = NowPlayingSettings.ParseType(ReadString(msg["type"])); }
+            catch (FormatException ex) { throw new BadParamsException(ex.Message); }
+        }
+        List<string> tags = [];
+        if (msg["tags"] is not null)
+        {
+            if (msg["tags"] is not JsonArray list || list.Any(t => ReadString(t) is null))
+                throw new BadParamsException("El camp 'tags' ha de ser una llista de textos.");
+            tags = list.Select(t => ReadString(t)!.Trim()).Where(t => t.Length is > 0 and <= 100).ToList();
+        }
+        bool renewable = msg["renewable"] is JsonValue r && r.TryGetValue(out bool rv) && rv;
+        bool variable = msg["variableDuration"] is JsonValue v && v.TryGetValue(out bool vv) && vv;
+
+        library.SetFolderSettings(id, folder, renewable, type, tags, variable);
+        _watcher?.Poke();
+        LibraryChanged?.Invoke(null);
+        return new JsonObject { ["folder"] = QueueJson.FolderSettings(library.GetFolderSettings(id)!) };
+    }
+
+    private JsonObject FoldersScan()
+    {
+        WatcherOrError().Poke();
+        return new JsonObject { ["scanning"] = true };
+    }
+
+    /// <summary>El registre de les carpetes vigilades, els més recents primer: <c>subcategoryId</c> (opcional) i <c>limit</c> (per defecte 100, com a molt 1.000).</summary>
+    private JsonObject FoldersLog(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        long? sub = msg["subcategoryId"] is JsonValue v && v.TryGetValue(out long id) ? id : null;
+        int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 100, 1, 1000);
+        return new JsonObject { ["entries"] = new JsonArray(library.FolderLog(limit, sub).Select(e => (JsonNode)QueueJson.FolderLog(e)).ToArray()) };
     }
 
     // --- Importació de carpetes (fase 3, pas 7b) ---

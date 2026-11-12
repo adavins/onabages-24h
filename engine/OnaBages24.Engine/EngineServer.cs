@@ -204,10 +204,26 @@ public static class EngineServer
             }
         };
 
+        // Carpetes vigilades (fase 3, pas 7c; D-090): es revisen cada 2 minuts (no mentre s'importa una carpeta des de la pantalla)
+        var watcher = new LibraryTools.FolderWatcher(library, busy: () => importer.Status is { Running: true },
+            log: message => log.LogInformation("{Message}", message));
+        watcher.Scanned += libraryChanged =>
+        {
+            var ev = Messages.Event("folders.changed");
+            ev["folders"] = QueueJson.Folders(watcher.Status);
+            Broadcast(ev);
+            if (libraryChanged)
+            {
+                var changed = Messages.Event("library.changed");
+                changed["trackId"] = null;
+                Broadcast(changed);
+            }
+        };
+
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
-            events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer);
+            events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher);
         // Gestor de pistes (fase 3, pas 7a): quan es canvia una pista o les categories, les interfícies tornen a demanar el que mostren
         router.LibraryChanged += trackId =>
         {
@@ -281,12 +297,14 @@ public static class EngineServer
         {
             control.Start();
             recalculator.Start();
+            watcher.Start();
         });
 
         app.Lifetime.ApplicationStopping.Register(() =>
         {
             log.LogInformation("Aturant el motor");
             recalculator.Dispose();
+            watcher.Dispose();
             importer.Dispose();
             deviceWatcher.Dispose();
             control.Dispose();
