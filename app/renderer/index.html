@@ -231,6 +231,12 @@
   <footer class="statusbar">
     <span id="status-next"></span>
     <span id="status-output"></span>
+    <!-- Processador de la sortida (fase 3, pas 6b; D-086): preajust, volum i quant comprimeix ara -->
+    <button id="status-processor" class="btn btn-link statusbar-link d-none" type="button">
+      <i class="bi bi-sliders2-vertical" aria-hidden="true"></i>
+      <span id="status-processor-text"></span>
+      <span class="reduction-bar" aria-hidden="true"><span id="status-processor-fill" class="reduction-fill"></span></span>
+    </button>
     <span id="status-butt"></span>
     <span id="status-events" class="status-events"></span>
     <button id="status-warnings" class="btn btn-link statusbar-button" type="button"></button>
@@ -244,6 +250,31 @@
       <div class="d-flex justify-content-end gap-2">
         <button id="confirm-cancel" class="btn btn-secondary" value="cancel">Cancel·la</button>
         <button id="confirm-ok" class="btn btn-danger" value="ok"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Processador de la sortida (fase 3, pas 6b; D-086): els canvis s'apliquen de seguida -->
+  <dialog id="processor-dialog" class="ob-dialog">
+    <form method="dialog">
+      <h2 class="h5"><i class="bi bi-sliders2-vertical" aria-hidden="true"></i> Processador de la sortida</h2>
+      <p class="ob-dialog-message">Compressor i volum de tot el que surt cap a la taula (música, auxiliars i sweepers). Els canvis se senten de seguida.</p>
+
+      <label for="processor-preset" class="form-label">Compressor</label>
+      <select id="processor-preset" class="form-select mb-3"></select>
+
+      <label for="processor-volume" class="form-label">Volum de sortida: <strong id="processor-volume-value"></strong></label>
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <input id="processor-volume" class="form-range" type="range" step="0.5">
+        <button id="processor-volume-reset" class="btn btn-sm btn-outline-secondary" type="button" title="Torna el volum a 0 dB">0 dB</button>
+      </div>
+
+      <div class="form-label">Compressió ara: <strong id="processor-reduction-value">0 dB</strong></div>
+      <div class="reduction-bar reduction-bar-wide mb-2" aria-hidden="true"><span id="processor-reduction-fill" class="reduction-fill"></span></div>
+      <p id="processor-ceiling" class="form-text"></p>
+
+      <div class="d-flex justify-content-end">
+        <button class="btn btn-secondary" value="close">Tanca</button>
       </div>
     </form>
   </dialog>

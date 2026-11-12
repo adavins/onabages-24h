@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 5a (motor, dispositius, sortida, cua, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 6a (motor, dispositius, sortida i processador de la sortida, cua, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -93,6 +93,8 @@ El `message` és en català i es pot mostrar a l'operador.
 | `aux.stop` | `player` (per defecte 1), `fadeMs` (de 0 a 10.000; per defecte 500) | `{ stopped, aux }`. `stopped`: fals si no sonava res | fase 2, pas 5a |
 | `ducking.get` | — | `{ auxiliary, sweepers }`: l'atenuació per defecte de la música (en dB; 0 = cap) quan un auxiliar o un sweeper no en diuen cap (D-078). Si no s'ha canviat mai, −10 i −8 | fase 3, pas 4b |
 | `ducking.set` | `auxiliary`, `sweepers` (de −60 a 0; 0 = sense atenuació). Tots dos opcionals: el que no s'envia es queda com està | `{ auxiliary, sweepers }`. Es desa a la configuració i s'aplica de seguida (el que ja sona o ja està preparat no canvia) | fase 3, pas 4b |
+| `processor.get` | — | `{ processor }` (4.9): el processador de la sortida (preajust del compressor i volum) | fase 3, pas 6 |
+| `processor.set` | `preset` (un dels de `processor.presets`), `volumeDb` (de −20 a 10; s'arrodoneix a 0,1). Tots dos opcionals | `{ processor }`. S'aplica de seguida (en uns 20 ms, sense clics), es desa a la configuració i s'avisa totes les interfícies amb `processor.changed` | fase 3, pas 6 |
 | `notes.get` | — | `{ text }`: el bloc de notes compartit de la pestanya «Notes» (buit si no n'hi ha) | fase 3, pas 4a |
 | `ui.get` | — | `{ zoom, collapsed }`: preferències de la interfície desades al motor (D-083). `zoom`: de 0,5 a 1,5 (per defecte 1). `collapsed`: requadres plegats, `{ "aux": true, … }` (per defecte, cap) | fase 3, pas 4c |
 | `ui.set` | `zoom` (de 0,5 a 1,5) i `collapsed` (nom del requadre → `true`/`false`; els que no s'envien es queden com estan), tots dos opcionals | `{ zoom, collapsed }`. Es desa a la configuració. No avisa les altres interfícies: cadascuna l'aplica en connectar-se | fase 3, pas 4c |
@@ -302,6 +304,20 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 - Un auxiliar no toca la cua: no surt a `queue.changed` ni a l'historial de la cua.
 - `loaded` (fase 3, pas 4a): la pista carregada a mà a cada reproductor, sempre amb una entrada per reproductor: `[ { "player": 1, "item": null }, { "player": 2, "item": { … } }, … ]`. És independent del que sona (`aux`) i del que preparen els esdeveniments.
 
+### 4.9. Processador de la sortida (D-086)
+
+```json
+{ "preset": "suau", "presetName": "Suau", "volumeDb": 0, "ceilingDb": -0.3, "minVolumeDb": -20, "maxVolumeDb": 10,
+  "presets": [ { "id": "cap", "name": "Sense compressió" }, { "id": "suau", "name": "Suau" },
+               { "id": "mitja", "name": "Mitjà" }, { "id": "fort", "name": "Fort" } ] }
+```
+
+- S'aplica a la mescla final (música, auxiliars i sweepers), just abans de la targeta. Els mesuradors (`meters`) mostren el so ja processat.
+- `preset`: el preajust del compressor. `cap` no comprimeix. La primera vegada, `suau` (com RadioDJ). Els valors de cada preajust són provisionals (es decidiran escoltant-ho).
+- `volumeDb`: el volum de la sortida (0 = sense canvi).
+- `ceilingDb`: el sostre de seguretat, **sempre actiu** (també amb `cap`): la sortida no passa mai d'aquest nivell, encara que dues pistes fortes se solapin.
+- El processador retarda el so 1,5 ms (l'anticipació del sostre).
+
 ## 5. Esdeveniments
 
 | Esdeveniment | Camps | Freqüència | Des de |
@@ -316,9 +332,10 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 | `aux.failed` | `player`, `item`, `message` | quan el fitxer d'un auxiliar no es pot fer sonar (la música continua) | fase 2, pas 5a |
 | `aux.loaded` | `player` (el que ha canviat), `loaded` (4.8) | quan es carrega o es treu la pista d'un reproductor | fase 3, pas 4a |
 | `notes.changed` | `text` | quan algú desa les notes | fase 3, pas 4a |
+| `processor.changed` | `processor` (4.9) | quan canvia el preajust o el volum del processador de la sortida | fase 3, pas 6 |
 | `output.changed` | `output` (4.3) | quan canvia la sortida, l'estat d'emergència o el problema | fase 1, pas 7c |
 | `autodj.changed` | `autodj` (4.5) | quan s'activa o es desactiva, canvia la rotació o canvia l'avís (les pistes que afegeix surten a `queue.changed`) | fase 1, pas 8 |
-| `meters` | `output` (nivells de la sortida), `position` (la pista que sona); vegeu 5.1 | unes 20 vegades per segon, només si hi ha algun client connectat | fase 1, pas 10a |
+| `meters` | `output` (nivells de la sortida), `reductionDb` (quant abaixa el processador), `position` (la pista que sona); vegeu 5.1 | unes 20 vegades per segon, només si hi ha algun client connectat | fase 1, pas 10a |
 | `scheduler.fired` | `entry` (línia del registre, 4.7) | quan el planificador executa o omet una emissió, i quan comença la primera pista d'un TALLA o l'auxiliar d'un SUPERPOSA (la mateixa línia, completada) | fase 2, passos 3 a 5 |
 | `scheduler.paused` | `paused` (com a `scheduler.status`) | quan s'aturen o es reactiven els esdeveniments (també quan tornen a funcionar sols) | fase 3, pas 2c |
 | `scheduler.changed` | — | quan es desa o s'esborra un esdeveniment (la interfície torna a demanar el que mostra) | fase 2, pas 3 |
@@ -326,11 +343,12 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 ### 5.1. Mesuradors i posició
 
 ```json
-{ "v": 1, "ev": "meters", "output": [-12.3, -11.8],
+{ "v": 1, "ev": "meters", "output": [-12.3, -11.8], "reductionDb": 2.4,
   "position": { "itemId": "6f0c…", "elapsedMs": 61500, "remainingMs": 120000, "mixInMs": 110000, "durationMs": 181500 } }
 ```
 
-- `output`: `[esquerre, dret]` en **dBFS**, el pic més alt de la sortida des de l'esdeveniment anterior (uns 50 ms). `-90` vol dir silenci. És la mescla del motor, abans d'adaptar-la a la targeta. La interfície fa la caiguda suau, la retenció del pic i l'indicador de saturació.
+- `output`: `[esquerre, dret]` en **dBFS**, el pic més alt de la sortida des de l'esdeveniment anterior (uns 50 ms). `-90` vol dir silenci. És la mescla del motor, abans d'adaptar-la a la targeta. La interfície fa la caiguda suau, la retenció del pic i l'indicador de saturació. Des de la fase 3, pas 6, és el so després del processador de la sortida (4.9).
+- `reductionDb` (fase 3, pas 6): l'abaixada més gran del processador (compressor i sostre) des de l'esdeveniment anterior, en dB (≥ 0, amb un decimal). `0` = no comprimeix.
 - `position`: la pista que sona (`itemId` és el de `queue.current`), o `null` si no sona res.
   - `elapsedMs`: quant ha sonat des del punt d'inici.
   - `remainingMs`: quant falta per al final (amb el fos de sortida inclòs).

@@ -646,6 +646,44 @@ body {
   text-decoration: none;
 }
 
+/* Botó de la barra d'estat que no va a la dreta (el processador) */
+.statusbar-link {
+  padding: 0;
+  font-size: inherit;
+  text-decoration: none;
+  color: var(--bs-secondary-color);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.statusbar-link:hover {
+  color: var(--bs-body-color);
+}
+
+/* Quant comprimeix el processador (fase 3, pas 6b): plena = 12 dB o més */
+.reduction-bar {
+  display: inline-block;
+  width: 3rem;
+  height: 0.45rem;
+  border-radius: 0.2rem;
+  background: var(--ob-border);
+  overflow: hidden;
+}
+
+.reduction-bar-wide {
+  display: block;
+  width: 100%;
+  height: 0.6rem;
+}
+
+.reduction-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #e0a84a;
+}
+
 /* --- Diàleg de confirmació --- */
 
 .ob-dialog {

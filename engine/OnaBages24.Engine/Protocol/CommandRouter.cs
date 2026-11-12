@@ -35,6 +35,7 @@ public sealed class CommandRouter
     private readonly Scheduler? _scheduler;
     private readonly AuxPlayers? _aux;
     private readonly SweeperOverlay? _sweepers;
+    private readonly OutputProcessor? _processor;
 
     /// <param name="state">Estat del motor.</param>
     /// <param name="requestShutdown">Atura el motor (s'executa després de respondre).</param>
@@ -51,9 +52,10 @@ public sealed class CommandRouter
     public CommandRouter(EngineState state, Action requestShutdown, Library? library = null, Func<IReadOnlyList<AudioDevice>>? listDevices = null,
         QueuePlayer? queue = null, OutputManager? outputs = null, AutoDj? autoDj = null, Rotations? rotations = null,
         NowPlaying? nowPlaying = null, Events? events = null, Scheduler? scheduler = null, AuxPlayers? aux = null,
-        SweeperOverlay? sweepers = null)
+        SweeperOverlay? sweepers = null, OutputProcessor? processor = null)
     {
         _sweepers = sweepers;
+        _processor = processor;
         _state = state;
         _requestShutdown = requestShutdown;
         _library = library;
@@ -119,6 +121,8 @@ public sealed class CommandRouter
                 "notes.get" => NotesGet(),
                 "ducking.get" => DuckingGet(),
                 "ducking.set" => DuckingSet(msg),
+                "processor.get" => new JsonObject { ["processor"] = QueueJson.Processor(ProcessorOrError()) },
+                "processor.set" => ProcessorSet(msg),
                 "notes.set" => NotesSet(msg),
                 "ui.get" => UiGet(),
                 "ui.set" => UiSet(msg),
@@ -523,6 +527,36 @@ public sealed class CommandRouter
         if (_aux is not null) _aux.DefaultDuckingDb = auxDb;
         if (_sweepers is not null) _sweepers.DuckingDb = sweepersDb;
         return new JsonObject { ["auxiliary"] = auxDb, ["sweepers"] = sweepersDb };
+    }
+
+    // --- Processador de sortida (fase 3, pas 6; D-086) ---
+
+    private OutputProcessor ProcessorOrError() => _processor ?? throw new BadParamsException("El motor no té processador de sortida.");
+
+    /// <summary>
+    /// <c>preset</c> (un dels de <c>presets</c>) i <c>volumeDb</c> (dins del marge), tots dos opcionals. Es desa i s'avisa
+    /// amb <c>processor.changed</c> (ho fa qui escolta <see cref="OutputProcessor.Changed"/>).
+    /// </summary>
+    private JsonObject ProcessorSet(JsonObject msg)
+    {
+        var processor = ProcessorOrError();
+        string preset = processor.Preset.Id;
+        double volumeDb = processor.VolumeDb;
+        if (msg["preset"] is not null)
+        {
+            preset = ReadString(msg["preset"]) ?? "";
+            if (OutputProcessor.FindPreset(preset) is null)
+                throw new BadParamsException($"El camp 'preset' ha de ser un d'aquests: {string.Join(", ", OutputProcessor.Presets.Select(p => p.Id))}.");
+        }
+        if (msg["volumeDb"] is not null)
+        {
+            if (msg["volumeDb"] is not JsonValue v || !v.TryGetValue(out volumeDb) || !double.IsFinite(volumeDb)
+                || volumeDb < OutputProcessor.MinVolumeDb || volumeDb > OutputProcessor.MaxVolumeDb)
+                throw new BadParamsException($"El camp 'volumeDb' ha de ser un nombre entre {OutputProcessor.MinVolumeDb} i {OutputProcessor.MaxVolumeDb} (dB).");
+            volumeDb = Math.Round(volumeDb, 1);
+        }
+        processor.Configure(preset, volumeDb);
+        return new JsonObject { ["processor"] = QueueJson.Processor(processor) };
     }
 
     // --- Notes (fase 3, pas 4a) ---

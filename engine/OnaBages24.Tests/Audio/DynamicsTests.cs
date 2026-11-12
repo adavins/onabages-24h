@@ -52,6 +52,23 @@ public class DynamicsTests
             dynamics.Process(buffer.AsSpan(i, Math.Min(blockFrames * 2, buffer.Length - i)));
     }
 
+    // --- Activat de bon principi (Ona Bages 24h, fase 3, pas 6) ---
+
+    [Fact]
+    public void Activat_no_passa_mai_del_sostre_ni_deixa_passar_so_sense_retard()
+    {
+        // Abans, activat i sense transició, una mostra de cada dues barrejava un 0,2 % de so sense processar
+        var dynamics = new DynamicsProcessor(Rate, new DynamicsSettings(Enabled: true, Ratio: 1, CeilingDb: -0.3));
+        var buffer = new float[Rate * 2];
+        Array.Fill(buffer, 1.6f);
+
+        ProcessInBlocks(dynamics, buffer);
+
+        int latency = dynamics.LatencyFrames;
+        Assert.All(buffer.AsSpan(0, latency * 2).ToArray(), v => Assert.Equal(0f, v)); // el retard de l'anticipació: silenci
+        Assert.True(MaxAbs(buffer) <= Db(-0.3) + 1e-6f, $"{MaxAbs(buffer)} passa del sostre");
+    }
+
     // --- Desactivat ---
 
     [Fact]

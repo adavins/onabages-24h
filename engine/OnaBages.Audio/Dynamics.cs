@@ -180,7 +180,10 @@ public sealed class DynamicsProcessor
         {
             int i = f * 2;
             float dryLeft = stereo[i], dryRight = stereo[i + 1];
-            _wet = wetTarget > _wet ? Math.Min(1f, _wet + _wetStep) : Math.Max(0f, _wet - _wetStep);
+            // Només durant la transició. (Abans s'hi entrava sempre: activat i ja a 1, baixava un pas i al següent tornava a
+            // pujar, i una mostra de cada dues barrejava un 0,2 % de so sense processar; passava una mica del sostre.)
+            if (_wet != wetTarget)
+                _wet = wetTarget > _wet ? Math.Min(1f, _wet + _wetStep) : Math.Max(0f, _wet - _wetStep);
 
             // Guanys d'entrada i de sortida: cap al valor nou, de mica en mica.
             _inputGain += (c.InputGain - _inputGain) * c.GainSmoothing;

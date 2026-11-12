@@ -174,12 +174,13 @@ public static class QueueJson
 
     /// <summary>
     /// Esdeveniment <c>meters</c> (docs/protocol.md, 5.1): el pic de la sortida (dBFS, <c>[esquerre, dret]</c>, −90 = silenci)
-    /// i la posició de la pista que sona.
+    /// i la posició de la pista que sona. <c>reductionDb</c>: quant ha abaixat el processador de sortida (fase 3, pas 6; ≥ 0).
     /// </summary>
-    public static JsonObject Meters((float Left, float Right) peak, QueuePosition? position)
+    public static JsonObject Meters((float Left, float Right) peak, QueuePosition? position, float reductionDb = 0)
     {
         var ev = Messages.Event("meters");
         ev["output"] = new JsonArray(OnaBages.Audio.PeakMeter.ToDb(peak.Left), OnaBages.Audio.PeakMeter.ToDb(peak.Right));
+        ev["reductionDb"] = Math.Round(reductionDb, 1);
         ev["position"] = position is null ? null : new JsonObject
         {
             ["itemId"] = position.ItemId.ToString(),
@@ -190,6 +191,21 @@ public static class QueueJson
         };
         return ev;
     }
+
+    /// <summary>
+    /// El processador de sortida (fase 3, pas 6; docs/protocol.md): el preajust, el volum, els preajusts que es poden triar
+    /// i els marges del volum.
+    /// </summary>
+    public static JsonObject Processor(OutputProcessor processor) => new()
+    {
+        ["preset"] = processor.Preset.Id,
+        ["presetName"] = processor.Preset.Name,
+        ["volumeDb"] = processor.VolumeDb,
+        ["ceilingDb"] = OutputProcessor.CeilingDb,
+        ["minVolumeDb"] = OutputProcessor.MinVolumeDb,
+        ["maxVolumeDb"] = OutputProcessor.MaxVolumeDb,
+        ["presets"] = new JsonArray(OutputProcessor.Presets.Select(p => (JsonNode)new JsonObject { ["id"] = p.Id, ["name"] = p.Name }).ToArray()),
+    };
 
     /// <summary>Tipus de pista: <c>music</c>, <c>sweeper</c>, <c>stationId</c>, <c>promo</c>, <c>commercial</c>, <c>program</c>, <c>news</c>, <c>timeAnnouncement</c>, <c>timeSignal</c>, <c>stream</c>, <c>other</c>.</summary>
     public static string Type(TrackType type)

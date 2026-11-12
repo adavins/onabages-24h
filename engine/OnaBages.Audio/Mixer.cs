@@ -37,6 +37,7 @@ public sealed class Mixer : IWaveProvider
         _voices = new MixerVoice[voiceCount];
         for (int i = 0; i < voiceCount; i++)
             _voices[i] = new MixerVoice(i + 1, sampleRate * 2 * bufferSeconds);
+        Processor = new DynamicsProcessor(sampleRate);
     }
 
     public WaveFormat WaveFormat { get; }
@@ -45,8 +46,14 @@ public sealed class Mixer : IWaveProvider
 
     public IReadOnlyList<MixerVoice> Voices => _voices;
 
-    /// <summary>Nivell de pic de la sortida (la suma de totes les veus).</summary>
+    /// <summary>Nivell de pic de la sortida (la suma de totes les veus, després del processador).</summary>
     public PeakMeter Meter { get; } = new();
+
+    /// <summary>
+    /// Processador d'àudio de la sortida (fase 3, pas 6; D-086): compressor, volum i sostre de seguretat, a la mescla
+    /// final (música, auxiliars i sweepers), just abans de la targeta. Per defecte, desactivat: el so passa igual.
+    /// </summary>
+    public DynamicsProcessor Processor { get; }
 
     /// <summary>Fotogrames (mostres per canal) que han sortit des que es va crear el mesclador.</summary>
     public long FramesRendered => Interlocked.Read(ref _framesRendered);
@@ -109,6 +116,9 @@ public sealed class Mixer : IWaveProvider
             {
                 if (voice.Overlay) voice.MixInto(mix, _scratch, blockStart, frames);
             }
+
+            // Processador de sortida (fase 3, pas 6): al mateix lloc, sense objectes nous. Activat, retarda el so 1,5 ms.
+            Processor.Process(mix);
 
             Meter.AddInterleaved(mix, 2);
             WriteOutput(mix, output.Slice(done * _outChannels, frames * _outChannels), frames);

@@ -17,6 +17,7 @@ import { EventsPause } from './ui/events-pause.js';
 import { LibraryView, TRACK_DRAG_TYPE } from './ui/library.js';
 import { AuxPlayersView } from './ui/aux-players.js';
 import { NotesView } from './ui/notes.js';
+import { ProcessorView } from './ui/processor.js';
 import { setupZoom, applyZoom } from './ui/zoom.js';
 import { setupWindowFrame } from './ui/window-frame.js';
 import { CollapsibleCards } from './ui/collapsible.js';
@@ -101,6 +102,7 @@ const library = new LibraryView(send);
 queueView.acceptDrops(TRACK_DRAG_TYPE, (track, position) => library.add(track, position));
 const auxPlayers = new AuxPlayersView(send, TRACK_DRAG_TYPE);
 const notes = new NotesView(send);
+const processor = new ProcessorView(send);
 
 // Pestanyes del quadre de la dreta: Cerca i Notes (fase 3, pas 4b)
 /** @param {'search' | 'notes'} name */
@@ -292,6 +294,8 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
         'Si el motor funciona, l\'emissió continua. Es torna a provar cada pocs segons.');
       showQueue({ current: null, upcoming: [] });
       auxPlayers.refresh(); // sense connexió: es buida el que sonava
+      processor.render(null); // no se sap com està: s'amaga fins que es torni a connectar
+      processor.setReduction(0);
       // Potser el motor ha tornat a arrencar amb un altre testimoni: se'n llegeix el fitxer d'execució
       const found = await bridge.findEngine().catch(() => null);
       if (found) client?.setEngine(found.port, found.token);
@@ -326,9 +330,11 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   client.addEventListener('ev:aux.loaded', () => auxPlayers.refresh());
   client.addEventListener('ev:aux.failed', (e) => auxPlayers.failed(detail(e).player, detail(e).message));
   client.addEventListener('ev:notes.changed', (e) => notes.received(detail(e).text));
+  client.addEventListener('ev:processor.changed', (e) => processor.render(detail(e).processor));
   client.addEventListener('ev:meters', (e) => {
     const ev = detail(e);
     meters.set(ev.output);
+    processor.setReduction(ev.reductionDb);
     nowPlaying.setPosition(ev.position);
   });
 
@@ -355,6 +361,7 @@ async function loadState() {
     library.refresh();
     auxPlayers.refresh();
     notes.refresh();
+    processor.refresh();
   } catch (err) {
     console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }

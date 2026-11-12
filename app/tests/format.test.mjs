@@ -2,7 +2,15 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatDuration, formatRemaining, typeName, originName, meterFraction, formatClock, formatLongDate } from '../renderer/js/format.js';
+import { formatDuration, formatRemaining, typeName, originName, meterFraction, formatClock, formatLongDate, formatGainDb } from '../renderer/js/format.js';
+
+test('formatGainDb: amb signe i coma decimal', () => {
+  assert.equal(formatGainDb(0), '0 dB');
+  assert.equal(formatGainDb(2), '+2 dB');
+  assert.equal(formatGainDb(-3.5), '−3,5 dB');
+  assert.equal(formatGainDb(-0.04), '0 dB');
+  assert.equal(formatGainDb(1.25), '+1,3 dB');
+});
 
 test('formatDuration: minuts i segons, i hores si cal', () => {
   assert.equal(formatDuration(0), '0:00');

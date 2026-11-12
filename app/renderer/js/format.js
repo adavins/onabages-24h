@@ -64,6 +64,17 @@ export function meterFraction(db) {
 }
 
 /**
+ * Un guany en dB, amb signe i coma decimal: «+2 dB», «0 dB», «−3,5 dB» (el volum del processador, fase 3, pas 6).
+ * @param {number} db
+ */
+export function formatGainDb(db) {
+  const rounded = Math.round(db * 10) / 10;
+  if (rounded === 0) return '0 dB';
+  const text = String(Math.abs(rounded)).replace('.', ',');
+  return `${rounded > 0 ? '+' : '−'}${text} dB`;
+}
+
+/**
  * Data llarga en català: «dimarts, 10 de novembre de 2026».
  * @param {Date} date
  */

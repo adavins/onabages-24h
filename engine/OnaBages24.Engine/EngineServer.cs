@@ -98,6 +98,22 @@ public static class EngineServer
 
         // Àudio (D-005, D-039): mesclador estèreo a 48 kHz, una sola sortida i la cua d'emissió
         var mixer = new Mixer(sampleRate: 48000);
+        // Processador de sortida (fase 3, pas 6): el desat o «Suau», i el sostre de seguretat sempre. Es desa i s'avisa en canviar.
+        var processor = new OutputProcessor(mixer.Processor);
+        ConfigureProcessor(processor, library, log);
+        log.LogInformation("Processador de sortida: {Preset}, volum {Volume} dB", processor.Preset.Name, processor.VolumeDb);
+        processor.Changed += () =>
+        {
+            try
+            {
+                library.SetSetting(ProcessorSettingKey,
+                    System.Text.Json.JsonSerializer.Serialize(new { preset = processor.Preset.Id, volumeDb = processor.VolumeDb }));
+            }
+            catch (DatabaseException ex) { log.LogWarning("No s'ha pogut desar el processador: {Message}", ex.Message); }
+            var ev = Messages.Event("processor.changed");
+            ev["processor"] = QueueJson.Processor(processor);
+            Broadcast(ev);
+        };
         var outputs = new OutputManager(mixer);
         outputs.Configure(ReadConfiguredOutput(library, log));
         var queue = new QueuePlayer(mixer);
@@ -176,7 +192,7 @@ public static class EngineServer
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
-            events: events, scheduler: scheduler, aux: aux, sweepers: sweepers);
+            events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor);
         // Notes (fase 3, pas 4a): quan algú les desa, les altres interfícies connectades les reben
         router.NotesChanged += text =>
         {
@@ -288,10 +304,11 @@ public static class EngineServer
                 while (await timer.WaitForNextTickAsync(stopping))
                 {
                     var peak = mixer.Meter.Take();
+                    float reduction = processor.TakeReductionDb();
                     if (state.Clients == 0) continue;
                     try
                     {
-                        await hub.BroadcastAsync(QueueJson.Meters(peak, queue.Position), stopping);
+                        await hub.BroadcastAsync(QueueJson.Meters(peak, queue.Position, reduction), stopping);
                         warned = false;
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
@@ -389,6 +406,26 @@ public static class EngineServer
         catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or FormatException)
         {
             log.LogWarning("La categoria de sweepers desada no és vàlida ({Message}): no n'hi ha cap", ex.Message);
+        }
+    }
+
+    /// <summary>Clau de la configuració amb el processador de sortida: <c>{ "preset": "suau", "volumeDb": 0 }</c>.</summary>
+    internal const string ProcessorSettingKey = "processador";
+
+    /// <summary>
+    /// El processador de sortida en arrencar el motor (fase 3, pas 6): el desat. Si no n'hi ha (primera vegada) o no és
+    /// vàlid, el per defecte: «Suau» i volum 0 dB.
+    /// </summary>
+    internal static void ConfigureProcessor(OutputProcessor processor, Library library, ILogger log)
+    {
+        try
+        {
+            if (library.GetSetting(ProcessorSettingKey) is { } json && System.Text.Json.Nodes.JsonNode.Parse(json) is { } saved)
+                processor.Configure(saved["preset"]?.GetValue<string>() ?? OutputProcessor.StandardPresetId, saved["volumeDb"]?.GetValue<double>() ?? 0);
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or FormatException or ArgumentException)
+        {
+            log.LogWarning("El processador desat no és vàlid ({Message}): es fa servir el per defecte", ex.Message);
         }
     }
 
