@@ -107,6 +107,98 @@ public class FolderImportTests : IDisposable
     }
 
     [Fact]
+    public void Una_pista_que_falta_amb_el_mateix_nom_de_fitxer_es_recupera_en_lloc_de_duplicar_se()
+    {
+        string path = Wav("Artista - Cançó.wav");
+        long music = _library.EnsureCategory("Music");
+        long actualitat = _library.EnsureSubcategory(music, "Actualitat");
+        long altra = _library.EnsureSubcategory(music, "Altra");
+        // La mateixa cançó, importada de RadioDJ amb la ruta de l'altre ordinador (G:), i que per tant falta
+        long old = _library.AddTrack(new Track { Path = @"G:\.shortcut-targets-by-id\x\ACTUAL-1\ARTISTA - cançó.wav", Title = "Cançó",
+            SubcategoryId = actualitat, FileState = FileState.Missing, RadioDjId = 25769, PlayCount = 12, CueSource = CueSource.RadioDj, MixMs = 1000 });
+        // A una altra subcategoria, amb el mateix nom: no és la mateixa
+        long other = _library.AddTrack(new Track { Path = @"G:\altra\Artista - Cançó.wav", SubcategoryId = altra, FileState = FileState.Missing });
+
+        var (outcome, _, _) = FolderImporter.ImportFile(_library, path, new ImportDefaults(actualitat));
+
+        Assert.Equal(ImportOutcome.Reactivated, outcome);
+        Assert.Equal(1, _library.TracksInSubcategory(actualitat).Count); // cap duplicat
+        var back = _library.GetTrack(old)!;
+        Assert.Equal(path, back.Path);
+        Assert.Equal(FileState.Ok, back.FileState);
+        Assert.Equal(12, back.PlayCount); // la mateixa fitxa i les reproduccions
+        Assert.Null(back.CueSource); // l'analitzador els tornarà a calcular
+        Assert.InRange(back.DurationMs!.Value, 3990, 4010);
+        Assert.Equal(FileState.Missing, _library.GetTrack(other)!.FileState);
+    }
+
+    [Fact]
+    public void Buidar_la_subcategoria_esborra_les_que_no_son_a_la_carpeta_i_retira_les_dels_esdeveniments()
+    {
+        string kept = Wav("Es queda.wav");
+        long sub = _library.EnsureSubcategory(_library.EnsureCategory("Music"), "Actualitat");
+        long keptId = _library.AddTrack(new Track { Path = kept, SubcategoryId = sub });
+        long free = _library.AddTrack(new Track { Path = @"C:\vella\Lliure.mp3", SubcategoryId = sub });
+        long used = _library.AddTrack(new Track { Path = @"C:\vella\En un esdeveniment.mp3", SubcategoryId = sub });
+        long elsewhere = _library.AddTrack(new Track { Path = @"C:\vella\Altra.mp3", SubcategoryId = _library.EnsureSubcategory(_library.EnsureCategory("Music"), "Altra") });
+        new Events(_db).Save(new ScheduledEvent { Name = "Promo", Mode = EventMode.Queue, StartTime = new TimeOnly(10, 0),
+            Actions = [new EventAction { Type = EventActionType.Track, Params = $$"""{"songId":{{used}}}""" }] });
+        Wav("Nova.wav");
+
+        using var importer = new LibraryImporter(_library);
+        importer.Start(_music, new ImportDefaults(sub, EmptySubcategory: true), "Music / Actualitat");
+        Assert.True(importer.Wait(TimeSpan.FromSeconds(30)));
+
+        var status = importer.Status!;
+        Assert.Equal((1, 1, 1), (status.Added, status.Removed, status.RetiredInstead));
+        Assert.NotNull(_library.GetTrack(keptId));
+        Assert.Null(_library.GetTrack(free));
+        Assert.Equal(FileState.Retired, _library.GetTrack(used)!.FileState);
+        Assert.NotNull(_library.GetTrack(elsewhere)); // d'una altra subcategoria: no es toca
+    }
+
+    [Fact]
+    public void Una_carpeta_sense_audio_no_buida_la_subcategoria()
+    {
+        File.WriteAllText(Path.Combine(_music, "notes.txt"), "res");
+        long sub = _library.EnsureSubcategory(_library.EnsureCategory("Music"), "Actualitat");
+        long track = _library.AddTrack(new Track { Path = @"C:\vella\Una.mp3", SubcategoryId = sub });
+
+        using var importer = new LibraryImporter(_library);
+        importer.Start(_music, new ImportDefaults(sub, EmptySubcategory: true), "Music / Actualitat");
+        Assert.True(importer.Wait(TimeSpan.FromSeconds(10)));
+
+        Assert.NotNull(_library.GetTrack(track));
+        Assert.Contains("no s'ha buidat", importer.Status!.Warning);
+    }
+
+    [Fact]
+    public void Un_fitxer_aturat_a_mig_importar_no_deixa_res_a_la_biblioteca()
+    {
+        string path = Wav("Aturada.wav");
+        long sub = _library.EnsureSubcategory(_library.EnsureCategory("Proves"), "Bossa");
+        using var cancel = new CancellationTokenSource();
+        cancel.Cancel(); // s'atura mentre s'analitzen els punts (abans de desar res)
+
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            FolderImporter.ImportFile(_library, path, new ImportDefaults(sub, Tags: ["x"]), cancel: cancel.Token));
+
+        Assert.Null(_library.FindByPath(path));
+        Assert.Equal(0, _library.CountTracks());
+    }
+
+    [Fact]
+    public void La_pista_i_les_etiquetes_es_desen_juntes()
+    {
+        long id = _library.AddTrack(new Track { Path = @"C:\x\a.mp3" }, ["català", "80s"]);
+        Assert.Equal(["80s", "català"], _library.GetTags(id));
+
+        // Si la pista no es pot desar (ruta repetida), tampoc no queda cap etiqueta nova
+        Assert.Throws<DatabaseException>(() => _library.AddTrack(new Track { Path = @"C:\x\a.mp3" }, ["nova"]));
+        Assert.DoesNotContain(_library.SearchFilters().Tags, t => t.Name == "nova");
+    }
+
+    [Fact]
     public void La_importacio_en_segon_pla_avisa_del_progres_i_acaba_amb_l_informe()
     {
         Wav("U.wav");

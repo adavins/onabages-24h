@@ -24,6 +24,7 @@ public static class Program
             {
                 "importa-radiodj" => ImportRadioDj(args[1..]),
                 "importa-carpeta" => ImportFolder(args[1..]),
+                "desfes-importacio" => UndoImport(args[1..]),
                 "compara-punts" => CompareCues(args[1..]),
                 "comprova-emissio" => CheckBroadcast(args[1..]),
                 "ajuda" or "--help" or "-h" or "/?" => Help(),
@@ -62,6 +63,12 @@ public static class Program
               importa-carpeta CARPETA --categoria NOM --subcategoria NOM [--bd RUTA]
                   Importa els fitxers d'àudio d'una carpeta (i subcarpetes) que encara no hi són: etiquetes,
                   durada i punts d'encadenament calculats amb l'analitzador.
+
+              desfes-importacio CARPETA [--inclou-sonades] [--aplica] [--bd RUTA]
+                  Esborra de la biblioteca les pistes d'una carpeta (i subcarpetes) que s'hi han afegit amb una importació
+                  i encara no han servit de res: no venen de RadioDJ, no han sonat mai i no les fa servir cap esdeveniment.
+                  --inclou-sonades: també les que ja han sonat (l'historial en conserva l'artista i el títol).
+                  Sense --aplica només diu quines esborraria. Els fitxers no es toquen mai.
 
               compara-punts CARPETA [--bd RUTA]
                   Compara els punts de RadioDJ de les pistes d'una carpeta amb els que calcula l'analitzador.
@@ -296,6 +303,54 @@ public static class Program
         Console.WriteLine();
         Console.WriteLine(report);
         Console.WriteLine($"Temps: {(DateTime.Now - started).TotalSeconds:0.0} s");
+        return 0;
+    }
+
+    /// <summary>
+    /// Desfà una importació (fase 3, pas 7b): esborra les pistes d'una carpeta que no venen de RadioDJ, no han sonat mai i
+    /// no fa servir cap esdeveniment. Per defecte només ho diu; amb <c>--aplica</c>, les esborra.
+    /// </summary>
+    private static int UndoImport(string[] args)
+    {
+        string? folder = null;
+        bool apply = false, includePlayed = false;
+        string databasePath = DefaultDatabasePath;
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--bd": databasePath = Value(args, ++i, "--bd"); break;
+                case "--aplica": apply = true; break;
+                case "--inclou-sonades": includePlayed = true; break;
+                default: folder = args[i]; break;
+            }
+        }
+        if (folder is null) return Help();
+
+        Console.WriteLine($"Base de dades: {databasePath}");
+        using var database = Database.Open(databasePath);
+        var library = new Library(database);
+        var inFolder = library.TracksInFolder(folder);
+        var candidates = inFolder
+            .Where(t => t.RadioDjId is null && (includePlayed || t.PlayCount == 0) && library.EventsUsingTrack(t.Id).Count == 0)
+            .ToList();
+
+        Console.WriteLine($"Pistes de la carpeta: {inFolder.Count}. Es poden esborrar (no venen de RadioDJ, " +
+                          $"{(includePlayed ? "" : "no han sonat mai, ")}no les fa servir cap esdeveniment): {candidates.Count}. " +
+                          $"Es queden: {inFolder.Count - candidates.Count}.");
+        if (includePlayed && candidates.Any(t => t.PlayCount > 0))
+            Console.WriteLine($"  {candidates.Count(t => t.PlayCount > 0)} han sonat: l'historial en conservarà l'artista i el títol, sense l'enllaç.");
+        foreach (var t in candidates.Take(10)) Console.WriteLine($"  {t.Id}: {t.Path}");
+        if (candidates.Count > 10) Console.WriteLine($"  … i {candidates.Count - 10} més");
+
+        if (!apply)
+        {
+            Console.WriteLine();
+            Console.WriteLine("No s'ha esborrat res. Per esborrar-les, torna a executar l'ordre amb --aplica.");
+            return 0;
+        }
+        foreach (var t in candidates) library.DeleteTrack(t.Id);
+        Console.WriteLine($"Esborrades: {candidates.Count} (els fitxers no s'han tocat).");
         return 0;
     }
 

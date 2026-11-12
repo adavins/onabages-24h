@@ -46,6 +46,13 @@ export class ImportView {
     } catch { /* sense connexió */ }
   }
 
+  /** «S'està important BOSSA 9 (120 de 289)» si hi ha una importació en curs, o null (per avisar en tancar). */
+  runningText() {
+    const s = this.#status;
+    if (!s || (s.state !== 'listing' && s.state !== 'running')) return null;
+    return `S'està important «${folderName(s.folder)}»${s.state === 'running' ? ` (${s.done} de ${s.total})` : ''}`;
+  }
+
   /** @param {any} status  de library.importProgress o library.importStatus (docs/protocol.md, 4.10), o null */
   show(status) {
     this.#status = status;
@@ -109,12 +116,15 @@ export class ImportView {
 
     // Resum: noves, ja hi eren, recuperades, sense so i errors
     const counts = [`${status.added} ${status.added === 1 ? 'nova' : 'noves'}`, `${status.alreadyThere} ja hi eren`];
-    if (status.reactivated) counts.push(`${status.reactivated} recuperades (el fitxer faltava)`);
+    if (status.reactivated) counts.push(`${status.reactivated} recuperades (el fitxer faltava o s'havia mogut)`);
     if (status.withoutSound) counts.push(`${status.withoutSound} sense so`);
+    if (status.removed) counts.push(`${status.removed} esborrades en buidar la subcategoria`);
+    if (status.retiredInstead) counts.push(`${status.retiredInstead} retirades (les fan servir esdeveniments)`);
     const summary = el('div', 'tm-import-summary', counts.join(' · '));
     if (status.unreadableCount > 0)
       summary.append(' · ', statusLabel('text-warning', 'bi-exclamation-triangle-fill', `${status.unreadableCount} no es poden llegir`));
     parts.push(summary);
+    if (status.warning) parts.push(statusLabel('text-warning', 'bi-exclamation-triangle-fill', status.warning));
 
     if (this.#showReport && !running && status.unreadableCount > 0) {
       const list = el('ul', 'tm-import-errors');
@@ -149,6 +159,7 @@ export class ImportView {
     this.#proposeType();
     /** @type {HTMLInputElement} */ ($('import-tags')).value = '';
     /** @type {HTMLInputElement} */ ($('import-variable')).checked = false;
+    /** @type {HTMLInputElement} */ ($('import-empty')).checked = false;
     this.#validate();
 
     const dialog = /** @type {HTMLDialogElement} */ ($('import-dialog'));
@@ -163,7 +174,22 @@ export class ImportView {
       type: type.value,
       tags: parseTags(/** @type {HTMLInputElement} */ ($('import-tags')).value),
       variableDuration: /** @type {HTMLInputElement} */ ($('import-variable')).checked,
+      emptySubcategory: /** @type {HTMLInputElement} */ ($('import-empty')).checked,
     };
+    // Buidar esborra pistes: es confirma, dient de quina subcategoria i quantes n'hi ha ara
+    if (params.emptySubcategory) {
+      const { categories } = this.#context();
+      const category = categories.find((c) => c.subcategories.some((/** @type {any} */ s) => s.id === params.subcategoryId));
+      const sub = category?.subcategories.find((/** @type {any} */ s) => s.id === params.subcategoryId);
+      const confirmed = await confirmAction({
+        title: 'Buidar la subcategoria',
+        message: `«${category?.name ?? ''} / ${sub?.name ?? ''}» té ara ${sub?.count ?? 0} pistes. En acabar la importació, les que no ` +
+          'siguin a la carpeta s\'esborraran de la biblioteca (les que fan servir esdeveniments quedaran retirades). ' +
+          'L\'historial les conserva i els fitxers no es toquen, però no es pot desfer.',
+        confirm: 'Importa i buida',
+      });
+      if (!confirmed) return;
+    }
     try {
       this.#showReport = false;
       this.show((await this.#send('library.import', params)).import);

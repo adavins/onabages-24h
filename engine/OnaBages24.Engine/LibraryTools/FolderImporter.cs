@@ -24,8 +24,13 @@ public sealed class FolderImportReport
     }
 }
 
-/// <summary>Com queden les pistes noves d'una importació (fase 3, pas 7b): subcategoria, tipus, etiquetes i durada variable.</summary>
-public sealed record ImportDefaults(long SubcategoryId, TrackType Type = TrackType.Music, IReadOnlyList<string>? Tags = null, bool VariableDuration = false);
+/// <summary>
+/// Com queden les pistes noves d'una importació (fase 3, pas 7b): subcategoria, tipus, etiquetes i durada variable.
+/// <paramref name="EmptySubcategory"/>: en acabar bé, les pistes de la subcategoria que no són a la carpeta s'esborren (com
+/// «buidar la subcategoria» de RadioDJ; les que fan servir esdeveniments queden retirades).
+/// </summary>
+public sealed record ImportDefaults(long SubcategoryId, TrackType Type = TrackType.Music, IReadOnlyList<string>? Tags = null,
+    bool VariableDuration = false, bool EmptySubcategory = false);
 
 /// <summary>Què ha passat amb un fitxer en importar-lo.</summary>
 public enum ImportOutcome
@@ -118,11 +123,31 @@ public static class FolderImporter
             }
 
             var metadata = TrackInfo.ReadMetadata(path);
+
+            // A la mateixa subcategoria hi ha una pista que falta amb el mateix nom de fitxer: és la mateixa cançó, que s'ha
+            // mogut (o que en aquest ordinador es veu amb una altra ruta). Es recupera, amb la fitxa i l'historial, en lloc de
+            // duplicar-la. Els punts es tornen a calcular en segon pla (excepte els manuals); mentrestant, els d'abans.
+            if (library.FindMissingByFileName(defaults.SubcategoryId, Path.GetFileName(path)) is { } moved)
+            {
+                var found = new FileInfo(path);
+                library.UpdateTrack(moved with
+                {
+                    Path = path,
+                    FileState = FileState.Ok,
+                    DurationMs = (long)metadata.Duration.TotalMilliseconds,
+                    FileSize = found.Length,
+                    FileModified = new DateTimeOffset(found.LastWriteTimeUtc, TimeSpan.Zero),
+                    CueSource = moved.CueSource == CueSource.Manual ? CueSource.Manual : null,
+                });
+                return (ImportOutcome.Reactivated, false, null);
+            }
+
             var cues = CueAnalyzer.AnalyzeFile(path, thresholds, cancel);
             var (artist, title) = NamesFor(path, metadata.Artist, metadata.Title);
             var info = new FileInfo(path);
 
-            long id = library.AddTrack(new Track
+            // La pista i les etiquetes, juntes: si el motor s'atura a mig fer, o hi és tot o no hi és res
+            library.AddTrack(new Track
             {
                 Path = path,
                 Type = defaults.Type,
@@ -139,8 +164,7 @@ public static class FolderImporter
                 CueSource = cues is null ? null : CueSource.Analyzer,
                 FileSize = info.Length,
                 FileModified = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero),
-            });
-            if (defaults.Tags is { Count: > 0 } tags) library.SetTags(id, tags);
+            }, defaults.Tags);
             return (ImportOutcome.Added, cues is null, null);
         }
         catch (Exception ex) when (ex is AudioFileException or IOException or UnauthorizedAccessException or DatabaseException)
@@ -148,6 +172,34 @@ public static class FolderImporter
             // Un fitxer dolent no atura la importació dels altres
             return (ImportOutcome.Unreadable, false, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Buida la subcategoria després d'importar (com RadioDJ): les pistes que no són a <paramref name="keepPaths"/> (els fitxers
+    /// de la carpeta importada) s'esborren de la biblioteca. Les que fan servir esdeveniments no es poden esborrar: queden
+    /// retirades (l'AutoDJ no les tria). Els fitxers no es toquen mai.
+    /// </summary>
+    /// <returns>Quantes s'han esborrat i quantes han quedat retirades.</returns>
+    public static (int Removed, int Retired) RemoveOthers(Library library, long subcategoryId, IEnumerable<string> keepPaths)
+    {
+        var keep = new HashSet<string>(keepPaths, StringComparer.OrdinalIgnoreCase);
+        int removed = 0, retired = 0;
+        foreach (var track in library.TracksInSubcategory(subcategoryId))
+        {
+            if (keep.Contains(track.Path)) continue;
+            if (library.EventsUsingTrack(track.Id).Count > 0)
+            {
+                if (track.FileState != FileState.Retired)
+                {
+                    library.UpdateTrack(track with { FileState = FileState.Retired });
+                    retired++;
+                }
+                continue;
+            }
+            library.DeleteTrack(track.Id);
+            removed++;
+        }
+        return (removed, retired);
     }
 
     /// <summary>

@@ -126,6 +126,10 @@ public static class QueueJson
         // Com a molt els 200 primers (s'envia 2 vegades per segon); el total, a part
         ["unreadable"] = new JsonArray(s.Unreadable.Take(200).Select(u => (JsonNode)JsonValue.Create(u)!).ToArray()),
         ["unreadableCount"] = s.Unreadable.Count,
+        ["emptySubcategory"] = s.EmptySubcategory,
+        ["removed"] = s.Removed,
+        ["retiredInstead"] = s.RetiredInstead,
+        ["warning"] = s.Warning,
         ["started"] = s.Started.ToString("O"),
         ["finished"] = s.Finished?.ToString("O"),
         ["error"] = s.Error,

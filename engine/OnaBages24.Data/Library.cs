@@ -235,25 +235,34 @@ public sealed class Library(Database database)
         "punts_origen, data_inici, data_fi, activa, estat_fitxer, prioritat, reproduccions, darrera_reproduccio, fitxer_mida, " +
         "fitxer_modificat, radiodj_id, notes";
 
-    /// <summary>Afegeix una pista nova. Retorna l'id.</summary>
+    /// <summary>
+    /// Afegeix una pista nova, amb les etiquetes si n'hi ha. Tot en una sola transacció (fase 3, pas 7b): si el motor
+    /// s'atura a mig fer, o hi és tot (la pista amb les etiquetes) o no hi és res. Retorna l'id.
+    /// </summary>
     /// <exception cref="DatabaseException">Si ja hi ha una pista amb la mateixa ruta.</exception>
-    public long AddTrack(Track track)
+    public long AddTrack(Track track, IEnumerable<string>? tags = null)
     {
         lock (database.Sync)
         {
             string now = DbTime.ToText(DateTimeOffset.UtcNow);
+            using var transaction = database.BeginTransaction();
             using var command = database.Command(
-                $"INSERT INTO pista ({TrackColumns}, creada, modificada) VALUES ({ParameterList()}, $ara, $ara); SELECT last_insert_rowid();");
+                $"INSERT INTO pista ({TrackColumns}, creada, modificada) VALUES ({ParameterList()}, $ara, $ara); SELECT last_insert_rowid();",
+                transaction);
             AddTrackParameters(command, track);
             command.Parameters.AddWithValue("$ara", now);
+            long id;
             try
             {
-                return (long)command.ExecuteScalar()!;
+                id = (long)command.ExecuteScalar()!;
             }
             catch (SqliteException ex) when (ex.SqliteErrorCode == 19) // restricció: la ruta ja hi és
             {
                 throw new DatabaseException($"Ja hi ha una pista amb aquesta ruta: {track.Path}", ex);
             }
+            if (tags is not null) WriteTags(id, tags, transaction);
+            transaction.Commit();
+            return id;
         }
     }
 
@@ -338,6 +347,16 @@ public sealed class Library(Database database)
     public Track? FindByPath(string path) => QueryTracks("WHERE ruta = $v", path).FirstOrDefault();
 
     public Track? FindByRadioDjId(long radioDjId) => QueryTracks("WHERE radiodj_id = $v", radioDjId).FirstOrDefault();
+
+    /// <summary>
+    /// Una pista de la subcategoria amb el fitxer que falta (o retirada) i el mateix nom de fitxer (sense la carpeta, sense
+    /// distingir majúscules), o null. La més antiga si n'hi ha diverses. En importar una carpeta (fase 3, pas 7b), perquè
+    /// una bossa que s'ha mogut (o que en un altre ordinador es veu amb una altra ruta) es recuperi en lloc de duplicar-se.
+    /// </summary>
+    public Track? FindMissingByFileName(long subcategoryId, string fileName) =>
+        QueryTracks("WHERE subcategoria_id = $sub AND estat_fitxer IN ('FALTA', 'RETIRADA') " +
+                    "AND lower(substr(ruta, -length($nom))) = lower($nom) ORDER BY id LIMIT 1",
+            ("$sub", subcategoryId), ("$nom", "\\" + fileName)).FirstOrDefault();
 
     public IReadOnlyList<Track> TracksInSubcategory(long subcategoryId) =>
         QueryTracks("WHERE subcategoria_id = $v ORDER BY id", subcategoryId);
@@ -511,22 +530,28 @@ public sealed class Library(Database database)
         lock (database.Sync)
         {
             using var transaction = database.BeginTransaction();
-            using (var clear = database.Command("DELETE FROM pista_etiqueta WHERE pista_id = $p;", transaction))
-            {
-                clear.Parameters.AddWithValue("$p", trackId);
-                clear.ExecuteNonQuery();
-            }
-            foreach (string tag in tags.Select(t => t.Trim()).Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase))
-            {
-                using var add = database.Command(
-                    "INSERT OR IGNORE INTO etiqueta (nom) VALUES ($nom); " +
-                    "INSERT OR IGNORE INTO pista_etiqueta (pista_id, etiqueta_id) SELECT $p, id FROM etiqueta WHERE nom = $nom;",
-                    transaction);
-                add.Parameters.AddWithValue("$nom", tag);
-                add.Parameters.AddWithValue("$p", trackId);
-                add.ExecuteNonQuery();
-            }
+            WriteTags(trackId, tags, transaction);
             transaction.Commit();
+        }
+    }
+
+    /// <summary>Substitueix les etiquetes d'una pista dins d'una transacció que ja està oberta.</summary>
+    private void WriteTags(long trackId, IEnumerable<string> tags, SqliteTransaction transaction)
+    {
+        using (var clear = database.Command("DELETE FROM pista_etiqueta WHERE pista_id = $p;", transaction))
+        {
+            clear.Parameters.AddWithValue("$p", trackId);
+            clear.ExecuteNonQuery();
+        }
+        foreach (string tag in tags.Select(t => t.Trim()).Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            using var add = database.Command(
+                "INSERT OR IGNORE INTO etiqueta (nom) VALUES ($nom); " +
+                "INSERT OR IGNORE INTO pista_etiqueta (pista_id, etiqueta_id) SELECT $p, id FROM etiqueta WHERE nom = $nom;",
+                transaction);
+            add.Parameters.AddWithValue("$nom", tag);
+            add.Parameters.AddWithValue("$p", trackId);
+            add.ExecuteNonQuery();
         }
     }
 

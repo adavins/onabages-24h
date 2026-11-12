@@ -615,10 +615,11 @@ public sealed class CommandRouter
             tags = list.Select(t => ReadString(t)!.Trim()).Where(t => t.Length is > 0 and <= 100).ToList();
         }
         bool variable = msg["variableDuration"] is JsonValue v && v.TryGetValue(out bool b) && b;
+        bool empty = msg["emptySubcategory"] is JsonValue e && e.TryGetValue(out bool emptyValue) && emptyValue;
 
         try
         {
-            var status = importer.Start(folder, new LibraryTools.ImportDefaults(subcategoryId, type, tags, variable),
+            var status = importer.Start(folder, new LibraryTools.ImportDefaults(subcategoryId, type, tags, variable, empty),
                 $"{subcategory.CategoryName} / {subcategory.Name}");
             return new JsonObject { ["import"] = QueueJson.Import(status) };
         }

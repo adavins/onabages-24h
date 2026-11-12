@@ -22,6 +22,16 @@ public sealed record ImportStatus(
     DateTimeOffset Started, DateTimeOffset? Finished, string? Error)
 {
     public bool Running => State is ImportState.Listing or ImportState.Running;
+
+    /// <summary>S'ha demanat buidar la subcategoria (les pistes que no són a la carpeta).</summary>
+    public bool EmptySubcategory { get; init; }
+
+    /// <summary>En buidar-la: quantes s'han esborrat i quantes han quedat retirades (les fan servir esdeveniments).</summary>
+    public int Removed { get; init; }
+    public int RetiredInstead { get; init; }
+
+    /// <summary>Un avís que no és un error (p. ex. «no s'ha buidat la subcategoria perquè…»), o null.</summary>
+    public string? Warning { get; init; }
 }
 
 /// <summary>
@@ -70,7 +80,10 @@ public sealed class LibraryImporter : IDisposable
             if (_status is { Running: true }) throw new InvalidOperationException("Ja s'està important una carpeta: espera que acabi o atura-la.");
             _cancel?.Dispose();
             _cancel = new CancellationTokenSource();
-            _status = new ImportStatus(folder, subcategoryName, ImportState.Listing, 0, 0, 0, 0, 0, 0, [], DateTimeOffset.UtcNow, null, null);
+            _status = new ImportStatus(folder, subcategoryName, ImportState.Listing, 0, 0, 0, 0, 0, 0, [], DateTimeOffset.UtcNow, null, null)
+            {
+                EmptySubcategory = defaults.EmptySubcategory,
+            };
             var token = _cancel.Token;
             _thread = new Thread(() => Run(folder, defaults, token)) { IsBackground = true, Name = "Importació de carpeta", Priority = ThreadPriority.Lowest };
             _thread.Start();
@@ -95,7 +108,8 @@ public sealed class LibraryImporter : IDisposable
     private void Run(string folder, ImportDefaults defaults, CancellationToken cancel)
     {
         var report = new FolderImportReport();
-        int total = 0, done = 0;
+        int total = 0, done = 0, removed = 0, retired = 0;
+        string? warning = null;
         long lastProgress = 0;
         void Publish(ImportState state, string? error = null, bool force = false)
         {
@@ -111,6 +125,9 @@ public sealed class LibraryImporter : IDisposable
                     Reactivated = report.Reactivated, WithoutSound = report.WithoutSound, Unreadable = report.Unreadable.ToArray(),
                     Finished = state is ImportState.Done or ImportState.Cancelled or ImportState.Failed ? DateTimeOffset.UtcNow : null,
                     Error = error,
+                    Removed = removed,
+                    RetiredInstead = retired,
+                    Warning = warning,
                 };
                 _status = status;
             }
@@ -134,6 +151,22 @@ public sealed class LibraryImporter : IDisposable
                 Publish(ImportState.Running);
             }
             var end = cancel.IsCancellationRequested ? ImportState.Cancelled : ImportState.Done;
+
+            // Buidar la subcategoria (com RadioDJ): només si la importació ha acabat bé, perquè una importació aturada o
+            // fallada no deixi la bossa sense música. Amb una carpeta sense àudio no es buida (seria esborrar-ho tot).
+            if (defaults.EmptySubcategory && end == ImportState.Done)
+            {
+                if (files.Count == 0)
+                    warning = "La carpeta no té cap fitxer d'àudio: no s'ha buidat la subcategoria.";
+                else
+                {
+                    (removed, retired) = FolderImporter.RemoveOthers(_library, defaults.SubcategoryId, files);
+                    _log?.Invoke($"Importació de {folder}: subcategoria buidada ({removed} pistes esborrades, {retired} retirades perquè les fan servir esdeveniments)");
+                }
+            }
+            else if (defaults.EmptySubcategory)
+                warning = "La importació no ha acabat: no s'ha buidat la subcategoria.";
+
             Publish(end, force: true);
             _log?.Invoke($"Importació de {folder} {(end == ImportState.Cancelled ? "aturada" : "acabada")}: {report.ToString().Split('\n')[0]}");
         }

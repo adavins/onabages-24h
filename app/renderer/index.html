@@ -314,6 +314,11 @@
         <input id="import-variable" class="form-check-input" type="checkbox">
         <label for="import-variable" class="form-check-label">Durada variable (el fitxer se substitueix de tant en tant)</label>
       </div>
+      <div class="form-check form-switch mb-1">
+        <input id="import-empty" class="form-check-input" type="checkbox">
+        <label for="import-empty" class="form-check-label">Buida la subcategoria</label>
+      </div>
+      <p class="form-text mb-3">En acabar la importació (només si acaba bé), les pistes de la subcategoria que no siguin a la carpeta s'esborren de la biblioteca. Les que fan servir esdeveniments queden retirades. Els fitxers no es toquen.</p>
       <p id="import-problem" class="form-text text-warning"></p>
 
       <div class="d-flex justify-content-end gap-2">
@@ -383,6 +388,7 @@
       <h2 class="h5">Tancar Ona Bages 24h</h2>
       <p class="ob-dialog-message">Si només tanques la finestra, l'emissió continua: el motor segueix sonant i la pots tornar a obrir quan vulguis.
 Si atures l'emissió, la ràdio es quedarà en silenci.</p>
+      <p id="close-import" class="text-warning d-none"><i class="bi bi-exclamation-triangle-fill"></i> <span id="close-import-text"></span></p>
       <p id="close-offline" class="text-warning d-none"><i class="bi bi-exclamation-triangle-fill"></i> No hi ha connexió amb el motor: des d'aquí no es pot aturar l'emissió.</p>
       <div class="d-flex justify-content-end gap-2 flex-wrap">
         <button class="btn btn-secondary" value="cancel">Cancel·la</button>

@@ -254,6 +254,13 @@ bridge.onCloseRequested(async () => {
   const connected = client?.connected ?? false;
   /** @type {HTMLButtonElement} */ ($('close-stop')).disabled = !connected;
   $('close-offline').classList.toggle('d-none', connected);
+  // Una importació en curs (fase 3, pas 7b): la fa el motor, no la finestra
+  const importing = connected ? importView.runningText() : null;
+  $('close-import').classList.toggle('d-none', !importing);
+  $('close-import-text').textContent = importing
+    ? `${importing}. Si només tanques la finestra, la importació continua. Si atures l'emissió, s'aturarà a mig fer: ` +
+      'el que ja s\'ha importat es queda, i la pots tornar a fer després (les pistes que ja hi són se salten).'
+    : '';
 
   const choice = await new Promise((resolve) => {
     dialog.addEventListener('close', () => resolve(dialog.returnValue), { once: true });
