@@ -27,6 +27,7 @@ body {
 /* --- Capçalera --- */
 
 .topbar {
+  flex: none; /* sempre la seva alçada, com la barra d'estat */
   display: flex;
   align-items: center;
   gap: 1.5rem;
@@ -624,6 +625,7 @@ body {
 /* --- Barra d'estat --- */
 
 .statusbar {
+  flex: none; /* sempre la seva alçada: si la pantalla del mig té molt contingut, no l'ha d'encongir */
   display: flex;
   align-items: center;
   gap: 2rem;
