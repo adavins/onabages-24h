@@ -138,6 +138,7 @@ public static class EngineServer
         ConfigureAutoDj(autoDj, library, log);
         // Separació real (fase 3, pas 8b; D-095): la desada, o cançó 6 h i artista 1 h
         autoDj.Separation = CommandRouter.ReadSeparation(library);
+        autoDj.Reserve = CommandRouter.ReadReserve(library);
         log.LogInformation("Separació: la mateixa cançó cada {Track} min com a mínim; el mateix artista, {Artist} min",
             autoDj.Separation.Track.TotalMinutes, autoDj.Separation.Artist.TotalMinutes);
         ConfigureSweepers(autoDj, library, log);

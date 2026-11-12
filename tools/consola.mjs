@@ -419,7 +419,7 @@ async function showQueue(engine) {
   const step = (item) => item?.rotationStep != null
     ? (item.rotationId === rotation?.id ? `pas ${item.rotationStep + 1}` : `pas ${item.rotationStep + 1} d'una altra rotació`) +
       (item.rotationStepName ? ` (${item.rotationStepName})` : '')
-    : item?.origin;
+    : (item?.rotationStepName ?? item?.origin); // de la reserva (D-099), diu d'on surt
 
   console.log(`\nSona:   ${describe(queue.current)} · ${await subcategory(queue.current)} · ${step(queue.current) ?? ''}`);
   for (const [i, item] of queue.upcoming.entries()) {

@@ -168,6 +168,12 @@ export class QueueView {
         el('span', '', `Pas ${item.rotationStep + 1}${item.rotationStepName ? ` · ${item.rotationStepName}` : ''}`));
       step.title = 'El pas de la rotació d\'on l\'ha triada l\'AutoDJ';
       text.append(step);
+    } else if (item.origin === 'autodj' && item.rotationStepName) {
+      // De la reserva (D-099): cap pas de la rotació activa no tenia pistes
+      const step = el('div', 'queue-step text-warning');
+      step.append(icon('bi-life-preserver'), ' ', el('span', '', item.rotationStepName));
+      step.title = 'Cap pas de la rotació no tenia pistes disponibles: l\'AutoDJ l\'ha triada de la reserva';
+      text.append(step);
     }
     // Trepitjador (fase 3, pas 5b; D-084): el sweeper que sonarà a sobre de l'inici
     if (item.sweeper) {

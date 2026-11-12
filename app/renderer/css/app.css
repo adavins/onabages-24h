@@ -1269,6 +1269,26 @@ body {
   border-top: 1px solid var(--ob-border);
 }
 
+/* Reserva (D-099): les subcategories «no de reserva», com a etiquetes amb una creu per treure-les */
+.rt-reserve-excluded {
+  list-style: none;
+  margin: 0 0 0.3rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.rt-reserve-excluded li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.25rem;
+}
+
 .rt-separation-title {
   font-size: 0.8rem;
   color: var(--ob-muted);

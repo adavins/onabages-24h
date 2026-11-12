@@ -28,6 +28,17 @@ public sealed record AutoDjSettings
 }
 
 /// <summary>
+/// Reserva de l'AutoDJ (fase 3, pas 8d; D-099): si cap pas de la rotació no troba res, la rotació de reserva
+/// (<see cref="RotationId"/>, opcional) i, si tampoc, música de tota la biblioteca sense les subcategories «no de reserva»
+/// (<see cref="ExcludedSubcategoryIds"/>, p. ex. Nadal).
+/// </summary>
+public sealed record ReserveSettings(long? RotationId, IReadOnlySet<long> ExcludedSubcategoryIds)
+{
+    /// <summary>La de la primera vegada: sense rotació de reserva i sense subcategories excloses (com fins al pas 8c).</summary>
+    public static ReserveSettings None { get; } = new(null, new HashSet<long>());
+}
+
+/// <summary>
 /// Separació real (fase 3, pas 8b; D-095): quant ha de passar, com a mínim, perquè torni a sonar la mateixa cançó o el
 /// mateix artista (només als passos amb criteris de repetició). Zero = sense límit de temps (només el que és a la cua).
 /// </summary>
@@ -69,6 +80,27 @@ public sealed class AutoDj
     /// hagi, no només quan l'última tria ha saltat un pas; un pas en surt quan torna a trobar una pista.
     /// </summary>
     private readonly SortedSet<int> _emptySteps = [];
+
+    /// <summary>El pas següent de la rotació de reserva (continua on era cada vegada que s'hi ha de recórrer).</summary>
+    private int _reserveNext;
+
+    private ReserveSettings _reserve = ReserveSettings.None;
+
+    /// <summary>
+    /// La reserva (fase 3, pas 8d; D-099): què sona si cap pas de la rotació no troba res. Si es canvia i a la cua hi ha
+    /// pistes que en surten, es tornen a triar (D-097).
+    /// </summary>
+    public ReserveSettings Reserve
+    {
+        get => _reserve;
+        set
+        {
+            if (value.RotationId == _reserve.RotationId && value.ExcludedSubcategoryIds.SetEquals(_reserve.ExcludedSubcategoryIds)) return;
+            if (value.RotationId != _reserve.RotationId) _reserveNext = 0;
+            _reserve = value;
+            if (_queue.Upcoming.Any(i => i.Origin == QueueOrigin.AutoDj && i.RotationStep is null)) RefreshQueue();
+        }
+    }
 
     /// <param name="clock">Rellotge (les proves en fan servir un de fals). Per defecte, l'hora de l'ordinador.</param>
     /// <param name="random">Generador d'atzar (les proves hi posen una llavor fixa).</param>
@@ -370,7 +402,7 @@ public sealed class AutoDj
         if (_queue.Current is { } current) inQueue.Add(current);
         var context = NewContext(inQueue, _clock());
         int next = NextStep;
-        var pick = Pick(Rotation, ref next, today, context, _random);
+        var pick = Pick(Rotation, ref next, ref _reserveNext, today, context, _random);
         NextStep = next;
 
         // Passos buits: els que s'han saltat ara s'hi afegeixen i el que ha trobat pista en surt (l'avís no va i ve)
@@ -386,6 +418,8 @@ public sealed class AutoDj
         var item = QueueItem.FromTrack(pick.Track, QueueOrigin.AutoDj);
         if (pick.StepIndex >= 0 && Rotation is { } rotation)
             item = item with { RotationId = rotation.Id, RotationStep = pick.StepIndex, RotationStepName = pick.Step?.ToString() };
+        else if (pick.Source is not null)
+            item = item with { RotationStepName = pick.Source }; // de la reserva: sense pas de la rotació activa
         if (pick.Step?.Sweeper == true)
         {
             // Trepitjador (fase 3, pas 5): si no n'hi ha cap, la pista sona igual, sense sweeper, i es diu
@@ -398,8 +432,11 @@ public sealed class AutoDj
     /// <summary>Una tria: la pista (o null), el pas d'on surt, la regla de repetició que s'ha hagut d'afluixar, l'avís i si és de la reserva.</summary>
     private sealed record PickResult(Track? Track, RotationStep? Step, int StepIndex, string? Relaxed, string? Problem, bool Fallback)
     {
-        /// <summary>Els passos (índexs) que s'han saltat perquè no tenien pistes.</summary>
+        /// <summary>Els passos (índexs) de la rotació activa que s'han saltat perquè no tenien pistes.</summary>
         public IReadOnlyList<int> SkippedSteps { get; init; } = [];
+
+        /// <summary>D'on surt, si és de la reserva (per mostrar-ho a la cua), p. ex. «Reserva: tota la biblioteca».</summary>
+        public string? Source { get; init; }
     }
 
     /// <summary>El que ja és a la cua (o ja s'ha triat, a la previsualització) i el que ha sonat fa poc: per als criteris de repetició.</summary>
@@ -444,38 +481,77 @@ public sealed class AutoDj
     }
 
     /// <summary>
-    /// Tria una pista de la rotació a partir del pas <paramref name="next"/> (que avança). Si un pas no troba res, se salta;
-    /// si cap no troba res, música de tota la biblioteca (mai silenci). La fan servir l'AutoDJ i la previsualització.
+    /// Tria una pista a partir del pas <paramref name="next"/> de la rotació (que avança). Si un pas no troba res, se salta.
+    /// Si cap pas no troba res (fase 3, pas 8d; D-099): la rotació de reserva (a partir del seu pas
+    /// <paramref name="reserveNext"/>, que també avança) i, si tampoc, música de tota la biblioteca sense les subcategories
+    /// «no de reserva»; sempre amb avís. Mai silenci. La fan servir l'AutoDJ i la previsualització.
     /// </summary>
-    private PickResult Pick(Rotation? rotation, ref int next, DateOnly today, PickContext context, Random random)
+    private PickResult Pick(Rotation? rotation, ref int next, ref int reserveNext, DateOnly today, PickContext context, Random random)
     {
-        var skipped = new List<string>();
+        // 1. La rotació activa
         var skippedSteps = new List<int>();
-        if (rotation is { Steps.Count: > 0 })
+        if (TryRotation(rotation, ref next, today, context, random, skippedSteps) is { } found)
         {
-            for (int attempt = 0; attempt < rotation.Steps.Count; attempt++)
-            {
-                int index = next % rotation.Steps.Count;
-                var step = rotation.Steps[index];
-                next = (index + 1) % rotation.Steps.Count;
-                var (track, relaxed) = Choose(_library.TracksForRotationStep(step, today), step.Selection, step.RepeatRule, context, random);
-                if (track is not null)
+            string? problem = skippedSteps.Count > 0
+                ? $"Rotació «{rotation!.Name}»: sense pistes disponibles a {string.Join(", ", skippedSteps.Select(i => $"«{rotation.Steps[i]}»"))}; s'ha saltat"
+                : null;
+            return new PickResult(found.Track, found.Step, found.Index, found.Relaxed, problem, false) { SkippedSteps = skippedSteps };
+        }
+        string reason = rotation is null ? "No hi ha cap rotació"
+            : $"Cap pas de la rotació «{rotation.Name}» no té pistes disponibles " +
+              $"({string.Join(", ", skippedSteps.Select(i => $"«{rotation.Steps[i]}»").Distinct())})";
+
+        // 2. La rotació de reserva (si n'hi ha una i no és la mateixa)
+        var settings = Reserve;
+        if (settings.RotationId is { } reserveId && reserveId != rotation?.Id && _rotations.Get(reserveId) is { } reserve)
+        {
+            if (TryRotation(reserve, ref reserveNext, today, context, random, []) is { } r)
+                return new PickResult(r.Track, r.Step, -1, r.Relaxed, $"{reason}: sona la rotació de reserva «{reserve.Name}».", true)
                 {
-                    string? problem = skipped.Count > 0 ? $"Rotació «{rotation.Name}»: sense pistes disponibles a {string.Join(", ", skipped)}; s'ha saltat" : null;
-                    return new PickResult(track, step, index, relaxed, problem, false) { SkippedSteps = skippedSteps };
-                }
-                skipped.Add($"«{step}»");
-                skippedSteps.Add(index);
-            }
+                    SkippedSteps = skippedSteps,
+                    Source = $"Reserva: rotació «{reserve.Name}», pas {r.Index + 1} ({r.Step})",
+                };
+            reason += $", ni la rotació de reserva «{reserve.Name}»";
         }
 
-        // Reserva: música de tota la biblioteca (mai silenci)
-        var (fallback, fallbackRelaxed) = Choose(_library.AvailableMusic(today), RotationSelection.LeastRecent, true, context, random);
-        string reason = rotation is null ? "No hi ha cap rotació"
-            : $"Cap pas de la rotació «{rotation.Name}» no té pistes disponibles ({string.Join(", ", skipped.Distinct())})";
+        // 3. Música de tota la biblioteca, sense les subcategories «no de reserva» (p. ex. Nadal)
+        var all = _library.AvailableMusic(today);
+        var allowed = settings.ExcludedSubcategoryIds.Count == 0 ? all
+            : all.Where(t => t.SubcategoryId is not { } s || !settings.ExcludedSubcategoryIds.Contains(s)).ToList();
+        string what = allowed.Count < all.Count ? "música de tota la biblioteca (sense les subcategories «no de reserva»)" : "música de tota la biblioteca";
+        if (allowed.Count == 0 && all.Count > 0)
+        {
+            allowed = all; // mai silenci: si només en queda de les «no de reserva», també
+            what = "música de les subcategories «no de reserva» (no n'hi ha cap altra)";
+        }
+        var (fallback, fallbackRelaxed) = Choose(allowed, RotationSelection.LeastRecent, true, context, random);
         if (fallback is null)
-            return new PickResult(null, null, -1, null, $"{reason} i no hi ha cap música disponible a la biblioteca: l'AutoDJ no pot afegir res.", true);
-        return new PickResult(fallback, null, -1, fallbackRelaxed, $"{reason}: sona música de tota la biblioteca.", true);
+            return new PickResult(null, null, -1, null, $"{reason} i no hi ha cap música disponible a la biblioteca: l'AutoDJ no pot afegir res.", true)
+                { SkippedSteps = skippedSteps };
+        return new PickResult(fallback, null, -1, fallbackRelaxed, $"{reason}: sona {what}.", true)
+            { SkippedSteps = skippedSteps, Source = "Reserva: tota la biblioteca" };
+    }
+
+    /// <summary>Una pista d'un pas d'una rotació: la pista, el pas, el seu índex i la regla afluixada.</summary>
+    private sealed record StepPick(Track Track, RotationStep Step, int Index, string? Relaxed);
+
+    /// <summary>
+    /// Prova els passos d'una rotació a partir de <paramref name="next"/> (que avança) fins que un troba pista. Els que no en
+    /// troben s'anoten a <paramref name="skipped"/>. Null si no en troba cap (o no hi ha rotació).
+    /// </summary>
+    private StepPick? TryRotation(Rotation? rotation, ref int next, DateOnly today, PickContext context, Random random, List<int> skipped)
+    {
+        if (rotation is not { Steps.Count: > 0 }) return null;
+        for (int attempt = 0; attempt < rotation.Steps.Count; attempt++)
+        {
+            int index = next % rotation.Steps.Count;
+            var step = rotation.Steps[index];
+            next = (index + 1) % rotation.Steps.Count;
+            var (track, relaxed) = Choose(_library.TracksForRotationStep(step, today), step.Selection, step.RepeatRule, context, random);
+            if (track is not null) return new StepPick(track, step, index, relaxed);
+            skipped.Add(index);
+        }
+        return null;
     }
 
     /// <summary>
@@ -578,7 +654,11 @@ public sealed class AutoDj
     // --- Previsualització (fase 3, pas 8b; D-095) ---
 
     /// <summary>Una pista de la previsualització: el pas (null si és de la reserva), la pista i què s'ha hagut d'afluixar.</summary>
-    public sealed record PreviewItem(int StepIndex, RotationStep? Step, Track? Track, string? Relaxed, string? Problem, bool Fallback);
+    public sealed record PreviewItem(int StepIndex, RotationStep? Step, Track? Track, string? Relaxed, string? Problem, bool Fallback)
+    {
+        /// <summary>Si és de la reserva, d'on surt (p. ex. «Reserva: rotació «Dance», pas 2 (…)»).</summary>
+        public string? Source { get; init; }
+    }
 
     /// <summary>
     /// Les properes <paramref name="count"/> pistes que triaria una rotació, <b>sense canviar res</b> (ni la cua ni el pas de
@@ -590,20 +670,21 @@ public sealed class AutoDj
         var now = _clock();
         var today = DateOnly.FromDateTime(now.LocalDateTime);
         List<QueueItem> inQueue;
-        int next;
+        int next, reserveNext;
         lock (_sync)
         {
             inQueue = new List<QueueItem>(_queue.Upcoming);
             if (_queue.Current is { } current) inQueue.Add(current);
             next = Rotation?.Id == rotation.Id ? NextStep : 0;
+            reserveNext = _reserveNext;
         }
         var context = NewContext(inQueue, now);
         var random = new Random();
         var list = new List<PreviewItem>();
         for (int i = 0; i < count; i++)
         {
-            var pick = Pick(rotation, ref next, today, context, random);
-            list.Add(new PreviewItem(pick.StepIndex, pick.Step, pick.Track, pick.Relaxed, pick.Problem, pick.Fallback));
+            var pick = Pick(rotation, ref next, ref reserveNext, today, context, random);
+            list.Add(new PreviewItem(pick.StepIndex, pick.Step, pick.Track, pick.Relaxed, pick.Problem, pick.Fallback) { Source = pick.Source });
             if (pick.Track is null) break;
             context.Add(pick.Track);
         }

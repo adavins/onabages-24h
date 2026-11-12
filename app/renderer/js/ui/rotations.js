@@ -36,7 +36,85 @@ export class RotationsView {
     $('rt-bag-new').addEventListener('click', () => this.#newBag());
     for (const id of ['rt-sep-track', 'rt-sep-artist']) $(id).addEventListener('input', () => this.#separationEdited());
     $('rt-sep-save').addEventListener('click', () => this.#saveSeparation());
+    $('rt-reserve-rotation').addEventListener('change', () => this.#setReserveRotation());
+    $('rt-reserve-add').addEventListener('change', () => this.#addExcluded());
     this.#renderEditor();
+  }
+
+  // --- Reserva (fase 3, pas 8d; D-099) ---
+
+  /** La desada al motor (reserve.get). @type {{ rotationId: number | null, rotationName: string | null, excludedSubcategories: any[] } | null} */
+  #reserve = null;
+
+  #renderReserve() {
+    const reserve = this.#reserve;
+    if (!reserve) return;
+
+    // Rotació de reserva: totes menys l'activa (si la rotació activa no troba res, tornar-hi no serviria de res)
+    const rotation = /** @type {HTMLSelectElement} */ ($('rt-reserve-rotation'));
+    rotation.replaceChildren(option('', 'Cap (directament tota la biblioteca)'),
+      ...this.#rotations.map((r) => option(String(r.id), r.id === this.#activeId ? `${r.name} (l'activa: no farà res)` : r.name)));
+    rotation.value = reserve.rotationId == null ? '' : String(reserve.rotationId);
+
+    // Les «no de reserva», amb una creu per treure-les
+    const list = $('rt-reserve-excluded');
+    if (reserve.excludedSubcategories.length === 0) {
+      list.replaceChildren(el('li', 'form-text border-0 p-0', 'Cap: pot sonar qualsevol música'));
+    } else {
+      list.replaceChildren(...reserve.excludedSubcategories.map((s) => {
+        const li = el('li', '');
+        const remove = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-link p-0 text-body-secondary'));
+        remove.type = 'button';
+        remove.title = 'Treu-la: podrà sonar a la reserva';
+        remove.setAttribute('aria-label', `Treu ${s.categoryName} / ${s.name} de les «no de reserva»`);
+        remove.append(icon('bi-x-lg'));
+        remove.addEventListener('click', () => this.#saveExcluded(reserve.excludedSubcategories.filter((x) => x.id !== s.id).map((x) => x.id)));
+        li.append(icon('bi-slash-circle'), el('span', '', `${s.categoryName} / ${s.name}`), remove);
+        li.title = 'No sona mai a la reserva de tota la biblioteca';
+        return li;
+      }));
+    }
+
+    // Desplegable per afegir-ne una (les que ja hi són, no)
+    const add = /** @type {HTMLSelectElement} */ ($('rt-reserve-add'));
+    const excluded = new Set(reserve.excludedSubcategories.map((s) => s.id));
+    add.replaceChildren(option('', 'Afegeix una subcategoria «no de reserva»…'));
+    for (const c of this.#categories) {
+      const subs = c.subcategories.filter((/** @type {any} */ s) => !excluded.has(s.id));
+      if (subs.length === 0) continue;
+      const group = document.createElement('optgroup');
+      group.label = c.name;
+      group.append(...subs.map((/** @type {any} */ s) => option(String(s.id), s.name)));
+      add.append(group);
+    }
+    add.value = '';
+  }
+
+  /** @param {object} params */
+  async #saveReserve(params) {
+    try {
+      this.#reserve = await this.#send('reserve.set', params);
+      $('rt-reserve-state').textContent = 'Desat';
+    } catch (err) {
+      $('rt-reserve-state').textContent = /** @type {Error} */ (err).message;
+    }
+    this.#renderReserve();
+  }
+
+  #setReserveRotation() {
+    const value = /** @type {HTMLSelectElement} */ ($('rt-reserve-rotation')).value;
+    this.#saveReserve({ rotationId: value === '' ? null : Number(value) });
+  }
+
+  #addExcluded() {
+    const value = /** @type {HTMLSelectElement} */ ($('rt-reserve-add')).value;
+    if (value === '' || !this.#reserve) return;
+    this.#saveExcluded([...this.#reserve.excludedSubcategories.map((s) => s.id), Number(value)]);
+  }
+
+  /** @param {number[]} ids */
+  #saveExcluded(ids) {
+    this.#saveReserve({ excludedSubcategoryIds: ids });
   }
 
   // --- Separació real (fase 3, pas 8b; D-095) ---
@@ -96,11 +174,12 @@ export class RotationsView {
     }
     this.#loaded = true;
     try {
-      const [rotations, filters, autodj, separation, bags] = await Promise.all([
+      const [rotations, filters, autodj, separation, bags, reserve] = await Promise.all([
         this.#send('rotations.list'), this.#send('library.filters'), this.#send('autodj.get'), this.#send('separation.get'),
-        this.#send('bags.list'),
+        this.#send('bags.list'), this.#send('reserve.get'),
       ]);
       this.#bags = bags.bags;
+      this.#reserve = reserve;
       this.#rotations = rotations.rotations;
       this.#categories = filters.categories;
       this.#tags = filters.tags;
@@ -117,6 +196,7 @@ export class RotationsView {
     }
     this.#renderList();
     this.#renderBags();
+    this.#renderReserve();
     this.#renderEditor();
   }
 
@@ -225,7 +305,10 @@ export class RotationsView {
   setActive(id) {
     if (id === this.#activeId) return;
     this.#activeId = id;
-    if (this.#loaded) this.#renderList();
+    if (this.#loaded) {
+      this.#renderList();
+      this.#renderReserve(); // marca quina és l'activa
+    }
   }
 
   // --- Llista ---
@@ -435,7 +518,10 @@ export class RotationsView {
           tr.append(cell);
         };
         td(String(i + 1), 'rt-index');
-        td(item.fallback ? statusLabel('text-warning', 'bi-life-preserver', 'Reserva') : `Pas ${item.stepIndex + 1}`, 'rt-preview-step');
+        // De la reserva (D-099): d'on surt, al passar-hi el ratolí («Reserva: rotació «…», pas 2 (…)» o «tota la biblioteca»)
+        const reserveLabel = statusLabel('text-warning', 'bi-life-preserver', 'Reserva');
+        if (item.step) reserveLabel.title = item.step;
+        td(item.fallback ? reserveLabel : `Pas ${item.stepIndex + 1}`, 'rt-preview-step');
         const t = item.track;
         td(t ? `${t.artist ? `${t.artist} - ` : ''}${t.title}` : '(cap pista)');
         td(t ? playedText(t.lastPlayed, now) : '', 'rt-preview-played');

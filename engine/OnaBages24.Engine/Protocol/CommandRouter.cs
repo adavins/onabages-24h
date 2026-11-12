@@ -172,6 +172,8 @@ public sealed class CommandRouter
                 "bags.delete" => BagsDelete(msg),
                 "separation.get" => SeparationJson(AutoDjOrError().Separation),
                 "separation.set" => SeparationSet(msg),
+                "reserve.get" => ReserveJson(AutoDjOrError().Reserve),
+                "reserve.set" => ReserveSet(msg),
                 "history.list" => HistoryList(msg),
                 "nowplaying.get" => new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(NowPlayingOrError()) },
                 "nowplaying.set" => NowPlayingSet(msg),
@@ -1510,6 +1512,87 @@ public sealed class CommandRouter
         return result;
     }
 
+    // --- Reserva de l'AutoDJ (fase 3, pas 8d; D-099) ---
+
+    /// <summary>Clau de la configuració amb la reserva: <c>{ "rotationId": 3, "excludedSubcategoryIds": [12, 40] }</c>.</summary>
+    public const string ReserveSettingKey = "reserva";
+
+    /// <summary>La reserva desada (o cap, si no n'hi ha o no és vàlida).</summary>
+    public static ReserveSettings ReadReserve(Library? library)
+    {
+        try
+        {
+            if (library?.GetSetting(ReserveSettingKey) is { } json && JsonNode.Parse(json) is JsonObject saved)
+            {
+                long? rotationId = saved["rotationId"]?.GetValue<long>();
+                var excluded = saved["excludedSubcategoryIds"] is JsonArray list
+                    ? list.Select(n => n!.GetValue<long>()).ToHashSet()
+                    : [];
+                return new ReserveSettings(rotationId, excluded);
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException or NullReferenceException) { }
+        return ReserveSettings.None;
+    }
+
+    /// <summary>La reserva per al protocol, amb els noms (la rotació i les subcategories que ja no existeixen no hi surten).</summary>
+    private JsonObject ReserveJson(ReserveSettings reserve)
+    {
+        var rotation = reserve.RotationId is { } id ? _rotations?.Get(id) : null;
+        var excluded = reserve.ExcludedSubcategoryIds
+            .Select(s => _library?.GetSubcategory(s))
+            .OfType<SubcategoryRef>()
+            .OrderBy(s => s.CategoryName).ThenBy(s => s.Name)
+            .Select(s => (JsonNode)new JsonObject { ["id"] = s.Id, ["name"] = s.Name, ["categoryName"] = s.CategoryName })
+            .ToArray();
+        return new JsonObject
+        {
+            ["rotationId"] = rotation?.Id,
+            ["rotationName"] = rotation?.Name,
+            ["excludedSubcategories"] = new JsonArray(excluded),
+        };
+    }
+
+    /// <summary>
+    /// Canvia la reserva: <c>rotationId</c> (la rotació de reserva, o null perquè no n'hi hagi cap) i
+    /// <c>excludedSubcategoryIds</c> (les subcategories «no de reserva»). Tots dos opcionals: el que no s'envia no canvia.
+    /// </summary>
+    private JsonObject ReserveSet(JsonObject msg)
+    {
+        var autoDj = AutoDjOrError();
+        var library = LibraryOrError();
+        var current = autoDj.Reserve;
+        long? rotationId = current.RotationId;
+        if (msg.ContainsKey("rotationId"))
+        {
+            if (msg["rotationId"] is null) rotationId = null;
+            else
+            {
+                rotationId = RequiredId(msg, "rotationId");
+                if (_rotations?.Get(rotationId.Value) is null) throw new BadParamsException($"No existeix la rotació {rotationId}.");
+            }
+        }
+        var excluded = current.ExcludedSubcategoryIds;
+        if (msg.ContainsKey("excludedSubcategoryIds"))
+        {
+            if (msg["excludedSubcategoryIds"] is not JsonArray list || list.Any(n => n is not JsonValue v || !v.TryGetValue(out long _)))
+                throw new BadParamsException("El camp 'excludedSubcategoryIds' ha de ser una llista de números.");
+            var ids = list.Select(n => n!.GetValue<long>()).ToHashSet();
+            foreach (long s in ids)
+                if (library.GetSubcategory(s) is null) throw new BadParamsException($"No existeix la subcategoria {s}.");
+            excluded = ids;
+        }
+        var reserve = new ReserveSettings(rotationId, excluded);
+        autoDj.Reserve = reserve;
+        library.SetSetting(ReserveSettingKey, new JsonObject
+        {
+            ["rotationId"] = rotationId,
+            ["excludedSubcategoryIds"] = new JsonArray(excluded.Order().Select(s => (JsonNode)s).ToArray()),
+        }.ToJsonString());
+        RotationsChanged?.Invoke(); // la pantalla Rotacions la mostra
+        return ReserveJson(reserve);
+    }
+
     /// <summary>
     /// Les properes pistes que triaria una rotació, sense canviar res: <c>rotationId</c>, <c>count</c> (per defecte 20, com a
     /// molt 100). Cada una amb el pas d'on surt (o la reserva), la regla que s'ha hagut d'afluixar i l'avís, si n'hi ha.
@@ -1530,7 +1613,7 @@ public sealed class CommandRouter
             ["items"] = new JsonArray(items.Select(i => (JsonNode)new JsonObject
             {
                 ["stepIndex"] = i.StepIndex,
-                ["step"] = i.Step?.ToString(),
+                ["step"] = i.Source ?? i.Step?.ToString(),
                 ["track"] = i.Track is null ? null : QueueJson.Track(i.Track),
                 ["relaxed"] = i.Relaxed,
                 ["problem"] = i.Problem,
@@ -1547,6 +1630,8 @@ public sealed class CommandRouter
         var rotation = rotations.Get(id) ?? throw new BadParamsException($"No existeix la rotació {id}.");
         if (_autoDj?.Rotation?.Id == id)
             throw new BadParamsException($"«{rotation.Name}» és la rotació activa de l'AutoDJ: canvia-la primer.");
+        if (_autoDj?.Reserve.RotationId == id)
+            throw new BadParamsException($"«{rotation.Name}» és la rotació de reserva: tria'n una altra (o cap) primer.");
         var events = rotations.EventsUsingRotation(id);
         if (events.Count > 0)
             throw new BadParamsException($"No es pot esborrar: la posa{(events.Count == 1 ? " l'esdeveniment" : "n els esdeveniments")} " +

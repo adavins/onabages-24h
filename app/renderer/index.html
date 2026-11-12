@@ -281,6 +281,16 @@
           </div>
           <ul id="rt-bags" class="rt-bag-list"></ul>
         </div>
+        <!-- Reserva (fase 3, pas 8d; D-099): què sona si cap pas de la rotació no troba res -->
+        <div class="rt-separation rt-reserve">
+          <div class="rt-separation-title" title="Si cap pas de la rotació no té pistes disponibles. Sempre surt un avís">Reserva (si la rotació no troba res)</div>
+          <label for="rt-reserve-rotation" class="form-label small mb-0">Rotació de reserva</label>
+          <select id="rt-reserve-rotation" class="form-select form-select-sm mb-1"></select>
+          <div class="form-label small mb-0">Si tampoc: tota la biblioteca, sense aquestes subcategories («no de reserva»)</div>
+          <ul id="rt-reserve-excluded" class="rt-reserve-excluded"></ul>
+          <select id="rt-reserve-add" class="form-select form-select-sm" aria-label="Afegeix una subcategoria «no de reserva»"></select>
+          <span id="rt-reserve-state" class="form-text"></span>
+        </div>
         <!-- Separació real (fase 3, pas 8b; D-095): per a tots els passos amb «no repetir» -->
         <div class="rt-separation">
           <div class="rt-separation-title">Separació (passos amb «no repetir»)</div>

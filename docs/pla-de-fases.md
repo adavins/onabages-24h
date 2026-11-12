@@ -93,7 +93,7 @@ Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al
 - Processador d'àudio (compressor i volum).
 - Gestor de pistes: importació de carpetes amb informe, carpetes vigilades per subcategoria (D-026), bosses renovables i assistent «Renova la bossa» (D-033), fitxa de pista, etiquetes, editor senzill de punts i canvi d'arrel de les rutes (D-025).
 - Rotacions: editor, separació real, previsualització i bosses amb nom (D-014).
-- **Rotació de reserva** (a decidir): ara, si cap pas de la rotació té pistes, l'AutoDJ agafa música de tota la biblioteca, la que fa més temps que no sona; a la prova de la 10c, amb Dance90 buida, van sortir cançons de Nadal (no havien sonat mai). Proposta: una rotació de reserva configurable (rotació triada → reserva → tota la biblioteca, sense les categories marcades com a «no de reserva»), sempre amb avís.
+- **Rotació de reserva** (D-099): si cap pas de la rotació té pistes, la rotació de reserva configurable i, si tampoc, tota la biblioteca sense les subcategories «no de reserva» (p. ex. Nadal), sempre amb avís. (A la prova de la 10c, amb Dance90 buida, van sortir cançons de Nadal.)
 - Botó «Regenera la cua» (D-034).
 - **Clonar esdeveniments al planificador** (a decidir, D-080): una utilitat per facilitar la planificació, més enllà del botó «Duplica» de l'editor (que fa una còpia idèntica). Per concretar amb el desenvolupador: copiar a altres dies o hores, diverses còpies de cop, copiar una franja o un dia sencer…
 - **Migració d'altres emissores amb RadioDJ** (D-080): els ajustos de la importació per a Ràdio 010, Sant Fruitós i Sallent, amb el pas 7 de la fase 2 (STREAM).
@@ -116,7 +116,7 @@ Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al
    - 8a. ✔ Editor de rotacions: pantalla «Rotacions» (llista, nova, duplica, esborra; passos que s'afegeixen, mouen i treuen), `rotations.save` / `rotations.delete`.
    - 8b. ✔ Separació real (cançó 6 h, artista 1 h, configurable; s'afluixa per ordre si cal) i previsualització de les properes 20 cançons (D-095).
    - 8c. ✔ Bosses amb nom (D-096): requadre «Bosses» a la pantalla Rotacions, passos que hi apunten i acció del planificador «Bossa» (migració 006). A més (D-097): l'AutoDJ omple uns 30 minuts de cua i la torna a triar quan canvia la rotació, una bossa o la separació.
-   - 8d. Rotació de reserva i subcategories «no de reserva».
+   - 8d. ✔ Rotació de reserva i subcategories «no de reserva» (D-099): requadre «Reserva» a la pantalla Rotacions, `reserve.get` / `reserve.set`; les pistes de la reserva ho diuen a la cua i a la previsualització.
 9. Prova de tancament (criteri de sota).
 
 **Criteri de tancament:** un operador pot fer servir l'aplicació un dia sencer sense obrir RadioDJ.
