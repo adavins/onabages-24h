@@ -121,23 +121,46 @@ public sealed class FolderWatcherTests : IDisposable
     }
 
     [Fact]
-    public void Si_la_carpeta_no_hi_es_o_surt_buida_no_es_toca_res()
+    public void Si_la_carpeta_surt_buida_les_pistes_queden_com_que_falten_sense_esborrar_res()
     {
+        _library.SetFolderSettings(_sub, _folder, renewable: true, TrackType.Music, [], false); // ni tan sols una bossa renovable
         string path = Wav("Una.wav");
         _watcher.ScanAll();
 
         File.Move(path, Path.Combine(_temp.Path, "Una.wav")); // carpeta buida (Drive desconnectat…)
         _watcher.ScanAll();
-        _watcher.ScanAll();
-        Assert.Equal(FileState.Ok, _library.FindByPath(path)!.FileState);
+        Assert.Equal(FileState.Ok, _library.FindByPath(path)!.FileState); // a la primera, encara no
+        Assert.True(_watcher.ScanAll());
+        Assert.Equal(FileState.Missing, _library.FindByPath(path)!.FileState); // a la segona: falta (l'AutoDJ no la tria)
         Assert.Contains("buida", _watcher.Status[0].Problem);
+        Assert.Contains("no s'esborra res", _watcher.Status[0].Problem);
+        _watcher.ScanAll();
+        Assert.NotNull(_library.FindByPath(path)); // mai no s'esborra
+    }
 
-        Directory.Delete(_folder);
+    [Fact]
+    public void Si_la_carpeta_no_hi_es_les_pistes_falten_i_quan_torna_es_recuperen_totes()
+    {
+        string a = Wav("A.wav"), b = Wav("B.wav");
+        _watcher.ScanAll();
+        string renamed = _folder + " (canviada de nom)";
+        Directory.Move(_folder, renamed);
+
         _watcher.ScanAll();
         _watcher.ScanAll();
-        Assert.Equal(FileState.Ok, _library.FindByPath(path)!.FileState);
+        Assert.Equal(FileState.Missing, _library.FindByPath(a)!.FileState);
+        Assert.Equal(FileState.Missing, _library.FindByPath(b)!.FileState);
         Assert.Contains("No es troba", _watcher.Status[0].Problem);
-        Assert.Contains(FolderAction.Folder, Log());
+        Assert.Equal(2, _watcher.Status[0].Missing);
+
+        Directory.Move(renamed, _folder);
+        Assert.True(_watcher.ScanAll());
+        Assert.Equal(FileState.Ok, _library.FindByPath(a)!.FileState);
+        Assert.Equal(FileState.Ok, _library.FindByPath(b)!.FileState);
+        Assert.Null(_watcher.Status[0].Problem);
+        var log = _library.FolderLog(100);
+        Assert.Contains(log, e => e.Action == FolderAction.Recovered && e.Detail!.Contains("2 pistes recuperades"));
+        Assert.DoesNotContain(log, e => e.Action == FolderAction.Deleted);
     }
 
     [Fact]

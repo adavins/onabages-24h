@@ -21,6 +21,7 @@ import { ProcessorView } from './ui/processor.js';
 import { TrackManagerView } from './ui/track-manager.js';
 import { ImportView } from './ui/import.js';
 import { FoldersView } from './ui/folders.js';
+import { RerootView } from './ui/reroot.js';
 import { folderWarnings } from './folders-text.js';
 import { setupZoom, applyZoom } from './ui/zoom.js';
 import { setupWindowFrame } from './ui/window-frame.js';
@@ -111,6 +112,7 @@ const notes = new NotesView(send);
 const processor = new ProcessorView(send);
 const folders = new FoldersView(send, (path) => bridge.chooseFolder(path));
 const trackManager = new TrackManagerView(send, (path) => bridge.chooseAudioFile(path), folders);
+new RerootView(send, (path) => bridge.chooseFolder(path));
 const importView = new ImportView(send, (path) => bridge.chooseFolder(path), () => trackManager.importContext());
 
 // Pestanyes del quadre de la dreta: Cerca i Notes (fase 3, pas 4b)

@@ -148,6 +148,9 @@ public sealed class CommandRouter
                 "folders.status" => new JsonObject { ["folders"] = QueueJson.Folders(WatcherOrError().Status) },
                 "folders.scan" => FoldersScan(),
                 "folders.log" => FoldersLog(msg),
+                "library.missingFolders" => LibraryMissingFolders(),
+                "library.rerootPreview" => LibraryReroot(msg, apply: false),
+                "library.reroot" => LibraryReroot(msg, apply: true),
                 "folders.renewPreview" => FoldersRenewPreview(msg),
                 "folders.renew" => FoldersRenew(msg),
                 "library.import" => LibraryImport(msg),
@@ -623,6 +626,60 @@ public sealed class CommandRouter
         result["removed"] = removed;
         result["keptForEvents"] = kept;
         LibraryChanged?.Invoke(null);
+        return result;
+    }
+
+    // --- Canvi d'arrel (fase 3, pas 7d; D-092) ---
+
+    /// <summary>Les carpetes on hi ha pistes amb el fitxer que falta, amb quantes (les 40 primeres), per triar l'arrel.</summary>
+    private JsonObject LibraryMissingFolders() => new()
+    {
+        ["folders"] = new JsonArray(LibraryTools.PathReroot.MissingFolders(LibraryOrError(), 40)
+            .Select(f => (JsonNode)new JsonObject { ["folder"] = f.Folder, ["count"] = f.Count }).ToArray()),
+    };
+
+    /// <summary>
+    /// Canvi d'arrel: <c>from</c> (el principi de les rutes d'ara) i <c>to</c> (el nou; una carpeta que existeixi). Sense
+    /// <paramref name="apply"/>, només diu què passaria (amb 10 exemples). Amb <paramref name="apply"/> ho fa, en una sola
+    /// transacció; <c>onlyFound</c> (per defecte true): només les pistes que trobaran el fitxer.
+    /// </summary>
+    private JsonObject LibraryReroot(JsonObject msg, bool apply)
+    {
+        var library = LibraryOrError();
+        string from = (ReadString(msg["from"]) ?? "").Trim();
+        string to = (ReadString(msg["to"]) ?? "").Trim();
+        if (from.Length == 0) throw new BadParamsException("Falta l'arrel d'ara (el principi de les rutes que es canvien).");
+        if (!Path.IsPathFullyQualified(from)) throw new BadParamsException($"L'arrel d'ara ha de ser una ruta completa, amb la lletra de la unitat (p. ex. O:\\musica): «{from}».");
+        if (to.Length == 0) throw new BadParamsException("Falta l'arrel nova.");
+        if (!Path.IsPathFullyQualified(to)) throw new BadParamsException($"L'arrel nova ha de ser una ruta completa, amb la lletra de la unitat (p. ex. D:\\musica): «{to}».");
+        if (!Directory.Exists(to)) throw new BadParamsException($"No es troba la carpeta nova: {to}");
+        if (string.Equals(LibraryTools.PathReroot.Folder(from), LibraryTools.PathReroot.Folder(to), StringComparison.OrdinalIgnoreCase))
+            throw new BadParamsException("L'arrel nova és la mateixa que la d'ara.");
+
+        var plan = LibraryTools.PathReroot.Plan(library, from, to);
+        var result = new JsonObject
+        {
+            ["from"] = plan.From,
+            ["to"] = plan.To,
+            ["tracks"] = plan.Items.Count,
+            ["found"] = plan.Found,
+            ["notFound"] = plan.NotFound,
+            ["conflicts"] = plan.Conflicts,
+            ["examples"] = new JsonArray(plan.Items.Take(10).Select(i => (JsonNode)new JsonObject
+            {
+                ["from"] = i.Track.Path, ["to"] = i.NewPath, ["exists"] = i.Exists, ["conflict"] = i.Conflict,
+            }).ToArray()),
+        };
+        if (!apply) return result;
+
+        bool onlyFound = msg["onlyFound"] is not JsonValue v || !v.TryGetValue(out bool o) || o;
+        var done = LibraryTools.PathReroot.Apply(library, plan, onlyFound);
+        result["changed"] = done.Changed;
+        result["changedFound"] = done.Found;
+        result["skipped"] = done.Skipped;
+        result["foldersMoved"] = done.Folders;
+        LibraryChanged?.Invoke(null);
+        _watcher?.Poke();
         return result;
     }
 

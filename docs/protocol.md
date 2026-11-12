@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 7c (motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 7d (motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -112,6 +112,9 @@ El `message` és en català i es pot mostrar a l'operador.
 | `folders.status` | — | `{ folders: [ … ] }` (4.11): com estan les carpetes vigilades a l'última revisió | fase 3, pas 7c |
 | `folders.scan` | — | `{ scanning: true }`: revisa les carpetes ara (el resultat arriba amb `folders.changed`) | fase 3, pas 7c |
 | `folders.log` | `subcategoryId` (opcional), `limit` (per defecte 100, com a molt 1.000) | `{ entries: [ { id, time, subcategoryId, subcategory, path, action, detail } ] }`, els més recents primer. `action`: `imported`, `recovered`, `missing`, `deleted`, `updated`, `error` o `folder` (problema de la carpeta, o que s'ha resolt) | fase 3, pas 7c |
+| `library.missingFolders` | — | `{ folders: [ { folder, count } ] }`: les carpetes on hi ha pistes amb el fitxer que falta, les que més primer (40), per triar l'arrel d'un canvi d'arrel | fase 3, pas 7d |
+| `library.rerootPreview` | `from` (el principi de les rutes d'ara), `to` (l'arrel nova: una carpeta que existeixi) | `{ from, to, tracks, found, notFound, conflicts, examples: [ { from, to, exists, conflict } ] }` (10 exemples): què passaria, sense canviar res. Mira si cada fitxer hi és | fase 3, pas 7d |
+| `library.reroot` | `from`, `to`, `onlyFound` (per defecte `true`: només les que trobaran el fitxer) | El mateix que `library.rerootPreview` i, a més, `changed`, `changedFound`, `skipped`, `foldersMoved`; i `library.changed`. Tot en una transacció (o canvien totes o cap). La fitxa, els punts i l'historial es conserven; les que xoquen amb una altra pista no es toquen; les carpetes vigilades dins de l'arrel antiga passen a la nova | fase 3, pas 7d |
 | `folders.renewPreview` | `subcategoryId`, `folder` (la carpeta nova) | `{ subcategoryId, name, folder, files, keep, enter, leave, leaveInEvents, elsewhere, keepNames, enterNames, leaveNames, leaveInEventsNames }`: què passaria en renovar la bossa (D-091), sense canviar res. Les llistes de noms, com a molt 300 | fase 3, pas 7c-3 |
 | `folders.renew` | `subcategoryId`, `folder`, `watch` (`true` = després, la subcategoria vigila aquesta carpeta) | `{ import }` (4.10, amb `renew: true`): es fa en segon pla com una importació. Primer les que es mantenen passen a apuntar a la carpeta nova (`moved`), després s'importen les noves i, només si acaba bé, s'esborren les que surten (`removed`; les dels esdeveniments, `keptForEvents`). Amb una carpeta sense àudio, `failed` i no es toca res | fase 3, pas 7c-3 |
 | `library.import` | `folder` (ruta completa d'una carpeta que existeixi), `subcategoryId` i, per a les pistes noves, `type` (per defecte `music`), `tags` (llista) i `variableDuration`; `emptySubcategory` (`true` = en acabar bé, esborra les pistes de la subcategoria que no són a la carpeta) | `{ import }` (4.10). Comença a importar en segon pla els fitxers d'àudio de la carpeta i les subcarpetes; el progrés arriba amb `library.importProgress`. Una sola importació alhora (si n'hi ha una en curs, `bad_params`) | fase 3, pas 7b |
@@ -387,7 +390,7 @@ Estat (`folders.status`, `folders.changed`), una entrada per subcategoria amb ca
 - Es revisen cada 2 minuts, en arrencar el motor (als 10 s) i amb `folders.scan`; no mentre s'importa una carpeta des de la pantalla.
 - **Fitxer nou**, quan fa més de 30 s que no canvia i es pot obrir: s'importa amb `type`, `tags` i `variableDuration` (o es recupera una pista de la subcategoria que falta amb el mateix nom de fitxer). **Fitxer que torna**: es recupera. **Fitxer substituït** (mida o data): es torna a llegir la durada i es recalculen els punts (excepte els manuals).
 - **Fitxer que desapareix** (en dues revisions seguides): amb `renewable`, la pista s'esborra (excepte si la fa servir un esdeveniment, que queda com a «el fitxer falta»); sense, queda com a «el fitxer falta».
-- `problem`: si la carpeta no es troba, no s'hi pot accedir o **surt buida** amb pistes que hi eren, no s'hi fa res (mai no s'esborra cap pista així) i es diu aquí. `missing`: pistes de la carpeta amb el fitxer que falta.
+- `problem`: si la carpeta no es troba, no s'hi pot accedir o **surt buida** amb pistes que hi eren, es diu aquí i **mai no s'esborra cap pista**. A la segona revisió seguida, les seves pistes queden com a «el fitxer falta» (l'AutoDJ no les tria i no es poden posar a la cua); quan la carpeta torna, es recuperen totes. `missing`: pistes de la carpeta amb el fitxer que falta.
 - Una pista d'aquesta carpeta que és d'una altra subcategoria no es toca.
 
 ## 5. Esdeveniments

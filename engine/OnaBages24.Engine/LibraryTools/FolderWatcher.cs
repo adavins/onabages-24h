@@ -51,6 +51,9 @@ public sealed class FolderWatcher : IDisposable
     /// <summary>Fitxers que no s'han pogut importar, amb la mida i la data: no es tornen a provar fins que canviïn.</summary>
     private readonly Dictionary<string, (long Size, DateTime Modified)> _failed = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Per subcategoria: quantes revisions seguides fa que la carpeta no està disponible.</summary>
+    private readonly Dictionary<long, int> _unavailableScans = [];
+
     /// <summary>Per subcategoria: l'últim problema anotat al registre (per no repetir-lo a cada revisió).</summary>
     private readonly Dictionary<long, string?> _lastProblem = [];
 
@@ -139,6 +142,31 @@ public sealed class FolderWatcher : IDisposable
         FolderWatchStatus Result(int files, string? problem) =>
             new(sub, settings.Name, folder, settings.Renewable, _clock(), files, mine.Count, mine.Count(t => t.FileState == FileState.Missing), problem);
 
+        // Carpeta no disponible (no es troba, no s'hi pot accedir o surt buida amb pistes que hi eren: Drive desconnectat,
+        // xarxa…). Mai no s'esborra res així. A la segona revisió seguida, les seves pistes queden com a «el fitxer falta»
+        // (l'AutoDJ no les tria i no es poden posar a la cua); quan torni, es recuperen soles.
+        (FolderWatchStatus, bool) Unavailable(string reason)
+        {
+            NoteProblem(settings, reason);
+            int scans = _unavailableScans[sub] = _unavailableScans.GetValueOrDefault(sub) + 1;
+            bool marked = false;
+            if (scans >= 2)
+            {
+                var ok = mine.Where(t => t.FileState == FileState.Ok).ToList();
+                foreach (var track in ok) _library.UpdateTrack(track with { FileState = FileState.Missing });
+                if (ok.Count > 0)
+                {
+                    Log(settings, folder, FolderAction.Missing, $"{ok.Count} pistes marcades com que falten fins que torni la carpeta");
+                    mine = _library.TracksInSubcategory(sub).Where(t => t.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+                    marked = true;
+                }
+            }
+            string state = scans >= 2
+                ? "les seves pistes queden com que falta el fitxer fins que torni (no s'esborra res)."
+                : "si continua així a la revisió següent, les seves pistes quedaran com que falta el fitxer (no s'esborra res).";
+            return (Result(0, $"{reason}: {state}"), marked);
+        }
+
         List<string> files;
         try
         {
@@ -146,22 +174,16 @@ public sealed class FolderWatcher : IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            files = [];
-            NoteProblem(settings, $"No s'hi pot accedir: {ex.Message}");
-            return (Result(0, $"No s'hi pot accedir: {ex.Message}"), false);
+            return Unavailable($"No s'hi pot accedir ({ex.Message})");
         }
-        if (!Directory.Exists(folder))
-        {
-            NoteProblem(settings, "No es troba la carpeta");
-            return (Result(0, "No es troba la carpeta: no s'hi fa res fins que torni a ser-hi."), false);
-        }
-        // Buida però amb pistes que hi eren: segurament no està disponible (Drive desconnectat, xarxa…). Mai no s'esborra res així.
-        if (files.Count == 0 && mine.Any(t => t.FileState == FileState.Ok))
-        {
-            NoteProblem(settings, "La carpeta surt buida");
-            return (Result(0, "La carpeta surt buida (potser no està disponible): no s'hi fa res."), false);
-        }
+        if (!Directory.Exists(folder)) return Unavailable("No es troba la carpeta");
+        if (files.Count == 0 && mine.Any(t => t.FileState == FileState.Ok)) return Unavailable("La carpeta surt buida (potser no està disponible)");
+        if (files.Count == 0 && mine.Count > 0 && _unavailableScans.GetValueOrDefault(sub) > 0) return Unavailable("La carpeta surt buida (potser no està disponible)");
+
+        // Torna a estar disponible: les pistes que s'havien marcat es recuperen més avall (amb una sola línia al registre)
+        bool cameBack = _unavailableScans.Remove(sub);
         NoteProblem(settings, null);
+        int recovered = 0;
 
         bool changed = false;
         var known = _library.TracksInFolder(folder).ToDictionary(t => t.Path, StringComparer.OrdinalIgnoreCase);
@@ -178,6 +200,13 @@ public sealed class FolderWatcher : IDisposable
             if (known.TryGetValue(path, out var track))
             {
                 if (track.SubcategoryId != sub) continue; // és d'una altra subcategoria: no es toca
+                if (cameBack && track.FileState == FileState.Missing)
+                {
+                    _library.UpdateTrack(track with { FileState = FileState.Ok });
+                    recovered++;
+                    changed = true;
+                    continue;
+                }
                 changed |= CheckKnown(settings, track, info, now);
                 continue;
             }
@@ -202,6 +231,8 @@ public sealed class FolderWatcher : IDisposable
                     break;
             }
         }
+
+        if (recovered > 0) Log(settings, folder, FolderAction.Recovered, $"la carpeta torna a ser-hi: {recovered} pistes recuperades");
 
         // Desaparicions: només si falten en dues revisions seguides
         var present = new HashSet<string>(files, StringComparer.OrdinalIgnoreCase);

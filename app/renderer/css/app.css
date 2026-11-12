@@ -1044,6 +1044,28 @@ body {
   user-select: text;
 }
 
+/* Canvi d'arrel (fase 3, pas 7d) */
+.reroot-missing,
+.reroot-examples {
+  max-height: 9rem;
+  overflow-y: auto;
+  margin: 0.25rem 0 0.4rem;
+  padding-left: 1.2rem;
+  font-size: 0.8rem;
+}
+
+.reroot-examples {
+  font-family: var(--ob-mono);
+  user-select: text;
+}
+
+.reroot-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.9rem;
+}
+
 /* Pantalla estreta: l'arbre a dalt, la fitxa a sota */
 @media (max-width: 1200px) {
   .tm-main {

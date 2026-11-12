@@ -454,6 +454,58 @@ public sealed class Library(Database database)
         }
     }
 
+    /// <summary>Les rutes de les pistes amb el fitxer que falta (canvi d'arrel, fase 3, pas 7d).</summary>
+    public IReadOnlyList<string> MissingPaths()
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command("SELECT ruta FROM pista WHERE estat_fitxer = 'FALTA';");
+            using var r = command.ExecuteReader();
+            var list = new List<string>();
+            while (r.Read()) list.Add(r.GetString(0));
+            return list;
+        }
+    }
+
+    /// <summary>Una ruta nova per a una pista (canvi d'arrel): si el fitxer hi és, amb la mida i la data.</summary>
+    public sealed record PathChange(long TrackId, string NewPath, bool Exists, long? FileSize, DateTimeOffset? FileModified);
+
+    /// <summary>
+    /// Canvia la ruta de moltes pistes alhora, <b>en una sola transacció</b> (canvi d'arrel, fase 3, pas 7d; D-092): o canvien
+    /// totes o cap. Amb el fitxer, la pista queda bé (i se'n desa la mida i la data); sense, «el fitxer falta». La fitxa, els
+    /// punts i l'historial no es toquen (és el mateix fitxer en un altre lloc).
+    /// </summary>
+    /// <exception cref="DatabaseException">Si alguna ruta nova ja és d'una altra pista (no es canvia res).</exception>
+    public void ChangePaths(IEnumerable<PathChange> changes)
+    {
+        lock (database.Sync)
+        {
+            using var transaction = database.BeginTransaction();
+            string now = DbTime.ToText(DateTimeOffset.UtcNow);
+            foreach (var c in changes)
+            {
+                using var command = database.Command(
+                    "UPDATE pista SET ruta = $ruta, estat_fitxer = $estat, fitxer_mida = coalesce($mida, fitxer_mida), " +
+                    "fitxer_modificat = coalesce($modificat, fitxer_modificat), modificada = $ara WHERE id = $id;", transaction);
+                command.Parameters.AddWithValue("$ruta", c.NewPath);
+                command.Parameters.AddWithValue("$estat", c.Exists ? "OK" : "FALTA");
+                command.Parameters.AddWithValue("$mida", (object?)c.FileSize ?? DBNull.Value);
+                command.Parameters.AddWithValue("$modificat", c.FileModified is { } m ? DbTime.ToText(m) : DBNull.Value);
+                command.Parameters.AddWithValue("$ara", now);
+                command.Parameters.AddWithValue("$id", c.TrackId);
+                try
+                {
+                    command.ExecuteNonQuery();
+                }
+                catch (SqliteException ex) when (ex.SqliteErrorCode == 19)
+                {
+                    throw new DatabaseException($"La ruta nova ja és d'una altra pista: {c.NewPath}. No s'ha canviat res.", ex);
+                }
+            }
+            transaction.Commit();
+        }
+    }
+
     /// <summary>Quantes pistes hi ha en cada estat que mira el gestor de pistes.</summary>
     public TrackStateCounts StateCounts()
     {

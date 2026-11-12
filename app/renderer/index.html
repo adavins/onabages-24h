@@ -239,6 +239,7 @@
           <button id="tm-rename" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el nom de la categoria o subcategoria triada"><i class="bi bi-pencil" aria-hidden="true"></i><span class="visually-hidden">Canvia el nom</span></button>
           <button id="tm-folder" class="btn btn-sm btn-outline-secondary" type="button" title="Carpeta vigilada de la subcategoria triada: les cançons que s'hi copien entren soles"><i class="bi bi-folder-check" aria-hidden="true"></i><span class="visually-hidden">Carpeta vigilada</span></button>
           <button id="tm-empty" class="btn btn-sm btn-outline-danger" type="button" title="Esborra totes les pistes de la subcategoria triada (per renovar una bossa)"><i class="bi bi-eraser" aria-hidden="true"></i><span class="visually-hidden">Buida la subcategoria</span></button>
+          <button id="tm-reroot" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el principi de les rutes de moltes pistes alhora (p. ex. si les carpetes de música s'han mogut o en aquest ordinador es veuen amb una altra lletra)"><i class="bi bi-signpost-split" aria-hidden="true"></i><span class="visually-hidden">Canvia l'arrel de les rutes</span></button>
           <button id="tm-import" class="btn btn-sm btn-outline-primary w-100" type="button" title="Afegeix a la biblioteca els fitxers d'una carpeta (i les subcarpetes)"><i class="bi bi-folder-symlink" aria-hidden="true"></i> Importa una carpeta…</button>
         </div>
         <ul id="tm-tree-list" class="tm-tree-list"></ul>
@@ -405,6 +406,47 @@
       <div class="d-flex justify-content-end gap-2">
         <button class="btn btn-secondary" value="cancel" formnovalidate>Cancel·la</button>
         <button id="renew-ok" class="btn btn-primary" value="ok" disabled>Renova</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Canvi d'arrel de les rutes (fase 3, pas 7d; D-092) -->
+  <dialog id="reroot-dialog" class="ob-dialog ob-dialog-wide">
+    <form method="dialog">
+      <h2 class="h5"><i class="bi bi-signpost-split" aria-hidden="true"></i> Canvia l'arrel de les rutes</h2>
+      <p class="ob-dialog-message">Per quan les carpetes de música s'han mogut, o en aquest ordinador es veuen amb una altra ruta (p. ex. Google Drive). Canvia el principi de la ruta de totes les pistes que hi comencen; la fitxa i l'historial es conserven. Els fitxers no es toquen.</p>
+
+      <details class="mb-2" open>
+        <summary>Carpetes on falten fitxers</summary>
+        <ul id="reroot-missing" class="reroot-missing"></ul>
+      </details>
+
+      <label for="reroot-from" class="form-label">Arrel d'ara (el principi de les rutes que es canvien; pot ser una carpeta sencera)</label>
+      <div class="d-flex gap-2 mb-2">
+        <input id="reroot-from" class="form-control font-monospace" type="text" placeholder="p. ex. O:\musica\novetats adult contemporary">
+        <button id="reroot-choose-from" class="btn btn-outline-secondary" type="button" title="Tria la carpeta d'ara (si encara existeix; si no, escriu-la o tria-la de la llista de dalt)">Tria…</button>
+      </div>
+
+      <label for="reroot-to" class="form-label">Arrel nova</label>
+      <div class="d-flex gap-2 mb-2">
+        <input id="reroot-to" class="form-control font-monospace" type="text" placeholder="p. ex. I:\Mi unidad\OB - OM - CAPSULES">
+        <button id="reroot-choose" class="btn btn-outline-secondary" type="button">Tria…</button>
+      </div>
+      <div class="form-check form-switch mb-2">
+        <input id="reroot-only-found" class="form-check-input" type="checkbox" checked>
+        <label for="reroot-only-found" class="form-check-label">Només les pistes que trobaran el fitxer amb la ruta nova</label>
+      </div>
+
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <button id="reroot-check" class="btn btn-sm btn-outline-primary" type="button" disabled><i class="bi bi-search" aria-hidden="true"></i> Comprova</button>
+        <span id="reroot-hint" class="form-text m-0"></span>
+      </div>
+      <div id="reroot-preview" class="reroot-preview mb-2"></div>
+      <p id="reroot-problem" class="form-text text-warning"></p>
+
+      <div class="d-flex justify-content-end gap-2">
+        <button class="btn btn-secondary" value="cancel" formnovalidate>Tanca</button>
+        <button id="reroot-apply" class="btn btn-primary" type="button" disabled>Canvia les rutes</button>
       </div>
     </form>
   </dialog>
