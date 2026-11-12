@@ -110,14 +110,15 @@ export class PlannerView {
         })
         : Promise.resolve({ occurrences: [] });
       // Les subcategories (acció «Sweepers») i l'atenuació per defecte (D-078) són només per mostrar: si fallen, no passa res
-      const [list, occurrences, rotations, filters, ducking] = await Promise.all([listRequest, occurrencesRequest, this.#send('rotations.list'),
-        this.#send('library.filters').catch(() => null), this.#send('ducking.get').catch(() => null)]);
+      const [list, occurrences, rotations, filters, ducking, bags] = await Promise.all([listRequest, occurrencesRequest, this.#send('rotations.list'),
+        this.#send('library.filters').catch(() => null), this.#send('ducking.get').catch(() => null), this.#send('bags.list').catch(() => null)]);
       if (token !== this.#loadToken) return; // n'hi ha una de més nova
       this.#events = new Map(list.events.map((/** @type {any} */ e) => [e.id, e]));
       this.#occurrences = occurrences.occurrences;
       this.#editor.setRotations(rotations.rotations);
       if (filters) this.#editor.setCategories(filters.categories);
       this.#editor.setDucking(ducking);
+      if (bags) this.#editor.setBags(bags.bags);
       $('pl-error').classList.add('d-none');
     } catch (err) {
       if (token !== this.#loadToken) return;

@@ -3,8 +3,8 @@
 // i demana el motor (rotations.list, rotations.save). Sense res de la pantalla: es prova amb «npm test».
 
 /**
- * Un pas al formulari. `source`: «s:ID» (una subcategoria) o «c:ID» (qualsevol subcategoria de la categoria), o '' si
- * encara no s'ha triat.
+ * Un pas al formulari. `source`: «b:ID» (una bossa amb nom, pas 8c), «s:ID» (una subcategoria) o «c:ID» (qualsevol
+ * subcategoria de la categoria), o '' si encara no s'ha triat.
  * @typedef {{ source: string, tagId: number | null, selection: string, repeatRule: boolean, sweeper: boolean }} FormStep
  */
 
@@ -23,7 +23,9 @@ export function newStep() {
 /** Un pas de rotations.list al format del formulari. @param {any} step @returns {FormStep} */
 export function stepFromApi(step) {
   return {
-    source: step.subcategoryId != null ? `s:${step.subcategoryId}` : step.categoryId != null ? `c:${step.categoryId}` : '',
+    // Amb bossa, la bossa (la subcategoria que porta és la que té ara: no és del pas)
+    source: step.bagId != null ? `b:${step.bagId}`
+      : step.subcategoryId != null ? `s:${step.subcategoryId}` : step.categoryId != null ? `c:${step.categoryId}` : '',
     tagId: step.tagId ?? null,
     selection: step.selection ?? 'leastRecent',
     repeatRule: step.repeatRule !== false,
@@ -36,7 +38,8 @@ export function stepToApi(step) {
   const [kind, id] = step.source.split(':');
   /** @type {Record<string, any>} */
   const result = { selection: step.selection, repeatRule: step.repeatRule, sweeper: step.sweeper };
-  if (kind === 's') result.subcategoryId = Number(id);
+  if (kind === 'b') result.bagId = Number(id);
+  else if (kind === 's') result.subcategoryId = Number(id);
   else if (kind === 'c') result.categoryId = Number(id);
   if (step.tagId != null) result.tagId = step.tagId;
   return result;

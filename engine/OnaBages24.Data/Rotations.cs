@@ -28,14 +28,28 @@ public sealed record RotationStep
     /// <summary>Trepitjador: sweeper a l'inici de la pista (com a RadioDJ «A l'inici»), de la categoria de sweepers activa (fase 3, pas 5).</summary>
     public bool Sweeper { get; init; }
 
+    /// <summary>
+    /// Bossa amb nom (fase 3, pas 8c; D-096): si n'hi ha, el pas fa servir la subcategoria que la bossa té ara (en llegir la
+    /// rotació, <see cref="SubcategoryId"/> ja és aquesta; null si la bossa no en té cap: el pas se salta).
+    /// </summary>
+    public long? BagId { get; init; }
+    public string? BagName { get; init; }
+
     public string? CategoryName { get; init; }
     public string? SubcategoryName { get; init; }
     public string? TagName { get; init; }
 
     /// <summary>Descripció curta per als registres i la interfície, p. ex. «Sweepers / Ona Bages + SW - catala».</summary>
-    public override string ToString() =>
-        (SubcategoryName is null ? CategoryName ?? "?" : $"{CategoryName} / {SubcategoryName}") + (TagName is null ? "" : $" + {TagName}");
+    public override string ToString()
+    {
+        string source = SubcategoryName is null ? CategoryName ?? "?" : $"{CategoryName} / {SubcategoryName}";
+        if (BagName is not null) source = SubcategoryId is null ? $"Bossa «{BagName}» (sense subcategoria)" : $"Bossa «{BagName}» ({source})";
+        return source + (TagName is null ? "" : $" + {TagName}");
+    }
 }
+
+/// <summary>Una bossa amb nom (D-096): a quina subcategoria correspon ara, des de quan i qui l'ha canviada.</summary>
+public sealed record Bag(long Id, string Name, long? SubcategoryId, string? SubcategoryName, DateTimeOffset? ChangedAt, string? ChangedBy, int Steps);
 
 /// <summary>Una rotació: un cicle ordenat de passos que l'AutoDJ va repetint (D-014).</summary>
 public sealed record Rotation(long Id, string Name, IReadOnlyList<RotationStep> Steps);
@@ -159,6 +173,118 @@ public sealed class Rotations(Database database)
         }
     }
 
+    // --- Bosses amb nom (fase 3, pas 8c; D-096) ---
+
+    /// <summary>Totes les bosses, per nom, amb la subcategoria d'ara i quants passos de rotació hi apunten.</summary>
+    public IReadOnlyList<Bag> Bags()
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT b.id, b.nom, b.subcategoria_id, c.nom || ' / ' || s.nom, b.canviada, b.canviada_per, " +
+                "(SELECT count(*) FROM rotacio_pas p WHERE p.bossa_id = b.id) FROM bossa b " +
+                "LEFT JOIN subcategoria s ON s.id = b.subcategoria_id LEFT JOIN categoria c ON c.id = s.categoria_id " +
+                "ORDER BY b.nom COLLATE NOCASE;");
+            using var r = command.ExecuteReader();
+            var list = new List<Bag>();
+            while (r.Read())
+            {
+                list.Add(new Bag(r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetInt64(2), r.IsDBNull(3) ? null : r.GetString(3),
+                    r.IsDBNull(4) ? null : DbTime.ParseInstant(r.GetString(4)), r.IsDBNull(5) ? null : r.GetString(5), r.GetInt32(6)));
+            }
+            return list;
+        }
+    }
+
+    public Bag? GetBag(long id) => Bags().FirstOrDefault(b => b.Id == id);
+
+    /// <summary>Crea una bossa. Retorna l'id.</summary>
+    /// <exception cref="DatabaseException">Si ja n'hi ha una amb aquest nom.</exception>
+    public long CreateBag(string name, long? subcategoryId, string? by, DateTimeOffset now)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "INSERT INTO bossa (nom, subcategoria_id, canviada, canviada_per) VALUES ($nom, $sub, $ara, $per); SELECT last_insert_rowid();");
+            command.Parameters.AddWithValue("$nom", name);
+            command.Parameters.AddWithValue("$sub", (object?)subcategoryId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$ara", DbTime.ToText(now));
+            command.Parameters.AddWithValue("$per", (object?)by ?? DBNull.Value);
+            try { return (long)command.ExecuteScalar()!; }
+            catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.SqliteErrorCode == 19)
+            {
+                throw new DatabaseException($"Ja hi ha una bossa «{name}».", ex);
+            }
+        }
+    }
+
+    /// <summary>Canvia el nom d'una bossa.</summary>
+    public void RenameBag(long id, string name)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command("UPDATE bossa SET nom = $nom WHERE id = $id;");
+            command.Parameters.AddWithValue("$nom", name);
+            command.Parameters.AddWithValue("$id", id);
+            try
+            {
+                if (command.ExecuteNonQuery() == 0) throw new DatabaseException($"No existeix la bossa {id}.");
+            }
+            catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.SqliteErrorCode == 19)
+            {
+                throw new DatabaseException($"Ja hi ha una altra bossa «{name}».", ex);
+            }
+        }
+    }
+
+    /// <summary>Canvia la subcategoria d'una bossa (null = cap), amb qui ho fa i quan (només si canvia).</summary>
+    public void SetBagSubcategory(long id, long? subcategoryId, string? by, DateTimeOffset now)
+    {
+        lock (database.Sync)
+        {
+            using (var exists = database.Command("SELECT count(*) FROM bossa WHERE id = $id;"))
+            {
+                exists.Parameters.AddWithValue("$id", id);
+                if ((long)exists.ExecuteScalar()! == 0) throw new DatabaseException($"No existeix la bossa {id}.");
+            }
+            // Només si canvia (si no, es manté qui i quan l'ha posada)
+            using var command = database.Command(
+                "UPDATE bossa SET subcategoria_id = $sub, canviada = $ara, canviada_per = $per WHERE id = $id AND subcategoria_id IS NOT $sub;");
+            command.Parameters.AddWithValue("$sub", (object?)subcategoryId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$ara", DbTime.ToText(now));
+            command.Parameters.AddWithValue("$per", (object?)by ?? DBNull.Value);
+            command.Parameters.AddWithValue("$id", id);
+            command.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>Els esdeveniments amb una acció BOSSA d'aquesta bossa (id i nom).</summary>
+    public IReadOnlyList<(long Id, string Name)> EventsUsingBag(long bagId)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT DISTINCT e.id, e.nom FROM accio a JOIN esdeveniment e ON e.id = a.esdeveniment_id " +
+                "WHERE a.tipus = 'BOSSA' AND json_valid(a.params) AND json_extract(a.params, '$.bossaId') = $id ORDER BY e.nom COLLATE NOCASE;");
+            command.Parameters.AddWithValue("$id", bagId);
+            using var r = command.ExecuteReader();
+            var list = new List<(long, string)>();
+            while (r.Read()) list.Add((r.GetInt64(0), r.GetString(1)));
+            return list;
+        }
+    }
+
+    /// <summary>Esborra una bossa. No comprova qui la fa servir: ho fa qui la crida.</summary>
+    public void DeleteBag(long id)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command("DELETE FROM bossa WHERE id = $id;");
+            command.Parameters.AddWithValue("$id", id);
+            if (command.ExecuteNonQuery() == 0) throw new DatabaseException($"No existeix la bossa {id}.");
+        }
+    }
+
     /// <summary>Substitueix els passos d'una rotació dins d'una transacció oberta.</summary>
     private void WriteSteps(long id, IEnumerable<RotationStep> steps, Microsoft.Data.Sqlite.SqliteTransaction transaction)
     {
@@ -171,12 +297,15 @@ public sealed class Rotations(Database database)
             foreach (var step in steps)
             {
                 using var insert = database.Command(
-                    "INSERT INTO rotacio_pas (rotacio_id, ordre, categoria_id, subcategoria_id, etiqueta_id, seleccio, repeticio, sweeper) " +
-                    "VALUES ($r, $ordre, $cat, $sub, $tag, $sel, $rep, $sw);", transaction);
+                    "INSERT INTO rotacio_pas (rotacio_id, ordre, categoria_id, subcategoria_id, etiqueta_id, seleccio, repeticio, sweeper, bossa_id) " +
+                    "VALUES ($r, $ordre, $cat, $sub, $tag, $sel, $rep, $sw, $bossa);", transaction);
                 insert.Parameters.AddWithValue("$r", id);
                 insert.Parameters.AddWithValue("$ordre", order++);
-                insert.Parameters.AddWithValue("$cat", (object?)step.CategoryId ?? DBNull.Value);
-                insert.Parameters.AddWithValue("$sub", (object?)step.SubcategoryId ?? DBNull.Value);
+                // Amb bossa, ni categoria ni subcategoria: es resolen en llegir-la (la que té la bossa en aquell moment)
+                bool bag = step.BagId is not null;
+                insert.Parameters.AddWithValue("$cat", bag ? DBNull.Value : (object?)step.CategoryId ?? DBNull.Value);
+                insert.Parameters.AddWithValue("$sub", bag ? DBNull.Value : (object?)step.SubcategoryId ?? DBNull.Value);
+                insert.Parameters.AddWithValue("$bossa", (object?)step.BagId ?? DBNull.Value);
                 insert.Parameters.AddWithValue("$tag", (object?)step.TagId ?? DBNull.Value);
                 insert.Parameters.AddWithValue("$sel", step.Selection switch
                 {
@@ -193,11 +322,13 @@ public sealed class Rotations(Database database)
     /// <summary>Passos d'una rotació, en ordre, amb els noms de la categoria, la subcategoria i l'etiqueta.</summary>
     private List<RotationStep> Steps(long rotationId)
     {
-        // Si el pas té subcategoria, la categoria que es mostra és la de la subcategoria
+        // Si el pas té subcategoria, la categoria que es mostra és la de la subcategoria. Amb bossa, la subcategoria és la
+        // que la bossa té ara (D-096).
         using var command = database.Command(
-            "SELECT p.id, p.ordre, COALESCE(p.categoria_id, s.categoria_id), p.subcategoria_id, p.etiqueta_id, p.seleccio, p.repeticio, p.sweeper, " +
-            "c.nom, s.nom, e.nom FROM rotacio_pas p " +
-            "LEFT JOIN subcategoria s ON s.id = p.subcategoria_id " +
+            "SELECT p.id, p.ordre, COALESCE(p.categoria_id, s.categoria_id), s.id, p.etiqueta_id, p.seleccio, p.repeticio, p.sweeper, " +
+            "c.nom, s.nom, e.nom, p.bossa_id, b.nom FROM rotacio_pas p " +
+            "LEFT JOIN bossa b ON b.id = p.bossa_id " +
+            "LEFT JOIN subcategoria s ON s.id = CASE WHEN p.bossa_id IS NULL THEN p.subcategoria_id ELSE b.subcategoria_id END " +
             "LEFT JOIN categoria c ON c.id = COALESCE(p.categoria_id, s.categoria_id) " +
             "LEFT JOIN etiqueta e ON e.id = p.etiqueta_id " +
             "WHERE p.rotacio_id = $r ORDER BY p.ordre, p.id;");
@@ -224,6 +355,8 @@ public sealed class Rotations(Database database)
                 CategoryName = r.IsDBNull(8) ? null : r.GetString(8),
                 SubcategoryName = r.IsDBNull(9) ? null : r.GetString(9),
                 TagName = r.IsDBNull(10) ? null : r.GetString(10),
+                BagId = r.IsDBNull(11) ? null : r.GetInt64(11),
+                BagName = r.IsDBNull(12) ? null : r.GetString(12),
             });
         }
         return list;

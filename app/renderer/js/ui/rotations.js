@@ -33,6 +33,7 @@ export class RotationsView {
     $('rt-new').addEventListener('click', () => this.#new());
     $('rt-duplicate').addEventListener('click', () => this.#duplicate());
     $('rt-delete').addEventListener('click', () => this.#delete());
+    $('rt-bag-new').addEventListener('click', () => this.#newBag());
     for (const id of ['rt-sep-track', 'rt-sep-artist']) $(id).addEventListener('input', () => this.#separationEdited());
     $('rt-sep-save').addEventListener('click', () => this.#saveSeparation());
     this.#renderEditor();
@@ -95,9 +96,11 @@ export class RotationsView {
     }
     this.#loaded = true;
     try {
-      const [rotations, filters, autodj, separation] = await Promise.all([
+      const [rotations, filters, autodj, separation, bags] = await Promise.all([
         this.#send('rotations.list'), this.#send('library.filters'), this.#send('autodj.get'), this.#send('separation.get'),
+        this.#send('bags.list'),
       ]);
+      this.#bags = bags.bags;
       this.#rotations = rotations.rotations;
       this.#categories = filters.categories;
       this.#tags = filters.tags;
@@ -113,7 +116,109 @@ export class RotationsView {
       else this.#close();
     }
     this.#renderList();
+    this.#renderBags();
     this.#renderEditor();
+  }
+
+  // --- Bosses amb nom (fase 3, pas 8c; D-096) ---
+
+  /** @type {any[]} */
+  #bags = [];
+
+  /** Desplegable de subcategories (agrupades per categoria), amb «(cap)». @param {number | null} selected */
+  #subcategorySelect(selected) {
+    const select = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
+    select.append(option('', '(cap)'));
+    for (const c of this.#categories) {
+      if (c.subcategories.length === 0) continue;
+      const group = document.createElement('optgroup');
+      group.label = c.name;
+      group.append(...c.subcategories.map((/** @type {any} */ s) => option(String(s.id), `${s.name} (${s.count})`)));
+      select.append(group);
+    }
+    select.value = selected == null ? '' : String(selected);
+    return select;
+  }
+
+  #renderBags() {
+    const list = $('rt-bags');
+    if (this.#bags.length === 0) {
+      list.replaceChildren(el('li', 'form-text', 'Cap. Crea\'n una per alternar subcategories sense tocar les rotacions.'));
+      return;
+    }
+    list.replaceChildren(...this.#bags.map((bag) => {
+      const li = el('li', 'rt-bag');
+      const head = el('div', 'rt-bag-head');
+      const name = el('span', 'rt-bag-name', bag.name);
+      name.title = `${bag.steps} ${bag.steps === 1 ? 'pas hi apunta' : 'passos hi apunten'}` +
+        (bag.changedAt ? `\nDes de ${new Date(bag.changedAt).toLocaleString('ca-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${bag.changedBy ? `, ${bag.changedBy}` : ''}` : '');
+      const tools = el('span', 'rt-tools');
+      const tool = (/** @type {string} */ iconName, /** @type {string} */ title, /** @type {() => void} */ run) => {
+        const b = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-link p-0 text-body-secondary'));
+        b.type = 'button';
+        b.title = title;
+        b.setAttribute('aria-label', `${title}: ${bag.name}`);
+        b.append(icon(iconName));
+        b.addEventListener('click', run);
+        tools.append(b);
+      };
+      tool('bi-pencil', 'Canvia el nom', () => this.#renameBag(bag));
+      tool('bi-trash', 'Esborra la bossa', () => this.#deleteBag(bag));
+      head.append(name, tools);
+      const select = this.#subcategorySelect(bag.subcategoryId);
+      select.setAttribute('aria-label', `Subcategoria de la bossa ${bag.name}`);
+      select.addEventListener('change', () => this.#setBag(bag, select));
+      li.append(head, select);
+      if (bag.subcategoryId == null)
+        li.append(statusLabel('text-warning small', 'bi-exclamation-triangle-fill', 'Sense subcategoria: els seus passos se salten'));
+      return li;
+    }));
+  }
+
+  /** @param {any} bag @param {HTMLSelectElement} select */
+  async #setBag(bag, select) {
+    const subcategoryId = select.value === '' ? null : Number(select.value);
+    try {
+      await this.#send('bags.set', { bagId: bag.id, subcategoryId });
+      // La resta arriba amb bags.changed / rotations.changed
+    } catch (err) {
+      select.value = bag.subcategoryId == null ? '' : String(bag.subcategoryId);
+      await confirmAction({ title: 'No s\'ha pogut canviar la bossa', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+    }
+  }
+
+  async #newBag() {
+    const name = await askText({ title: 'Nova bossa', label: 'Nom de la bossa (p. ex. «Generalista A»)', confirm: 'Crea-la' });
+    if (!name) return;
+    try {
+      await this.#send('bags.save', { name, subcategoryId: null });
+      await this.refresh();
+    } catch (err) {
+      await confirmAction({ title: 'No s\'ha pogut crear la bossa', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+    }
+  }
+
+  /** @param {any} bag */
+  async #renameBag(bag) {
+    const name = await askText({ title: 'Canviar el nom de la bossa', label: 'Nom nou', confirm: 'Canvia el nom', value: bag.name });
+    if (!name || name === bag.name) return;
+    try {
+      await this.#send('bags.save', { bagId: bag.id, name });
+      await this.refresh();
+    } catch (err) {
+      await confirmAction({ title: 'No s\'ha pogut canviar el nom', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+    }
+  }
+
+  /** @param {any} bag */
+  async #deleteBag(bag) {
+    if (!(await confirmAction({ title: 'Esborrar la bossa', message: `S'esborrarà la bossa «${bag.name}».`, confirm: 'Esborra-la' }))) return;
+    try {
+      await this.#send('bags.delete', { bagId: bag.id });
+      await this.refresh();
+    } catch (err) {
+      await confirmAction({ title: 'No s\'ha pogut esborrar la bossa', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+    }
   }
 
   /** L'AutoDJ ha canviat de rotació (autodj.changed). @param {number | null} id */
@@ -362,6 +467,12 @@ export class RotationsView {
     const source = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
     source.setAttribute('aria-label', `Pas ${index + 1}: d'on surt la pista`);
     source.append(option('', 'Tria…'));
+    if (this.#bags.length > 0) {
+      const bags = document.createElement('optgroup');
+      bags.label = 'Bosses';
+      bags.append(...this.#bags.map((b) => option(`b:${b.id}`, `Bossa «${b.name}» (ara: ${b.subcategory ?? 'cap'})`)));
+      source.append(bags);
+    }
     for (const c of this.#categories) {
       const group = document.createElement('optgroup');
       group.label = c.name;

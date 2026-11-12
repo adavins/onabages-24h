@@ -208,6 +208,15 @@ public sealed class QueuePlayer : IDisposable
         get { lock (_sync) return _current is { HasStarted: true } c ? (c.Item, c.Voice.ActualStartFrame) : null; }
     }
 
+    /// <summary>
+    /// La pista següent si ja s'ha començat a preparar per sonar (s'obre el fitxer uns 20 s abans de la mescla) i encara no
+    /// sona; null si encara no. L'AutoDJ no la canvia quan torna a triar la cua (D-097): podria no ser a temps.
+    /// </summary>
+    public Guid? NextInPreparation
+    {
+        get { lock (_sync) return _next is { HasStarted: false } n ? n.Item.Id : null; }
+    }
+
     /// <summary>Hi ha una pista preparant-se que encara no s'ha pogut programar (el fitxer s'està obrint). Per a les proves.</summary>
     public bool IsPreparing
     {
@@ -330,18 +339,22 @@ public sealed class QueuePlayer : IDisposable
     }
 
     /// <summary>Treu de la cua les pistes que encara no han començat i compleixen la condició (p. ex. totes les de l'AutoDJ, D-034).</summary>
-    public int RemoveWhere(Func<QueueItem, bool> condition)
+    public int RemoveWhere(Func<QueueItem, bool> condition) => TakeWhere(condition).Count;
+
+    /// <summary>Com <see cref="RemoveWhere"/>, però retorna les pistes que ha tret, en l'ordre que tenien a la cua.</summary>
+    public IReadOnlyList<QueueItem> TakeWhere(Func<QueueItem, bool> condition)
     {
         var events = new List<Action>();
-        int count;
+        List<QueueItem> removed;
         lock (_sync)
         {
             if (_next is not null && !_next.HasStarted && condition(_next.Item)) UnprepareNext(events);
-            count = _upcoming.RemoveAll(i => condition(i));
+            removed = _upcoming.Where(condition).ToList();
+            _upcoming.RemoveAll(i => condition(i));
         }
         Raise(events);
-        if (count > 0) Changed?.Invoke();
-        return count;
+        if (removed.Count > 0) Changed?.Invoke();
+        return removed;
     }
 
     /// <summary>

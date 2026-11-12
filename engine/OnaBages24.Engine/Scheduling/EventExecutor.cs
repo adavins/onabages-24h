@@ -273,6 +273,7 @@ public sealed class EventExecutor
                 EventActionType.Rotation => ChangeRotation(action),
                 EventActionType.AutoDj => ChangeAutoDj(action),
                 EventActionType.Sweepers => ChangeSweepers(action),
+                EventActionType.Bag => ChangeBag(action),
                 _ => (false, $"L'acció {Events.ActionTypeText(action.Type)} encara no està disponible: no s'ha fet."),
             };
             if (action.Type is EventActionType.Track or EventActionType.Auxiliary) continue;
@@ -317,6 +318,20 @@ public sealed class EventExecutor
         if (ReadLong(action, "subcategoriaId") is not { } id) return (false, "Una acció SWEEPERS no diu quina subcategoria (subcategoriaId).");
         if (!autoDj.SetSweepers(id, $"esdeveniment «{currentEventName}»")) return (false, $"La subcategoria {id} no existeix: no s'han canviat els sweepers.");
         return (true, $"sweepers «{autoDj.SweepersName}»");
+    }
+
+    /// <summary>
+    /// Acció BOSSA (fase 3, pas 8c; D-096): canvia la subcategoria d'una bossa amb nom (p. ex. el dia 1 de cada mes, «Generalista
+    /// A» passa d'Adult 5 a Adult 6). Es desa a la base de dades: es manté si el motor es reinicia.
+    /// </summary>
+    private (bool Ok, string Note) ChangeBag(EventAction action)
+    {
+        if (autoDj is null) return (false, "No hi ha AutoDJ: no s'ha canviat la bossa.");
+        if (ReadLong(action, "bossaId") is not { } bag) return (false, "Una acció BOSSA no diu quina bossa (bossaId).");
+        if (ReadLong(action, "subcategoriaId") is not { } sub) return (false, "Una acció BOSSA no diu quina subcategoria (subcategoriaId).");
+        if (!autoDj.SetBag(bag, sub, $"esdeveniment «{currentEventName}»"))
+            return (false, $"La bossa {bag} o la subcategoria {sub} no existeixen: no s'ha canviat la bossa.");
+        return (true, $"bossa {bag} → {library.SubcategoryName(sub)}");
     }
 
     private (bool Ok, string Note) ChangeAutoDj(EventAction action)

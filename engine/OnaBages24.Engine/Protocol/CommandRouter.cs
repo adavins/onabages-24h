@@ -166,6 +166,10 @@ public sealed class CommandRouter
                 "rotations.save" => RotationsSave(msg),
                 "rotations.delete" => RotationsDelete(msg),
                 "rotations.preview" => RotationsPreview(msg),
+                "bags.list" => BagsList(),
+                "bags.save" => BagsSave(msg),
+                "bags.set" => BagsSet(msg),
+                "bags.delete" => BagsDelete(msg),
                 "separation.get" => SeparationJson(AutoDjOrError().Separation),
                 "separation.set" => SeparationSet(msg),
                 "history.list" => HistoryList(msg),
@@ -1342,8 +1346,15 @@ public sealed class CommandRouter
             long? sub = s["subcategoryId"] is JsonValue sv && sv.TryGetValue(out long subId) ? subId : null;
             long? cat = s["categoryId"] is JsonValue cv && cv.TryGetValue(out long catId) ? catId : null;
             long? tag = s["tagId"] is JsonValue tv && tv.TryGetValue(out long tagId) ? tagId : null;
+            long? bag = s["bagId"] is JsonValue bv && bv.TryGetValue(out long bagId) ? bagId : null;
+            if (bag is { } ba)
+            {
+                if (rotations.GetBag(ba) is null) throw new BadParamsException($"Pas {i + 1}: no existeix la bossa {ba}.");
+                sub = null;
+                cat = null;
+            }
             if (sub is { } su && library.GetSubcategory(su) is null) throw new BadParamsException($"Pas {i + 1}: no existeix la subcategoria {su}.");
-            if (sub is null && cat is null) throw new BadParamsException($"Pas {i + 1}: falta d'on surt la pista (una subcategoria o una categoria).");
+            if (bag is null && sub is null && cat is null) throw new BadParamsException($"Pas {i + 1}: falta d'on surt la pista (una bossa, una subcategoria o una categoria).");
             if (sub is null && cat is { } ca && categories.All(c => c.Id != ca)) throw new BadParamsException($"Pas {i + 1}: no existeix la categoria {ca}.");
             if (tag is { } ta && tags.All(t => t.Id != ta)) throw new BadParamsException($"Pas {i + 1}: no existeix l'etiqueta {ta}.");
             var selection = ReadString(s["selection"]) switch
@@ -1356,6 +1367,7 @@ public sealed class CommandRouter
             bool Flag(string field, bool fallback) => s[field] is JsonValue fv && fv.TryGetValue(out bool b) ? b : fallback;
             steps.Add(new RotationStep
             {
+                BagId = bag,
                 SubcategoryId = sub,
                 CategoryId = sub is null ? cat : null,
                 TagId = tag,
@@ -1371,6 +1383,82 @@ public sealed class CommandRouter
         _autoDj?.RotationsEdited();
         RotationsChanged?.Invoke();
         return new JsonObject { ["rotation"] = QueueJson.Rotation(rotations.Get(id)!) };
+    }
+
+    // --- Bosses amb nom (fase 3, pas 8c; D-096) ---
+
+    private Rotations RotationsOrError() => _rotations ?? throw new BadParamsException("El motor no té rotacions.");
+
+    private JsonObject BagsList() => new()
+    {
+        ["bags"] = new JsonArray(RotationsOrError().Bags().Select(b => (JsonNode)QueueJson.Bag(b)).ToArray()),
+    };
+
+    /// <summary>
+    /// Crea una bossa (sense <c>bagId</c>: <c>name</c> i <c>subcategoryId</c>, que pot ser null) o en canvia el nom (amb
+    /// <c>bagId</c> i <c>name</c>). Per canviar-ne la subcategoria, <c>bags.set</c>.
+    /// </summary>
+    private JsonObject BagsSave(JsonObject msg)
+    {
+        var rotations = RotationsOrError();
+        string name = RequiredName(msg);
+        long id;
+        if (msg["bagId"] is null)
+        {
+            long? sub = msg["subcategoryId"] is JsonValue v && v.TryGetValue(out long s) ? s : null;
+            if (sub is { } su && LibraryOrError().GetSubcategory(su) is null) throw new BadParamsException($"No existeix la subcategoria {su}.");
+            id = rotations.CreateBag(name, sub, "a mà", DateTimeOffset.UtcNow);
+        }
+        else rotations.RenameBag(id = RequiredId(msg, "bagId"), name);
+        _autoDj?.BagsEdited();
+        if (_autoDj is null) RotationsChanged?.Invoke(); // amb AutoDJ, avisa ell (BagsChanged)
+        return new JsonObject { ["bag"] = QueueJson.Bag(rotations.GetBag(id)!) };
+    }
+
+    /// <summary>
+    /// Canvia la subcategoria d'una bossa: <c>bagId</c>, <c>subcategoryId</c> (null = cap: els passos que hi apunten se
+    /// salten). Els passos triaran d'aquesta subcategoria a partir de la pròxima cançó.
+    /// </summary>
+    private JsonObject BagsSet(JsonObject msg)
+    {
+        var rotations = RotationsOrError();
+        long id = RequiredId(msg, "bagId");
+        if (rotations.GetBag(id) is null) throw new BadParamsException($"No existeix la bossa {id}.");
+        if (!msg.ContainsKey("subcategoryId")) throw new BadParamsException("Falta 'subcategoryId' (un número o null).");
+        long? sub = msg["subcategoryId"] is null ? null
+            : msg["subcategoryId"] is JsonValue v && v.TryGetValue(out long s) ? s : throw new BadParamsException("El camp 'subcategoryId' ha de ser un número o null.");
+        if (_autoDj is { } autoDj)
+        {
+            if (!autoDj.SetBag(id, sub, "a mà")) throw new BadParamsException($"No existeix la subcategoria {sub}.");
+        }
+        else
+        {
+            if (sub is { } su && LibraryOrError().GetSubcategory(su) is null) throw new BadParamsException($"No existeix la subcategoria {su}.");
+            rotations.SetBagSubcategory(id, sub, "a mà", DateTimeOffset.UtcNow);
+        }
+        if (_autoDj is null) RotationsChanged?.Invoke(); // amb AutoDJ, avisa ell (BagsChanged)
+        return new JsonObject { ["bag"] = QueueJson.Bag(rotations.GetBag(id)!) };
+    }
+
+    /// <summary>Esborra una bossa: <c>bagId</c>. No es pot si hi apunta algun pas de rotació o alguna acció BOSSA.</summary>
+    private JsonObject BagsDelete(JsonObject msg)
+    {
+        var rotations = RotationsOrError();
+        long id = RequiredId(msg, "bagId");
+        var bag = rotations.GetBag(id) ?? throw new BadParamsException($"No existeix la bossa {id}.");
+        if (bag.Steps > 0)
+        {
+            var names = rotations.List().Where(r => r.Steps.Any(s => s.BagId == id)).Select(r => $"«{r.Name}»");
+            throw new BadParamsException($"No es pot esborrar: hi apunten passos de {string.Join(", ", names)}. Canvia'ls primer.");
+        }
+        var events = rotations.EventsUsingBag(id);
+        if (events.Count > 0)
+            throw new BadParamsException($"No es pot esborrar: la canvia{(events.Count == 1 ? " l'esdeveniment" : "n els esdeveniments")} " +
+                                         string.Join(", ", events.Select(e => $"«{e.Name}»")) + ".");
+        rotations.DeleteBag(id);
+        _autoDj?.BagsEdited();
+        if (_autoDj is null) RotationsChanged?.Invoke(); // amb AutoDJ, avisa ell (BagsChanged)
+        return new JsonObject { ["deleted"] = id };
     }
 
     // --- Separació real i previsualització (fase 3, pas 8b; D-095) ---

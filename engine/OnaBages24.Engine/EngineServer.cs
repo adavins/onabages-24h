@@ -126,7 +126,8 @@ public static class EngineServer
 
         // AutoDJ (fase 1, pas 8): arrenca sol amb la rotació desada (o la primera), i l'emissió comença de seguida
         var rotations = new Rotations(database);
-        var autoDj = new AutoDj(library, rotations, queue);
+        // Uns 30 minuts de música per davant a la cua (D-097): es veu què vindrà i la previsió és útil
+        var autoDj = new AutoDj(library, rotations, queue, new AutoDjSettings { FillAhead = TimeSpan.FromMinutes(30) });
         // Trepitjador (fase 3, pas 5): el sweeper a sobre de l'inici de la pista, amb l'atenuació desada (D-078) o −8 dB
         var sweepers = new SweeperOverlay(queue, aux) { DuckingDb = CommandRouter.ReadDucking(library).Sweepers };
         var playback = new PlaybackEvents(queue, outputs, log, Broadcast, autoDj, sampleClock, aux);
@@ -230,6 +231,12 @@ public static class EngineServer
             events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher);
         // Editor de rotacions (fase 3, pas 8a): les interfícies tornen a demanar les rotacions
         router.RotationsChanged += () => Broadcast(Messages.Event("rotations.changed"));
+        // Bosses amb nom (fase 3, pas 8c): també quan les canvia l'acció BOSSA d'un esdeveniment
+        autoDj.BagsChanged += () =>
+        {
+            Broadcast(Messages.Event("bags.changed"));
+            Broadcast(Messages.Event("rotations.changed")); // els passos diuen la subcategoria de la bossa
+        };
         // Gestor de pistes (fase 3, pas 7a): quan es canvia una pista o les categories, les interfícies tornen a demanar el que mostren
         router.LibraryChanged += trackId =>
         {

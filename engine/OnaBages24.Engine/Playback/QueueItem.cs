@@ -35,6 +35,13 @@ public sealed record QueueItem
     /// </summary>
     public QueueItem? Sweeper { get; init; }
 
+    /// <summary>
+    /// La rotació i el pas (índex des de 0) d'on l'ha triada l'AutoDJ, o null si no ve d'un pas (manual, esdeveniment o
+    /// música de reserva). Serveix perquè, en tornar a triar la cua, la rotació continuï exactament on era (D-097).
+    /// </summary>
+    public long? RotationId { get; init; }
+    public int? RotationStep { get; init; }
+
     public static QueueItem FromTrack(Track track, QueueOrigin origin, string? eventName = null) => new()
     {
         TrackId = track.Id,

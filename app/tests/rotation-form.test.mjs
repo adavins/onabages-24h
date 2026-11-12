@@ -20,6 +20,12 @@ test('passos: del motor al formulari i tornada', () => {
   assert.deepEqual(stepToApi(steps[1]), { selection: 'random', repeatRule: false, sweeper: false, categoryId: 3, tagId: 2 });
 });
 
+test('passos amb bossa: la bossa, no la subcategoria que té ara', () => {
+  const step = stepFromApi({ bagId: 4, bag: 'Generalista A', subcategoryId: 30, categoryId: 1, selection: 'leastRecent', repeatRule: true, sweeper: false });
+  assert.equal(step.source, 'b:4');
+  assert.deepEqual(stepToApi(step), { selection: 'leastRecent', repeatRule: true, sweeper: false, bagId: 4 });
+});
+
 test('canvis: el nom, un pas o l\'ordre', () => {
   const steps = rotation.steps.map(stepFromApi);
   assert.equal(rotationChanged(rotation, 'OnaBages ', steps), false);

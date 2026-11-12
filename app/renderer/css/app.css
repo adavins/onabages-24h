@@ -1226,6 +1226,35 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.rt-bags {
+  padding: 0.6rem 0.75rem;
+  border-top: 1px solid var(--ob-border);
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+.rt-bag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rt-bag {
+  margin-bottom: 0.4rem;
+}
+
+.rt-bag-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.rt-bag-name {
+  font-weight: 600;
+  cursor: default;
+}
+
 .rt-separation {
   padding: 0.6rem 0.75rem;
   border-top: 1px solid var(--ob-border);

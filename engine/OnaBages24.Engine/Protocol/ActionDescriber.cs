@@ -36,6 +36,7 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations)
                 EventActionType.Sweepers => new ActionInfo(
                     Long(p, "subcategoriaId") is { } sub ? library?.SubcategoryName(sub) ?? $"Subcategoria {sub}" : "Sense subcategoria",
                     "Categoria de sweepers (trepitjador)", false, null),
+                EventActionType.Bag => new ActionInfo(BagLabel(Long(p, "bossaId"), Long(p, "subcategoriaId")), "Canvia la bossa", false, null),
                 EventActionType.AutoDj => new ActionInfo(
                     p.TryGetProperty("actiu", out var on) && on.ValueKind == JsonValueKind.False ? "Atura l'AutoDJ" : "Activa l'AutoDJ", null, false, null),
                 _ => new ActionInfo(Events.ActionTypeText(action.Type), "encara no fa res", false, null),
@@ -45,6 +46,14 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations)
         {
             return new ActionInfo(Events.ActionTypeText(action.Type), "paràmetres il·legibles", true, null);
         }
+    }
+
+    /// <summary>«Bossa «Generalista A» → Music / Adult 6».</summary>
+    private string BagLabel(long? bagId, long? subcategoryId)
+    {
+        string bag = bagId is { } b ? rotations?.GetBag(b)?.Name is { } name ? $"Bossa «{name}»" : $"Bossa {b} (no existeix)" : "Bossa sense indicar";
+        string sub = subcategoryId is { } s ? library?.SubcategoryName(s) ?? $"subcategoria {s} (no existeix)" : "cap subcategoria";
+        return $"{bag} → {sub}";
     }
 
     private ActionInfo TrackInfo(long? id, string? extra)

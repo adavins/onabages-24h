@@ -83,10 +83,21 @@ export class EventEditor {
     this.#rotations = rotations;
   }
 
-  /** Les categories de la biblioteca (library.filters), per a les accions «Sweepers» (fase 3, pas 5b). @param {any[]} categories */
+  /** Les categories de la biblioteca (library.filters), per a les accions «Sweepers» (fase 3, pas 5b) i «Bossa» (pas 8c). @param {any[]} categories */
   setCategories(categories) {
     this.#sweeperOptions = sweeperOptions(categories);
+    this.#categories = categories;
   }
+
+  /** Les bosses amb nom (bags.list), per a les accions «Bossa» (fase 3, pas 8c; D-096). @param {any[]} bags */
+  setBags(bags) {
+    this.#bags = bags;
+  }
+
+  /** @type {any[]} */
+  #categories = [];
+  /** @type {any[]} */
+  #bags = [];
 
   /** L'atenuació per defecte (ducking.get, D-078): es mostra quan el camp és buit. @param {{ auxiliary: number, sweepers: number } | null} ducking */
   setDucking(ducking) {
@@ -470,6 +481,28 @@ export class EventEditor {
         `A partir d'aquí, els passos de rotació amb trepitjador fan sonar un sweeper d'aquesta categoria a sobre de l'inici de la cançó.${standard}`));
       li.append(wrap);
     }
+    if (action.type === 'BOSSA') {
+      // Bossa amb nom (fase 3, pas 8c; D-096): p. ex. el dia 1 de cada mes, «Generalista A» passa a Adult 6
+      const label = () => {
+        const bag = this.#bags.find((b) => b.id === p.bossaId);
+        const sub = this.#categories.flatMap((c) => c.subcategories.map((/** @type {any} */ s) => ({ ...s, category: c.name })))
+          .find((s) => s.id === p.subcategoriaId);
+        return `Bossa «${bag?.name ?? '?'}» → ${sub ? `${sub.category} / ${sub.name}` : '?'}`;
+      };
+      const bags = this.#bags.map((b) => /** @type {[string, string]} */ ([String(b.id), `${b.name} (ara: ${b.subcategory ?? 'cap'})`]));
+      li.append(this.#select('Bossa', [['', '(tria la bossa)'], ...bags], String(p.bossaId ?? ''), (v) => {
+        p.bossaId = v === '' ? null : Number(v);
+        action.label = label();
+        this.#restructured();
+      }));
+      const subs = this.#categories.flatMap((c) => c.subcategories.map((/** @type {any} */ s) => /** @type {[string, string]} */ ([String(s.id), `${c.name} / ${s.name}`])));
+      li.append(this.#select('Passa a ser', [['', '(tria la subcategoria)'], ...subs], String(p.subcategoriaId ?? ''), (v) => {
+        p.subcategoriaId = v === '' ? null : Number(v);
+        action.label = label();
+        this.#restructured();
+      }));
+      li.append(el('div', 'form-text', 'Els passos de rotació que apunten a aquesta bossa triaran d\'aquesta subcategoria a partir de la cançó següent.'));
+    }
     if (action.type === 'AUTODJ') {
       li.append(this.#select('Què fa', [['true', 'Activa l\'AutoDJ'], ['false', 'Atura l\'AutoDJ']], String(p.actiu !== false), (v) => {
         p.actiu = v === 'true';
@@ -529,6 +562,11 @@ export class EventEditor {
     add('bi-soundwave', 'Sweepers', 'Canvia la categoria de sweepers del trepitjador (sonen a sobre de l\'inici de les cançons)', () => {
       const first = this.#sweeperOptions[0];
       ev.actions = [...ev.actions, { type: 'SWEEPERS', params: { subcategoriaId: first?.id ?? null }, daysMask: null, label: first?.label ?? 'Sweepers' }];
+      this.#restructured();
+    });
+    add('bi-bag', 'Bossa', 'Canvia la subcategoria d\'una bossa amb nom (p. ex. el dia 1 de cada mes)', () => {
+      const first = this.#bags[0];
+      ev.actions = [...ev.actions, { type: 'BOSSA', params: { bossaId: first?.id ?? null, subcategoriaId: null }, daysMask: null, label: first ? `Bossa «${first.name}»` : 'Bossa' }];
       this.#restructured();
     });
     add('bi-broadcast', 'Stream', 'Un stream d\'internet (sonarà a partir del pas 7)', () => {
@@ -872,6 +910,6 @@ function dbText(db) {
 }
 
 const ACTION_NAMES = {
-  PISTA: 'Pista', AUXILIAR: 'Auxiliar', ROTACIO: 'Rotació', AUTODJ: 'AutoDJ', STREAM: 'Stream', SWEEPERS: 'Sweepers',
+  PISTA: 'Pista', AUXILIAR: 'Auxiliar', ROTACIO: 'Rotació', AUTODJ: 'AutoDJ', STREAM: 'Stream', SWEEPERS: 'Sweepers', BOSSA: 'Bossa',
   CAMPANYA: 'Campanya', PLANTILLA: 'Plantilla', ESPERA: 'Espera', ATURA: 'Atura', ENTRADA: 'Entrada', EXECUTA: 'Executa', REPRODUEIX: 'Reprodueix',
 };

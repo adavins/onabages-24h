@@ -273,6 +273,14 @@
           <button id="rt-delete" class="btn btn-sm btn-outline-danger" type="button" title="Esborra la rotació triada"><i class="bi bi-trash" aria-hidden="true"></i><span class="visually-hidden">Esborra</span></button>
         </div>
         <ul id="rt-list" class="rt-list"></ul>
+        <!-- Bosses amb nom (fase 3, pas 8c; D-096): per alternar subcategories sense tocar les rotacions -->
+        <div class="rt-bags">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="rt-separation-title m-0" title="Els passos que apunten a una bossa trien de la subcategoria que la bossa té ara">Bosses</span>
+            <button id="rt-bag-new" class="btn btn-sm btn-outline-secondary py-0" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Bossa</button>
+          </div>
+          <ul id="rt-bags" class="rt-bag-list"></ul>
+        </div>
         <!-- Separació real (fase 3, pas 8b; D-095): per a tots els passos amb «no repetir» -->
         <div class="rt-separation">
           <div class="rt-separation-title">Separació (passos amb «no repetir»)</div>

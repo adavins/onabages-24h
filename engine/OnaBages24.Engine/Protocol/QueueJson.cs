@@ -244,10 +244,12 @@ public static class QueueJson
         ["name"] = rotation.Name,
         ["steps"] = new JsonArray(rotation.Steps.Select(s => (JsonNode)new JsonObject
         {
-            // Fase 3, pas 8a: els ids, per a l'editor de rotacions
+            // Fase 3, pas 8a: els ids, per a l'editor de rotacions. Amb bossa (pas 8c), la subcategoria és la que té ara.
             ["categoryId"] = s.CategoryId,
             ["subcategoryId"] = s.SubcategoryId,
             ["tagId"] = s.TagId,
+            ["bagId"] = s.BagId,
+            ["bag"] = s.BagName,
             ["category"] = s.CategoryName,
             ["subcategory"] = s.SubcategoryName,
             ["tag"] = s.TagName,
@@ -260,6 +262,18 @@ public static class QueueJson
             ["repeatRule"] = s.RepeatRule,
             ["sweeper"] = s.Sweeper,
         }).ToArray()),
+    };
+
+    /// <summary>Una bossa amb nom (fase 3, pas 8c; docs/protocol.md, 4.5).</summary>
+    public static JsonObject Bag(Bag bag) => new()
+    {
+        ["id"] = bag.Id,
+        ["name"] = bag.Name,
+        ["subcategoryId"] = bag.SubcategoryId,
+        ["subcategory"] = bag.SubcategoryName,
+        ["changedAt"] = bag.ChangedAt?.ToString("O"),
+        ["changedBy"] = bag.ChangedBy,
+        ["steps"] = bag.Steps,
     };
 
     /// <summary>Una entrada de l'historial (docs/protocol.md, 4.6).</summary>

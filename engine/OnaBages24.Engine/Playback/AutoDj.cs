@@ -8,6 +8,15 @@ public sealed record AutoDjSettings
     /// <summary>Quantes pistes, com a mínim, ha d'haver-hi a la cua per sonar (comptant les manuals).</summary>
     public int MinUpcoming { get; init; } = 2;
 
+    /// <summary>
+    /// Quanta música, com a mínim, ha d'haver-hi a la cua per davant (D-097): el motor hi posa 30 minuts, perquè es vegi què
+    /// vindrà i la previsió fins al pròxim esdeveniment sigui útil. Zero (per defecte, i a les proves) = només <see cref="MinUpcoming"/>.
+    /// </summary>
+    public TimeSpan FillAhead { get; init; } = TimeSpan.Zero;
+
+    /// <summary>Com a molt, tantes pistes per davant (per si n'hi hagués de molt curtes).</summary>
+    public int MaxUpcoming { get; init; } = 20;
+
     /// <summary>Si no ha trobat cap pista, quant espera a tornar-ho a provar (per no consultar la base de dades cada 10 ms).</summary>
     public TimeSpan RetryAfterNothing { get; init; } = TimeSpan.FromSeconds(5);
 
@@ -71,8 +80,22 @@ public sealed class AutoDj
     /// <summary>L'AutoDJ afegeix pistes a la cua.</summary>
     public bool Enabled { get; private set; }
 
-    /// <summary>Separació real (D-095). Es pot canviar en qualsevol moment; val per a les pistes que es triïn després.</summary>
-    public SeparationRules Separation { get; set; } = SeparationRules.Default;
+    /// <summary>
+    /// Separació real (D-095). Es pot canviar en qualsevol moment: les pistes de l'AutoDJ que encara no sonen es tornen a
+    /// triar amb la nova (D-097).
+    /// </summary>
+    public SeparationRules Separation
+    {
+        get => _separation;
+        set
+        {
+            if (value == _separation) return;
+            _separation = value;
+            RefreshQueue();
+        }
+    }
+
+    private SeparationRules _separation = SeparationRules.Default;
 
     /// <summary>La rotació activa (null si no n'hi ha cap: llavors sona música de tota la biblioteca).</summary>
     public Rotation? Rotation { get; private set; }
@@ -140,6 +163,31 @@ public sealed class AutoDj
         return true;
     }
 
+    /// <summary>Ha canviat alguna bossa amb nom (es crida des de <see cref="BagsEdited"/>): per avisar les interfícies.</summary>
+    public event Action? BagsChanged;
+
+    /// <summary>
+    /// Canvia la subcategoria d'una bossa amb nom (fase 3, pas 8c; D-096): a mà o amb l'acció BOSSA del planificador. Els
+    /// passos que hi apunten triaran d'aquesta subcategoria a partir de la pròxima cançó (el que ja és a la cua no canvia).
+    /// Retorna false, sense canviar res, si la bossa o la subcategoria no existeixen.
+    /// </summary>
+    /// <param name="subcategoryId">La subcategoria, o null perquè la bossa no en tingui cap (els seus passos se salten).</param>
+    public bool SetBag(long bagId, long? subcategoryId, string? by)
+    {
+        if (subcategoryId is { } sub && _library.SubcategoryName(sub) is null) return false;
+        if (_rotations.GetBag(bagId) is null) return false;
+        _rotations.SetBagSubcategory(bagId, subcategoryId, by, _clock());
+        BagsEdited();
+        return true;
+    }
+
+    /// <summary>S'han canviat les bosses (o els seus noms): es torna a llegir la rotació activa i s'avisa.</summary>
+    public void BagsEdited()
+    {
+        RotationsEdited();
+        BagsChanged?.Invoke();
+    }
+
     /// <summary>
     /// S'han editat les rotacions (editor, fase 3, pas 8a): si la rotació activa ha canviat, es torna a llegir (amb els passos
     /// nous). El pas següent es manté si encara existeix; si no, torna al primer. Les pistes que ja són a la cua no canvien.
@@ -148,12 +196,16 @@ public sealed class AutoDj
     {
         if (Rotation is not { } current) return;
         var fresh = _rotations.Get(current.Id);
+        bool stepsChanged;
         lock (_sync)
         {
             if (fresh is null) return; // l'activa no es pot esborrar (ho comprova qui l'esborra)
+            stepsChanged = StepsKey(current) != StepsKey(fresh);
             Rotation = fresh;
             if (NextStep >= fresh.Steps.Count) NextStep = 0;
         }
+        // Han canviat els passos de l'activa (o la subcategoria d'una de les seves bosses): la cua es torna a triar (D-097)
+        if (stepsChanged) RefreshQueue();
         Changed?.Invoke();
     }
 
@@ -169,8 +221,10 @@ public sealed class AutoDj
         var all = _rotations.List();
         Rotation? rotation = rotationId is { } id ? all.FirstOrDefault(r => r.Id == id) : all.FirstOrDefault();
         if (rotationId is not null && rotation is null) return false;
+        bool rotationChanged;
         lock (_sync)
         {
+            rotationChanged = rotation?.Id != Rotation?.Id;
             var now = _clock();
             if (enabled) DisabledUntil = null;
             else if (Enabled || pause is not null || DisabledUntil is null)
@@ -192,26 +246,38 @@ public sealed class AutoDj
             Notice = null;
             _retryAt = DateTimeOffset.MinValue;
         }
+        // Rotació nova: les pistes de l'anterior que encara no sonen es tornen a triar amb aquesta (D-097)
+        if (rotationChanged) RefreshQueue(rewind: false);
         Changed?.Invoke();
         return true;
     }
 
     /// <summary>
     /// «Regenera la cua» (D-034): treu de la cua les pistes que hi ha posat l'AutoDJ (no la que sona, ni les manuals, ni
-    /// les dels esdeveniments) i la torna a omplir amb la rotació actual. El pas de la rotació torna enrere tants passos
-    /// com pistes s'han tret, perquè la rotació continuï on era. Retorna quantes s'han tret.
+    /// les dels esdeveniments) i la torna a omplir amb la rotació actual. La rotació continua on era: pel pas de la primera
+    /// pista que s'ha tret. Retorna quantes s'han tret.
     /// </summary>
     public int Regenerate()
     {
-        int removed = _queue.RemoveWhere(i => i.Origin == QueueOrigin.AutoDj);
+        var removed = _queue.TakeWhere(i => i.Origin == QueueOrigin.AutoDj);
         lock (_sync)
         {
-            if (Rotation is { Steps.Count: > 0 } rotation && removed > 0)
-                NextStep = (((NextStep - removed) % rotation.Steps.Count) + rotation.Steps.Count) % rotation.Steps.Count;
+            RewindTo(removed);
             _retryAt = DateTimeOffset.MinValue;
         }
         Changed?.Invoke();
-        return removed;
+        return removed.Count;
+    }
+
+    /// <summary>
+    /// Torna el pas de la rotació al de la primera pista treta que en venia (de la rotació activa), perquè es torni a triar
+    /// des d'allà. No es compta quantes s'han tret: un pas que s'ha saltat (sense pistes) també fa avançar la rotació.
+    /// </summary>
+    private void RewindTo(IReadOnlyList<QueueItem> removed)
+    {
+        if (Rotation is not { Steps.Count: > 0 } rotation) return;
+        var first = removed.FirstOrDefault(i => i.RotationId == rotation.Id && i.RotationStep is not null);
+        if (first?.RotationStep is { } step) NextStep = step < rotation.Steps.Count ? step : 0;
     }
 
     /// <summary>Fil de control: si a la cua hi falten pistes, n'hi afegeix una. Barata quan no cal fer res.</summary>
@@ -236,8 +302,8 @@ public sealed class AutoDj
                 changed = true;
             }
 
-            // Si a la cua hi falten pistes, n'afegeix una
-            if (_queue.Upcoming.Count < _settings.MinUpcoming && now >= _retryAt)
+            // Si a la cua hi falten pistes (o música per davant, D-097), n'afegeix una
+            if (NeedsMore() && now >= _retryAt)
             {
                 var item = PickNext(DateOnly.FromDateTime(now.LocalDateTime), out string? problem);
                 if (item is null) _retryAt = now + _settings.RetryAfterNothing;
@@ -252,6 +318,43 @@ public sealed class AutoDj
         if (changed) Changed?.Invoke();
     }
 
+    /// <summary>
+    /// A la cua hi falten pistes: menys de <see cref="AutoDjSettings.MinUpcoming"/>, o menys de <see cref="AutoDjSettings.FillAhead"/>
+    /// de música per davant (sense passar de <see cref="AutoDjSettings.MaxUpcoming"/>). Una pista sense durada coneguda compta 3 minuts.
+    /// </summary>
+    private bool NeedsMore()
+    {
+        var upcoming = _queue.Upcoming;
+        if (upcoming.Count < _settings.MinUpcoming) return true;
+        if (_settings.FillAhead <= TimeSpan.Zero || upcoming.Count >= _settings.MaxUpcoming) return false;
+        long aheadMs = upcoming.Sum(i => i.PlannedMs ?? 180_000);
+        return aheadMs < _settings.FillAhead.TotalMilliseconds;
+    }
+
+    /// <summary>
+    /// Ha canviat el que tria l'AutoDJ (la rotació, els seus passos, una bossa o la separació; D-097): les pistes que hi ha
+    /// posat i encara no sonen es tornen a triar, com «Regenera la cua», perquè el canvi es noti de seguida. No es toca la que
+    /// ja s'està preparant per sonar (uns 20 s abans de la mescla: obrir-ne una altra en aquell moment podria no ser a temps),
+    /// ni les manuals ni les dels esdeveniments.
+    /// </summary>
+    /// <param name="rewind">La rotació torna al pas de la primera pista treta (la mateixa rotació continua on era).
+    /// Amb una rotació nova, no: ja comença pel primer pas.</param>
+    private void RefreshQueue(bool rewind = true)
+    {
+        if (_queue.Upcoming.Count == 0) return;
+        var preparing = _queue.NextInPreparation;
+        var removed = _queue.TakeWhere(i => i.Origin == QueueOrigin.AutoDj && i.Id != preparing);
+        lock (_sync)
+        {
+            if (rewind) RewindTo(removed);
+            _retryAt = DateTimeOffset.MinValue;
+        }
+    }
+
+    /// <summary>Una «empremta» dels passos d'una rotació, per saber si han canviat de debò (també la subcategoria de les bosses).</summary>
+    private static string StepsKey(Rotation? rotation) => rotation is null ? "" :
+        string.Join("|", rotation.Steps.Select(s => $"{s.CategoryId}/{s.SubcategoryId}/{s.TagId}/{s.BagId}/{s.Selection}/{s.RepeatRule}/{s.Sweeper}"));
+
     /// <summary>Tria la pista següent i avança el pas de la rotació. Retorna null si no hi ha res que pugui sonar.</summary>
     private QueueItem? PickNext(DateOnly today, out string? problem)
     {
@@ -265,6 +368,8 @@ public sealed class AutoDj
         if (pick.Track is null) return null;
 
         var item = QueueItem.FromTrack(pick.Track, QueueOrigin.AutoDj);
+        if (pick.StepIndex >= 0 && Rotation is { } rotation)
+            item = item with { RotationId = rotation.Id, RotationStep = pick.StepIndex };
         if (pick.Step?.Sweeper == true)
         {
             // Trepitjador (fase 3, pas 5): si no n'hi ha cap, la pista sona igual, sense sweeper, i es diu
@@ -344,7 +449,8 @@ public sealed class AutoDj
 
         // Reserva: música de tota la biblioteca (mai silenci)
         var (fallback, fallbackRelaxed) = Choose(_library.AvailableMusic(today), RotationSelection.LeastRecent, true, context, random);
-        string reason = rotation is null ? "No hi ha cap rotació" : $"Cap pas de la rotació «{rotation.Name}» no té pistes disponibles";
+        string reason = rotation is null ? "No hi ha cap rotació"
+            : $"Cap pas de la rotació «{rotation.Name}» no té pistes disponibles ({string.Join(", ", skipped.Distinct())})";
         if (fallback is null)
             return new PickResult(null, null, -1, null, $"{reason} i no hi ha cap música disponible a la biblioteca: l'AutoDJ no pot afegir res.", true);
         return new PickResult(fallback, null, -1, fallbackRelaxed, $"{reason}: sona música de tota la biblioteca.", true);
