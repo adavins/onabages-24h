@@ -23,4 +23,7 @@ contextBridge.exposeInMainWorld('onabages', {
 
   /** Alçada de la capçalera en píxels CSS: els botons de la finestra hi fan la mateixa alçada. */
   setTopbarHeight: (cssHeight) => ipcRenderer.send('ui:topbar-height', cssHeight),
+
+  /** Diàleg de Windows per triar un fitxer d'àudio (gestor de pistes). Retorna la ruta, o null si es cancel·la. */
+  chooseAudioFile: (defaultPath) => ipcRenderer.invoke('dialog:choose-audio-file', defaultPath),
 });

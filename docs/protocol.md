@@ -193,6 +193,7 @@ El `message` és en català i es pot mostrar a l'operador.
 - `fileState`: `ok`, `missing` (el fitxer falta) o `retired` (ha sortit d'una bossa renovable).
 
 - Pista (fase 3, pas 3a): també `album`, `lastPlayed` (l'última vegada que ha sonat, hora ISO, o `null`) i `playCount`.
+- `enabled` (fase 3, pas 7a): `false` si s'ha desactivat a mà (l'AutoDJ no la tria).
 - `type`: `music`, `sweeper`, `stationId`, `promo`, `commercial`, `program`, `news`, `timeAnnouncement`, `timeSignal`, `stream` o `other`.
 
 **Fitxa sencera** (`library.get`, `library.update`, `library.relink`; fase 3, pas 7a): el mateix i, a més:

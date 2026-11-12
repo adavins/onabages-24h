@@ -5,7 +5,7 @@
 // el port i el testimoni a la interfície. Aquí NO hi ha àudio ni base de dades: tot és al motor.
 // Tancar la finestra no atura el motor si l'operador no ho tria al diàleg de tancar (D-035, D-054).
 
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -211,6 +211,22 @@ ipcMain.handle('engine:find', () => findEngine());
 ipcMain.handle('app:close', () => {
   allowClose = true;
   mainWindow?.close();
+});
+
+// Gestor de pistes (fase 3, pas 7a): triar un fitxer d'àudio d'aquest ordinador (el motor comprova que existeix i es pot llegir).
+// Les extensions són les que accepta el motor (FolderImporter.AudioExtensions).
+ipcMain.handle('dialog:choose-audio-file', async (_event, defaultPath) => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Tria el fitxer d\'àudio',
+    defaultPath: typeof defaultPath === 'string' && defaultPath ? defaultPath : undefined,
+    properties: ['openFile'],
+    filters: [
+      { name: 'Àudio', extensions: ['mp3', 'wav', 'flac', 'm4a', 'mp4', 'aac', 'ogg', 'wma'] },
+      { name: 'Tots els fitxers', extensions: ['*'] },
+    ],
+  });
+  return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
 });
 
 // ---------------------------------------------------------------------------

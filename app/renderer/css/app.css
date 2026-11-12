@@ -646,6 +646,292 @@ body {
   text-decoration: none;
 }
 
+/* --- Gestor de pistes, pantalla «Biblioteca» (fase 3, pas 7a) --- */
+
+.tm-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr) 26rem;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.tm-tree,
+.tm-tracks,
+.tm-detail {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.5rem;
+  background: var(--ob-panel);
+}
+
+.tm-tree-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.tm-tree-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0;
+}
+
+.tm-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.2rem 0.75rem;
+  border: 0;
+  background: none;
+  color: var(--bs-body-color);
+  text-align: left;
+}
+
+.tm-tree-item:hover {
+  background: #22262c;
+}
+
+.tm-tree-item.active {
+  background: #2c3440;
+  font-weight: 600;
+}
+
+.tm-tree-item > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-tree-count {
+  color: var(--ob-muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tm-tree-heading {
+  margin: 0.6rem 0.75rem 0.2rem;
+  color: var(--ob-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tm-tree-category .tm-tree-item {
+  margin-top: 0.15rem;
+}
+
+.tm-tree-sub .tm-tree-item {
+  padding-left: 2.1rem;
+  font-size: 0.9rem;
+}
+
+.tm-search {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.tm-search input {
+  max-width: 26rem;
+}
+
+.tm-scope {
+  color: var(--ob-muted);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-results {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.tm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tm-row-button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.3rem 0.75rem;
+  border: 0;
+  border-bottom: 1px solid #22262c;
+  background: none;
+  color: var(--bs-body-color);
+  text-align: left;
+}
+
+.tm-row-button:hover {
+  background: #1f2328;
+}
+
+.tm-row-button.active {
+  background: #2c3440;
+}
+
+.tm-row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tm-row-title,
+.tm-row-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-row-artist,
+.tm-row-played,
+.tm-count {
+  color: var(--ob-muted);
+  font-size: 0.85rem;
+}
+
+.tm-row-badges {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.tm-row-played {
+  width: 6rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.tm-row-duration {
+  width: 3.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tm-count {
+  padding: 0.35rem 0.75rem;
+  border-top: 1px solid var(--ob-border);
+}
+
+.tm-detail {
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.tm-empty {
+  color: var(--ob-muted);
+  margin: 1rem 0.25rem;
+}
+
+.tm-head {
+  margin-bottom: 0.75rem;
+}
+
+.tm-head-title {
+  margin-bottom: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+.tm-head-badges {
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.tm-path {
+  color: var(--ob-muted);
+  font-family: var(--ob-mono);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.tm-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.tm-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0.25rem;
+}
+
+.tm-dirty {
+  font-size: 0.85rem;
+}
+
+.tm-problems {
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.tm-info {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 0.75rem;
+  margin: 0.75rem 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ob-border);
+  font-size: 0.85rem;
+}
+
+.tm-info dt {
+  color: var(--ob-muted);
+  font-weight: normal;
+}
+
+.tm-info dd {
+  margin: 0;
+}
+
+.tm-used {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.tm-file-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ob-border);
+}
+
+/* Pantalla estreta: l'arbre a dalt, la fitxa a sota */
+@media (max-width: 1200px) {
+  .tm-main {
+    grid-template-columns: 14rem minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .tm-tree {
+    grid-row: 1 / span 2;
+  }
+}
+
 /* Botó de la barra d'estat que no va a la dreta (el processador) */
 .statusbar-link {
   padding: 0;

@@ -16,6 +16,7 @@
     <nav class="sections" aria-label="Pantalles">
       <button id="nav-emissio" class="section active" type="button" aria-current="page"><i class="bi bi-broadcast" aria-hidden="true"></i> Emissió</button>
       <button id="nav-planificador" class="section" type="button"><i class="bi bi-calendar-week" aria-hidden="true"></i> Planificador</button>
+      <button id="nav-biblioteca" class="section" type="button"><i class="bi bi-collection-play" aria-hidden="true"></i> Biblioteca</button>
     </nav>
     <span id="zoom-indicator" class="zoom-indicator" aria-live="polite"></span>
     <span id="engine-status" class="engine-status status-connecting" role="status">
@@ -228,6 +229,33 @@
     </div>
   </div>
 
+  <!-- Gestor de pistes (fase 3, pas 7a; D-087): categories a l'esquerra, pistes al mig i la fitxa a la dreta -->
+  <div id="view-biblioteca" class="view d-none">
+    <div class="tm-main">
+      <aside class="tm-tree" aria-label="Categories">
+        <div class="tm-tree-tools">
+          <button id="tm-new-category" class="btn btn-sm btn-outline-secondary" type="button" title="Crea una categoria"><i class="bi bi-folder-plus" aria-hidden="true"></i> Categoria</button>
+          <button id="tm-new-subcategory" class="btn btn-sm btn-outline-secondary" type="button" title="Crea una subcategoria dins de la categoria triada"><i class="bi bi-plus-lg" aria-hidden="true"></i> Subcategoria</button>
+          <button id="tm-rename" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el nom de la categoria o subcategoria triada"><i class="bi bi-pencil" aria-hidden="true"></i><span class="visually-hidden">Canvia el nom</span></button>
+        </div>
+        <ul id="tm-tree-list" class="tm-tree-list"></ul>
+      </aside>
+
+      <section class="tm-tracks" aria-label="Pistes">
+        <div class="tm-search">
+          <input id="tm-search" class="form-control form-control-sm" type="search" placeholder="Cerca artista, títol, àlbum o ruta" aria-label="Cerca a la biblioteca">
+          <span id="tm-scope" class="tm-scope"></span>
+        </div>
+        <div id="tm-results" class="tm-results">
+          <ul id="tm-list" class="tm-list"></ul>
+        </div>
+        <div id="tm-count" class="tm-count" aria-live="polite"></div>
+      </section>
+
+      <aside id="tm-detail" class="tm-detail" aria-label="Fitxa de la pista"></aside>
+    </div>
+  </div>
+
   <footer class="statusbar">
     <span id="status-next"></span>
     <span id="status-output"></span>
@@ -250,6 +278,19 @@
       <div class="d-flex justify-content-end gap-2">
         <button id="confirm-cancel" class="btn btn-secondary" value="cancel">Cancel·la</button>
         <button id="confirm-ok" class="btn btn-danger" value="ok"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Demanar un text (p. ex. el nom d'una categoria) -->
+  <dialog id="text-dialog" class="ob-dialog">
+    <form method="dialog">
+      <h2 id="text-title" class="h5"></h2>
+      <label id="text-label" for="text-input" class="form-label"></label>
+      <input id="text-input" class="form-control mb-3" type="text" maxlength="100" autocomplete="off">
+      <div class="d-flex justify-content-end gap-2">
+        <button class="btn btn-secondary" value="cancel" formnovalidate>Cancel·la</button>
+        <button id="text-ok" class="btn btn-primary" value="ok"></button>
       </div>
     </form>
   </dialog>

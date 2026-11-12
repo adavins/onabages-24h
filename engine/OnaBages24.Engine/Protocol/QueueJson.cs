@@ -57,6 +57,8 @@ public static class QueueJson
         ["album"] = track.Album,
         ["lastPlayed"] = track.LastPlayed?.ToString("O"),
         ["playCount"] = track.PlayCount,
+        // Fase 3, pas 7a: per marcar les desactivades a la llista del gestor de pistes
+        ["enabled"] = track.Enabled,
         ["cueSource"] = track.CueSource switch
         {
             CueSource.RadioDj => "radiodj",

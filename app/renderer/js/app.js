@@ -18,6 +18,7 @@ import { LibraryView, TRACK_DRAG_TYPE } from './ui/library.js';
 import { AuxPlayersView } from './ui/aux-players.js';
 import { NotesView } from './ui/notes.js';
 import { ProcessorView } from './ui/processor.js';
+import { TrackManagerView } from './ui/track-manager.js';
 import { setupZoom, applyZoom } from './ui/zoom.js';
 import { setupWindowFrame } from './ui/window-frame.js';
 import { CollapsibleCards } from './ui/collapsible.js';
@@ -28,6 +29,7 @@ import { CollapsibleCards } from './ui/collapsible.js';
  *   findEngine: () => Promise<{ port: number, token: string } | null>,
  *   onCloseRequested: (callback: () => void) => void,
  *   closeWindow: () => Promise<void>,
+ *   chooseAudioFile: (defaultPath?: string) => Promise<string | null>,
  * }} Bridge
  */
 const bridge = /** @type {Bridge} */ (/** @type {any} */ (window).onabages);
@@ -103,6 +105,7 @@ queueView.acceptDrops(TRACK_DRAG_TYPE, (track, position) => library.add(track, p
 const auxPlayers = new AuxPlayersView(send, TRACK_DRAG_TYPE);
 const notes = new NotesView(send);
 const processor = new ProcessorView(send);
+const trackManager = new TrackManagerView(send, (path) => bridge.chooseAudioFile(path));
 
 // Pestanyes del quadre de la dreta: Cerca i Notes (fase 3, pas 4b)
 /** @param {'search' | 'notes'} name */
@@ -184,9 +187,9 @@ async function refreshNowPlayingStatus() {
 
 // --- Pantalles: Emissió i Planificador (fase 2, pas 8a). L'emissió continua igual, es mostri la que es mostri. ---
 
-/** @param {'emissio' | 'planificador'} name */
+/** @param {'emissio' | 'planificador' | 'biblioteca'} name */
 function showView(name) {
-  for (const view of /** @type {const} */ (['emissio', 'planificador'])) {
+  for (const view of /** @type {const} */ (['emissio', 'planificador', 'biblioteca'])) {
     const active = view === name;
     $(`view-${view}`).classList.toggle('d-none', !active);
     const tab = $(`nav-${view}`);
@@ -196,9 +199,12 @@ function showView(name) {
   }
   if (name === 'planificador') planner.show();
   else planner.hide();
+  if (name === 'biblioteca') trackManager.show();
+  else trackManager.hide();
 }
 $('nav-emissio').addEventListener('click', () => showView('emissio'));
 $('nav-planificador').addEventListener('click', () => showView('planificador'));
+$('nav-biblioteca').addEventListener('click', () => showView('biblioteca'));
 
 // Saltar a la següent: interromp la cançó, per tant demana confirmació
 // «Regenera la cua» (D-034): només canvia les pistes que ha posat l'AutoDJ i no interromp res, per això no demana confirmació
@@ -331,6 +337,12 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   client.addEventListener('ev:aux.failed', (e) => auxPlayers.failed(detail(e).player, detail(e).message));
   client.addEventListener('ev:notes.changed', (e) => notes.received(detail(e).text));
   client.addEventListener('ev:processor.changed', (e) => processor.render(detail(e).processor));
+  // Gestor de pistes (fase 3, pas 7a): una pista o les categories han canviat
+  client.addEventListener('ev:library.changed', (e) => {
+    const trackId = detail(e).trackId ?? null;
+    trackManager.libraryChanged(trackId);
+    if (trackId == null) library.refresh(); // els filtres de la cerca de l'Emissió (noms i comptes)
+  });
   client.addEventListener('ev:meters', (e) => {
     const ev = detail(e);
     meters.set(ev.output);
@@ -362,6 +374,7 @@ async function loadState() {
     auxPlayers.refresh();
     notes.refresh();
     processor.refresh();
+    trackManager.refresh(); // només si es mostra
   } catch (err) {
     console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }
