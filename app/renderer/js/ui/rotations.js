@@ -33,7 +33,44 @@ export class RotationsView {
     $('rt-new').addEventListener('click', () => this.#new());
     $('rt-duplicate').addEventListener('click', () => this.#duplicate());
     $('rt-delete').addEventListener('click', () => this.#delete());
+    for (const id of ['rt-sep-track', 'rt-sep-artist']) $(id).addEventListener('input', () => this.#separationEdited());
+    $('rt-sep-save').addEventListener('click', () => this.#saveSeparation());
     this.#renderEditor();
+  }
+
+  // --- Separació real (fase 3, pas 8b; D-095) ---
+
+  /** La desada al motor. @type {{ trackMinutes: number, artistMinutes: number } | null} */
+  #separation = null;
+
+  /** @param {{ trackMinutes: number, artistMinutes: number }} s */
+  #showSeparation(s) {
+    this.#separation = s;
+    /** @type {HTMLInputElement} */ ($('rt-sep-track')).value = String(s.trackMinutes);
+    /** @type {HTMLInputElement} */ ($('rt-sep-artist')).value = String(s.artistMinutes);
+    this.#separationEdited();
+  }
+
+  #separationValues() {
+    const read = (/** @type {string} */ id) => Number(/** @type {HTMLInputElement} */ ($(id)).value);
+    return { trackMinutes: read('rt-sep-track'), artistMinutes: read('rt-sep-artist') };
+  }
+
+  #separationEdited() {
+    const v = this.#separationValues();
+    const valid = [v.trackMinutes, v.artistMinutes].every((m) => Number.isInteger(m) && m >= 0 && m <= 10080);
+    const changed = !!this.#separation && (v.trackMinutes !== this.#separation.trackMinutes || v.artistMinutes !== this.#separation.artistMinutes);
+    /** @type {HTMLButtonElement} */ ($('rt-sep-save')).disabled = !valid || !changed;
+    $('rt-sep-state').textContent = !valid ? 'Minuts enters, de 0 a 10.080' : changed ? 'Canvis sense desar' : '';
+  }
+
+  async #saveSeparation() {
+    try {
+      this.#showSeparation(await this.#send('separation.set', this.#separationValues()));
+      $('rt-sep-state').textContent = 'Desat: val per a les cançons que es triïn a partir d\'ara';
+    } catch (err) {
+      $('rt-sep-state').textContent = /** @type {Error} */ (err).message;
+    }
   }
 
   show() {
@@ -58,13 +95,14 @@ export class RotationsView {
     }
     this.#loaded = true;
     try {
-      const [rotations, filters, autodj] = await Promise.all([
-        this.#send('rotations.list'), this.#send('library.filters'), this.#send('autodj.get'),
+      const [rotations, filters, autodj, separation] = await Promise.all([
+        this.#send('rotations.list'), this.#send('library.filters'), this.#send('autodj.get'), this.#send('separation.get'),
       ]);
       this.#rotations = rotations.rotations;
       this.#categories = filters.categories;
       this.#tags = filters.tags;
       this.#activeId = autodj.autodj.rotation?.id ?? null;
+      this.#showSeparation(separation);
     } catch {
       return; // sense connexió
     }
@@ -250,9 +288,64 @@ export class RotationsView {
     const problems = el('div', 'tm-problems text-warning');
     problems.id = 'rt-problems';
 
-    box.replaceChildren(head, el('div', 'rt-table-wrap'), add, actions, problems);
+    // Previsualització (fase 3, pas 8b): només de rotacions desades
+    const preview = el('div', 'rt-preview');
+    if (this.#rotation) {
+      const button = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-primary'));
+      button.type = 'button';
+      button.append(icon('bi-eye'), ' Previsualitza les properes 20 cançons');
+      button.title = 'Què triaria l\'AutoDJ amb aquesta rotació, ara mateix (sense canviar res)';
+      const list = el('div', 'rt-preview-list');
+      button.addEventListener('click', () => this.#preview(list));
+      preview.append(el('h3', 'h6 mt-3', 'Previsualització'), button, list);
+    }
+
+    box.replaceChildren(head, el('div', 'rt-table-wrap'), add, actions, problems, preview);
     /** @type {HTMLElement} */ (box.querySelector('.rt-table-wrap')).append(table);
     this.#updateActions();
+  }
+
+  /**
+   * Les properes cançons que triaria la rotació desada (rotations.preview), amb d'on surt cadascuna, quan ha sonat i si
+   * s'ha hagut d'afluixar alguna regla. @param {HTMLElement} box
+   */
+  async #preview(box) {
+    const rotation = this.#rotation;
+    if (!rotation) return;
+    box.replaceChildren(statusLabel('text-info', 'bi-hourglass-split', 'Calculant…'));
+    try {
+      const p = await this.#send('rotations.preview', { rotationId: rotation.id, count: 20 });
+      const notes = [];
+      if (this.dirty) notes.push(statusLabel('text-warning', 'bi-exclamation-triangle-fill', 'És la de la rotació desada: els canvis sense desar no hi compten.'));
+      notes.push(el('div', 'form-text', `${rotation.id === this.#activeId ? `És la rotació activa: comença pel pas ${p.fromStep + 1}, després de les cançons que ja són a la cua.` : 'Comença pel pas 1.'} ` +
+        `Separació: la mateixa cançó cada ${p.separation.trackMinutes} min; el mateix artista, cada ${p.separation.artistMinutes} min. Amb «a l'atzar», és una de les possibilitats.`));
+      const table = el('table', 'table table-sm rt-preview-table');
+      const tbody = el('tbody', '');
+      const now = new Date();
+      for (const [i, item] of p.items.entries()) {
+        const tr = el('tr', '');
+        const td = (/** @type {string | Node} */ content, /** @type {string} */ css = '') => {
+          const cell = el('td', css);
+          cell.append(content);
+          tr.append(cell);
+        };
+        td(String(i + 1), 'rt-index');
+        td(item.fallback ? statusLabel('text-warning', 'bi-life-preserver', 'Reserva') : `Pas ${item.stepIndex + 1}`, 'rt-preview-step');
+        const t = item.track;
+        td(t ? `${t.artist ? `${t.artist} - ` : ''}${t.title}` : '(cap pista)');
+        td(t ? playedText(t.lastPlayed, now) : '', 'rt-preview-played');
+        const flags = el('span', '');
+        if (item.relaxed) flags.append(statusLabel('text-warning', 'bi-exclamation-circle', `S'ha afluixat: ${item.relaxed}`));
+        if (item.problem) flags.title = item.problem;
+        if (item.problem && !item.fallback) flags.append(' ', statusLabel('text-body-secondary', 'bi-skip-forward', 'Pas saltat'));
+        td(flags);
+        tbody.append(tr);
+      }
+      table.append(tbody);
+      box.replaceChildren(...notes, table);
+    } catch (err) {
+      box.replaceChildren(statusLabel('text-danger', 'bi-x-octagon-fill', /** @type {Error} */ (err).message));
+    }
   }
 
   /** @param {import('../rotation-form.js').FormStep} step @param {number} index */
@@ -343,6 +436,15 @@ export class RotationsView {
       await confirmAction({ title: 'No s\'ha pogut desar la rotació', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
     }
   }
+}
+
+/** «Ha sonat fa 3 h» / «fa 2 dies» / «mai». @param {string | null} iso @param {Date} now */
+function playedText(iso, now) {
+  if (!iso) return 'Mai no ha sonat';
+  const minutes = Math.round((now.getTime() - new Date(iso).getTime()) / 60000);
+  if (minutes < 60) return `Ha sonat fa ${Math.max(0, minutes)} min`;
+  if (minutes < 48 * 60) return `Ha sonat fa ${Math.round(minutes / 60)} h`;
+  return `Ha sonat fa ${Math.round(minutes / 1440)} dies`;
 }
 
 /** @param {string} value @param {string} text */

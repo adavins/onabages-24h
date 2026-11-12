@@ -225,11 +225,12 @@ public class AutoDjTests : IDisposable
         long few = AddTrack(a, "Poc", change: t => t with { PlayCount = 2, LastPlayed = DateTimeOffset.UtcNow });
         long some = AddTrack(a, "Força", change: t => t with { PlayCount = 10, LastPlayed = DateTimeOffset.UtcNow.AddDays(-30) });
         var autoDj = NewAutoDj(minUpcoming: 3);
+        autoDj.Separation = new SeparationRules(TimeSpan.Zero, TimeSpan.Zero); // aquí només es prova la selecció (la separació, a SeparationTests)
         autoDj.Configure(true, _rotations.Save("R", [Step(a, RotationSelection.LeastPlayed)]));
 
         for (int i = 0; i < 3; i++) autoDj.Tick();
 
-        // Per nombre de reproduccions, encara que «Poc» acabi de sonar
+        // Per nombre de reproduccions, encara que «Poc» acabi de sonar (sense separació de temps)
         Assert.Equal([few, some, many], _queue.Upcoming.Select(i => i.TrackId!.Value));
     }
 

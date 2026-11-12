@@ -273,6 +273,19 @@
           <button id="rt-delete" class="btn btn-sm btn-outline-danger" type="button" title="Esborra la rotació triada"><i class="bi bi-trash" aria-hidden="true"></i><span class="visually-hidden">Esborra</span></button>
         </div>
         <ul id="rt-list" class="rt-list"></ul>
+        <!-- Separació real (fase 3, pas 8b; D-095): per a tots els passos amb «no repetir» -->
+        <div class="rt-separation">
+          <div class="rt-separation-title">Separació (passos amb «no repetir»)</div>
+          <label for="rt-sep-track" class="form-label small mb-0">La mateixa cançó, com a mínim cada (min)</label>
+          <input id="rt-sep-track" class="form-control form-control-sm mb-1" type="number" min="0" max="10080" step="5">
+          <label for="rt-sep-artist" class="form-label small mb-0">El mateix artista, com a mínim cada (min)</label>
+          <input id="rt-sep-artist" class="form-control form-control-sm mb-1" type="number" min="0" max="10080" step="5">
+          <div class="d-flex align-items-center gap-2">
+            <button id="rt-sep-save" class="btn btn-sm btn-outline-primary" type="button" disabled>Desa</button>
+            <span id="rt-sep-state" class="form-text m-0"></span>
+          </div>
+          <p class="form-text mb-0">Si una bossa no té prou cançons per complir-ho, s'afluixa (mai silenci). 0 = sense temps mínim.</p>
+        </div>
       </aside>
       <section id="rt-editor" class="rt-editor" aria-label="Editor de la rotació"></section>
     </div>

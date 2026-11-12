@@ -135,6 +135,10 @@ public static class EngineServer
         if (library.CloseOpenHistory() is var closed and > 0)
             log.LogInformation("Historial: {Count} pistes que sonaven quan el motor es va aturar, tancades com a tallades", closed);
         ConfigureAutoDj(autoDj, library, log);
+        // Separació real (fase 3, pas 8b; D-095): la desada, o cançó 6 h i artista 1 h
+        autoDj.Separation = CommandRouter.ReadSeparation(library);
+        log.LogInformation("Separació: la mateixa cançó cada {Track} min com a mínim; el mateix artista, {Artist} min",
+            autoDj.Separation.Track.TotalMinutes, autoDj.Separation.Artist.TotalMinutes);
         ConfigureSweepers(autoDj, library, log);
         // La categoria de sweepers es desa cada vegada que canvia (a mà o amb l'acció SWEEPERS): es manté si el motor es reinicia
         autoDj.SweepersChanged += subcategoryId =>

@@ -1226,6 +1226,29 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.rt-separation {
+  padding: 0.6rem 0.75rem;
+  border-top: 1px solid var(--ob-border);
+}
+
+.rt-separation-title {
+  font-size: 0.8rem;
+  color: var(--ob-muted);
+  margin-bottom: 0.3rem;
+}
+
+.rt-preview-table {
+  --bs-table-bg: transparent;
+  font-size: 0.85rem;
+  margin-top: 0.4rem;
+}
+
+.rt-preview-step,
+.rt-preview-played {
+  white-space: nowrap;
+  color: var(--ob-muted);
+}
+
 .rt-tools {
   display: inline-flex;
   gap: 0.25rem;

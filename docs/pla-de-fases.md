@@ -114,7 +114,7 @@ Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al
    - 7e. ✔ Editor senzill de punts (D-093): sense escolta; forma d'ona en dB en tres vistes, punts arrossegables o escrits, «Desa» (manuals) i «Recalcula».
 8. Rotacions: editor, separació real, previsualització, bosses amb nom (D-014) i rotació de reserva. En parts (D-094):
    - 8a. ✔ Editor de rotacions: pantalla «Rotacions» (llista, nova, duplica, esborra; passos que s'afegeixen, mouen i treuen), `rotations.save` / `rotations.delete`.
-   - 8b. Separació real (cançó 6 h, artista 1 h, configurable; s'afluixa si cal) i previsualització.
+   - 8b. ✔ Separació real (cançó 6 h, artista 1 h, configurable; s'afluixa per ordre si cal) i previsualització de les properes 20 cançons (D-095).
    - 8c. Bosses amb nom, a mà i amb l'acció del planificador «Canvia la bossa».
    - 8d. Rotació de reserva i subcategories «no de reserva».
 9. Prova de tancament (criteri de sota).

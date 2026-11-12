@@ -19,14 +19,27 @@ public sealed record AutoDjSettings
 }
 
 /// <summary>
+/// Separació real (fase 3, pas 8b; D-095): quant ha de passar, com a mínim, perquè torni a sonar la mateixa cançó o el
+/// mateix artista (només als passos amb criteris de repetició). Zero = sense límit de temps (només el que és a la cua).
+/// </summary>
+public sealed record SeparationRules(TimeSpan Track, TimeSpan Artist)
+{
+    /// <summary>La de la primera vegada (decisió del desenvolupador): cançó 6 hores, artista 1 hora.</summary>
+    public static SeparationRules Default { get; } = new(TimeSpan.FromHours(6), TimeSpan.FromHours(1));
+
+    /// <summary>Com a molt, una setmana (més no té sentit i podria deixar una bossa sense res).</summary>
+    public static readonly TimeSpan Max = TimeSpan.FromDays(7);
+}
+
+/// <summary>
 /// AutoDJ (fase 1, pas 8; D-014): quan a la cua hi ha menys de <see cref="AutoDjSettings.MinUpcoming"/> pistes, hi afegeix
 /// la del pas següent de la rotació. Cada pas tria una pista de la seva subcategoria (o categoria), amb l'etiqueta si en té:
 /// - «la menys reproduïda recentment»: la que fa més temps que no sona (si n'hi ha diverses que no han sonat mai, a l'atzar);
 /// - «la menys reproduïda»: la que ha sonat menys vegades (si n'hi ha diverses, a l'atzar);
 /// - «aleatòria»: qualsevol.
-/// Criteris de repetició (de moment, els de RadioDJ a l'emissora; la separació en minuts arriba a la fase 3):
-/// mai una pista que ja és a la cua o sona; si el pas ho demana, tampoc un artista que ja hi és. Si així no en queda cap,
-/// s'afluixen (primer l'artista i després la pista), com RadioDJ, que «reinicia» la subcategoria.
+/// Criteris de repetició (fase 3, pas 8b; D-095): mai una pista que ja és a la cua o sona; si el pas ho demana, tampoc una
+/// cançó que ha sonat fa menys de <see cref="Separation"/>.Track ni un artista que és a la cua o ha sonat fa menys de
+/// <see cref="Separation"/>.Artist. Si així no en queda cap, s'afluixen per ordre, com RadioDJ, que «reinicia» la subcategoria.
 /// Si un pas no troba res, se salta (amb un avís); si cap pas no troba res, sona música de tota la biblioteca. Mai silenci.
 ///
 /// Treballa al fil de control (<see cref="Tick"/>), com el reproductor de la cua.
@@ -57,6 +70,9 @@ public sealed class AutoDj
 
     /// <summary>L'AutoDJ afegeix pistes a la cua.</summary>
     public bool Enabled { get; private set; }
+
+    /// <summary>Separació real (D-095). Es pot canviar en qualsevol moment; val per a les pistes que es triïn després.</summary>
+    public SeparationRules Separation { get; set; } = SeparationRules.Default;
 
     /// <summary>La rotació activa (null si no n'hi ha cap: llavors sona música de tota la biblioteca).</summary>
     public Rotation? Rotation { get; private set; }
@@ -239,46 +255,99 @@ public sealed class AutoDj
     /// <summary>Tria la pista següent i avança el pas de la rotació. Retorna null si no hi ha res que pugui sonar.</summary>
     private QueueItem? PickNext(DateOnly today, out string? problem)
     {
-        problem = null;
         var inQueue = new List<QueueItem>(_queue.Upcoming);
         if (_queue.Current is { } current) inQueue.Add(current);
-        var queuedIds = inQueue.Where(i => i.TrackId is not null).Select(i => i.TrackId!.Value).ToHashSet();
-        var queuedArtists = inQueue.Select(i => i.Artist.Trim()).Where(a => a.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var context = NewContext(inQueue, _clock());
+        int next = NextStep;
+        var pick = Pick(Rotation, ref next, today, context, _random);
+        NextStep = next;
+        problem = pick.Problem;
+        if (pick.Track is null) return null;
 
+        var item = QueueItem.FromTrack(pick.Track, QueueOrigin.AutoDj);
+        if (pick.Step?.Sweeper == true)
+        {
+            // Trepitjador (fase 3, pas 5): si no n'hi ha cap, la pista sona igual, sense sweeper, i es diu
+            item = item with { Sweeper = PickSweeper(today, inQueue, out string? sweeperProblem) };
+            if (sweeperProblem is not null) problem = problem is null ? sweeperProblem : $"{problem}. {sweeperProblem}";
+        }
+        return item;
+    }
+
+    /// <summary>Una tria: la pista (o null), el pas d'on surt, la regla de repetició que s'ha hagut d'afluixar, l'avís i si és de la reserva.</summary>
+    private sealed record PickResult(Track? Track, RotationStep? Step, int StepIndex, string? Relaxed, string? Problem, bool Fallback);
+
+    /// <summary>El que ja és a la cua (o ja s'ha triat, a la previsualització) i el que ha sonat fa poc: per als criteris de repetició.</summary>
+    private sealed class PickContext
+    {
+        public required HashSet<long> QueuedIds { get; init; }
+        public required HashSet<string> QueuedArtists { get; init; }
+        public required HashSet<string> RecentArtists { get; init; }
+        public required DateTimeOffset Now { get; init; }
+
+        /// <summary>Una pista triada passa a ser «a la cua» (per a la tria següent).</summary>
+        public void Add(Track track)
+        {
+            QueuedIds.Add(track.Id);
+            if (ArtistKey(track) is { Length: > 0 } a) QueuedArtists.Add(a);
+        }
+    }
+
+    private static string ArtistKey(Track track) => track.Artist.Trim();
+
+    private PickContext NewContext(IEnumerable<QueueItem> inQueue, DateTimeOffset now)
+    {
+        var items = inQueue.ToList();
+        // Els artistes que han sonat dins de la separació d'artista (historial)
+        var recent = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (Separation.Artist > TimeSpan.Zero)
+        {
+            try
+            {
+                foreach (var entry in _library.History(now - Separation.Artist, now + TimeSpan.FromMinutes(1)))
+                    if (entry.Artist.Trim() is { Length: > 0 } a) recent.Add(a);
+            }
+            catch (DatabaseException) { /* sense historial, només la cua */ }
+        }
+        return new PickContext
+        {
+            QueuedIds = items.Where(i => i.TrackId is not null).Select(i => i.TrackId!.Value).ToHashSet(),
+            QueuedArtists = items.Select(i => i.Artist.Trim()).Where(a => a.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase),
+            RecentArtists = recent,
+            Now = now,
+        };
+    }
+
+    /// <summary>
+    /// Tria una pista de la rotació a partir del pas <paramref name="next"/> (que avança). Si un pas no troba res, se salta;
+    /// si cap no troba res, música de tota la biblioteca (mai silenci). La fan servir l'AutoDJ i la previsualització.
+    /// </summary>
+    private PickResult Pick(Rotation? rotation, ref int next, DateOnly today, PickContext context, Random random)
+    {
         var skipped = new List<string>();
-        if (Rotation is { Steps.Count: > 0 } rotation)
+        if (rotation is { Steps.Count: > 0 })
         {
             for (int attempt = 0; attempt < rotation.Steps.Count; attempt++)
             {
-                var step = rotation.Steps[NextStep % rotation.Steps.Count];
-                NextStep = (NextStep + 1) % rotation.Steps.Count;
-                var track = Choose(_library.TracksForRotationStep(step, today), step.Selection, step.RepeatRule, queuedIds, queuedArtists);
+                int index = next % rotation.Steps.Count;
+                var step = rotation.Steps[index];
+                next = (index + 1) % rotation.Steps.Count;
+                var (track, relaxed) = Choose(_library.TracksForRotationStep(step, today), step.Selection, step.RepeatRule, context, random);
                 if (track is not null)
                 {
-                    if (skipped.Count > 0) problem = $"Rotació «{rotation.Name}»: sense pistes disponibles a {string.Join(", ", skipped)}; s'ha saltat";
-                    var item = QueueItem.FromTrack(track, QueueOrigin.AutoDj);
-                    if (step.Sweeper)
-                    {
-                        // Trepitjador (fase 3, pas 5): si no n'hi ha cap, la pista sona igual, sense sweeper, i es diu
-                        item = item with { Sweeper = PickSweeper(today, inQueue, out string? sweeperProblem) };
-                        if (sweeperProblem is not null) problem = problem is null ? sweeperProblem : $"{problem}. {sweeperProblem}";
-                    }
-                    return item;
+                    string? problem = skipped.Count > 0 ? $"Rotació «{rotation.Name}»: sense pistes disponibles a {string.Join(", ", skipped)}; s'ha saltat" : null;
+                    return new PickResult(track, step, index, relaxed, problem, false);
                 }
                 skipped.Add($"«{step}»");
             }
         }
 
         // Reserva: música de tota la biblioteca (mai silenci)
-        var fallback = Choose(_library.AvailableMusic(today), RotationSelection.LeastRecent, true, queuedIds, queuedArtists);
-        string reason = Rotation is null ? "No hi ha cap rotació" : $"Cap pas de la rotació «{Rotation.Name}» no té pistes disponibles";
+        var (fallback, fallbackRelaxed) = Choose(_library.AvailableMusic(today), RotationSelection.LeastRecent, true, context, random);
+        string reason = rotation is null ? "No hi ha cap rotació" : $"Cap pas de la rotació «{rotation.Name}» no té pistes disponibles";
         if (fallback is null)
-        {
-            problem = $"{reason} i no hi ha cap música disponible a la biblioteca: l'AutoDJ no pot afegir res.";
-            return null;
-        }
-        problem = $"{reason}: sona música de tota la biblioteca.";
-        return QueueItem.FromTrack(fallback, QueueOrigin.AutoDj);
+            return new PickResult(null, null, -1, null, $"{reason} i no hi ha cap música disponible a la biblioteca: l'AutoDJ no pot afegir res.", true);
+        return new PickResult(fallback, null, -1, fallbackRelaxed, $"{reason}: sona música de tota la biblioteca.", true);
     }
 
     /// <summary>
@@ -294,8 +363,14 @@ public sealed class AutoDj
             return null;
         }
         var step = new RotationStep { SubcategoryId = id, Selection = RotationSelection.LeastRecent, RepeatRule = false };
-        var alreadyUsed = inQueue.Select(i => i.Sweeper?.TrackId).OfType<long>().ToHashSet();
-        var track = Choose(_library.TracksForRotationStep(step, today), RotationSelection.LeastRecent, false, alreadyUsed, []);
+        var context = new PickContext
+        {
+            QueuedIds = inQueue.Select(i => i.Sweeper?.TrackId).OfType<long>().ToHashSet(),
+            QueuedArtists = new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            RecentArtists = new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            Now = _clock(),
+        };
+        var (track, _) = Choose(_library.TracksForRotationStep(step, today), RotationSelection.LeastRecent, false, context, _random);
         if (track is null)
         {
             problem = $"No hi ha cap sweeper disponible a «{SweepersName}»: la pista sona sense";
@@ -304,19 +379,56 @@ public sealed class AutoDj
         return QueueItem.FromTrack(track, QueueOrigin.AutoDj);
     }
 
-    /// <summary>Tria una pista d'entre les candidates, amb els criteris de repetició i, si n'hi ha, amb punts d'encadenament.</summary>
-    private Track? Choose(IReadOnlyList<Track> candidates, RotationSelection selection, bool repeatRule,
-        HashSet<long> queuedIds, HashSet<string> queuedArtists)
+    /// <summary>
+    /// Tria una pista d'entre les candidates. Amb els criteris de repetició (fase 3, pas 8b; D-095): no una pista que ja és a
+    /// la cua; no una que hagi sonat fa menys de <see cref="SeparationRules.Track"/>; no un artista que és a la cua o que ha
+    /// sonat fa menys de <see cref="SeparationRules.Artist"/>. Si així no en queda cap, s'afluixen per ordre (la separació
+    /// d'artista, la de cançó, l'artista de la cua i, al final, la pista de la cua): mai silenci. Retorna quina s'ha afluixat.
+    /// Sense criteris de repetició (sweepers, jingles), només s'evita el que ja és a la cua.
+    /// </summary>
+    private (Track? Track, string? Relaxed) Choose(IReadOnlyList<Track> candidates, RotationSelection selection, bool repeatRule,
+        PickContext context, Random random)
     {
-        if (candidates.Count == 0) return null;
+        if (candidates.Count == 0) return (null, null);
 
-        List<Track> pool = candidates.Where(t => !queuedIds.Contains(t.Id)).ToList();
-        if (repeatRule)
+        var notQueued = candidates.Where(t => !context.QueuedIds.Contains(t.Id)).ToList();
+        List<Track> pool;
+        string? relaxed = null;
+        if (!repeatRule)
         {
-            var otherArtists = pool.Where(t => !queuedArtists.Contains(t.Artist.Trim())).ToList();
-            if (otherArtists.Count > 0) pool = otherArtists; // si no, s'afluixa la regla de l'artista
+            pool = notQueued.Count > 0 ? notQueued : candidates.ToList();
         }
-        if (pool.Count == 0) pool = candidates.ToList(); // totes ja són a la cua: s'afluixa també la de la pista
+        else
+        {
+            var separation = Separation;
+            var trackCut = context.Now - separation.Track;
+            bool TrackRested(Track t) => separation.Track <= TimeSpan.Zero || t.LastPlayed is not { } last || last <= trackCut;
+            bool ArtistNotQueued(Track t) => ArtistKey(t) is not { Length: > 0 } a || !context.QueuedArtists.Contains(a);
+            bool ArtistRested(Track t) => ArtistNotQueued(t) && (ArtistKey(t) is not { Length: > 0 } a || !context.RecentArtists.Contains(a));
+
+            (Func<Track, bool> Test, string? Relaxed)[] stages =
+            [
+                (t => TrackRested(t) && ArtistRested(t), null),
+                (t => TrackRested(t) && ArtistNotQueued(t), "separació d'artista"),
+                (ArtistNotQueued, "separació de cançó"),
+                (_ => true, "artista que ja és a la cua"),
+            ];
+            pool = [];
+            foreach (var (test, stageRelaxed) in stages)
+            {
+                pool = notQueued.Where(test).ToList();
+                if (pool.Count > 0)
+                {
+                    relaxed = stageRelaxed;
+                    break;
+                }
+            }
+            if (pool.Count == 0)
+            {
+                pool = candidates.ToList(); // totes ja són a la cua
+                relaxed = "cançó que ja és a la cua";
+            }
+        }
 
         // Les que encara no tenen punts d'encadenament (s'estan calculant) només si no n'hi ha d'altres (D-026)
         var withCues = pool.Where(t => t.MixMs is not null).ToList();
@@ -332,6 +444,41 @@ public sealed class AutoDj
             long fewest = pool.Min(t => t.PlayCount);
             pool = pool.Where(t => t.PlayCount == fewest).ToList();
         }
-        return pool[_random.Next(pool.Count)];
+        return (pool[random.Next(pool.Count)], relaxed);
+    }
+
+    // --- Previsualització (fase 3, pas 8b; D-095) ---
+
+    /// <summary>Una pista de la previsualització: el pas (null si és de la reserva), la pista i què s'ha hagut d'afluixar.</summary>
+    public sealed record PreviewItem(int StepIndex, RotationStep? Step, Track? Track, string? Relaxed, string? Problem, bool Fallback);
+
+    /// <summary>
+    /// Les properes <paramref name="count"/> pistes que triaria una rotació, <b>sense canviar res</b> (ni la cua ni el pas de
+    /// la rotació): amb la mateixa tria que l'AutoDJ, comptant el que ja és a la cua i el que ha sonat fa poc. Si és la
+    /// rotació activa, comença pel pas següent; si no, pel primer. Amb «a l'atzar», és una de les possibilitats.
+    /// </summary>
+    public IReadOnlyList<PreviewItem> Preview(Rotation rotation, int count)
+    {
+        var now = _clock();
+        var today = DateOnly.FromDateTime(now.LocalDateTime);
+        List<QueueItem> inQueue;
+        int next;
+        lock (_sync)
+        {
+            inQueue = new List<QueueItem>(_queue.Upcoming);
+            if (_queue.Current is { } current) inQueue.Add(current);
+            next = Rotation?.Id == rotation.Id ? NextStep : 0;
+        }
+        var context = NewContext(inQueue, now);
+        var random = new Random();
+        var list = new List<PreviewItem>();
+        for (int i = 0; i < count; i++)
+        {
+            var pick = Pick(rotation, ref next, today, context, random);
+            list.Add(new PreviewItem(pick.StepIndex, pick.Step, pick.Track, pick.Relaxed, pick.Problem, pick.Fallback));
+            if (pick.Track is null) break;
+            context.Add(pick.Track);
+        }
+        return list;
     }
 }

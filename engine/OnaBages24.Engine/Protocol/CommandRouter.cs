@@ -165,6 +165,9 @@ public sealed class CommandRouter
                 "rotations.list" => RotationsList(),
                 "rotations.save" => RotationsSave(msg),
                 "rotations.delete" => RotationsDelete(msg),
+                "rotations.preview" => RotationsPreview(msg),
+                "separation.get" => SeparationJson(AutoDjOrError().Separation),
+                "separation.set" => SeparationSet(msg),
                 "history.list" => HistoryList(msg),
                 "nowplaying.get" => new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(NowPlayingOrError()) },
                 "nowplaying.set" => NowPlayingSet(msg),
@@ -1368,6 +1371,84 @@ public sealed class CommandRouter
         _autoDj?.RotationsEdited();
         RotationsChanged?.Invoke();
         return new JsonObject { ["rotation"] = QueueJson.Rotation(rotations.Get(id)!) };
+    }
+
+    // --- Separació real i previsualització (fase 3, pas 8b; D-095) ---
+
+    /// <summary>Clau de la configuració amb la separació real: <c>{ "trackMinutes": 360, "artistMinutes": 60 }</c>.</summary>
+    public const string SeparationSettingKey = "separacio";
+
+    /// <summary>La separació desada (o la per defecte, si no n'hi ha o no és vàlida).</summary>
+    public static SeparationRules ReadSeparation(Library? library)
+    {
+        try
+        {
+            if (library?.GetSetting(SeparationSettingKey) is { } json && JsonNode.Parse(json) is JsonObject saved)
+            {
+                double track = saved["trackMinutes"]?.GetValue<double>() ?? SeparationRules.Default.Track.TotalMinutes;
+                double artist = saved["artistMinutes"]?.GetValue<double>() ?? SeparationRules.Default.Artist.TotalMinutes;
+                double max = SeparationRules.Max.TotalMinutes;
+                if (track is >= 0 && track <= max && artist >= 0 && artist <= max)
+                    return new SeparationRules(TimeSpan.FromMinutes(track), TimeSpan.FromMinutes(artist));
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException) { }
+        return SeparationRules.Default;
+    }
+
+    private static JsonObject SeparationJson(SeparationRules s) => new()
+    {
+        ["trackMinutes"] = (int)Math.Round(s.Track.TotalMinutes),
+        ["artistMinutes"] = (int)Math.Round(s.Artist.TotalMinutes),
+    };
+
+    /// <summary>Canvia la separació real: <c>trackMinutes</c> i <c>artistMinutes</c> (de 0 a 10.080, una setmana), tots dos opcionals.</summary>
+    private JsonObject SeparationSet(JsonObject msg)
+    {
+        var autoDj = AutoDjOrError();
+        var current = autoDj.Separation;
+        int max = (int)SeparationRules.Max.TotalMinutes;
+        TimeSpan Read(string field, TimeSpan fallback)
+        {
+            if (msg[field] is null) return fallback;
+            if (msg[field] is not JsonValue v || !v.TryGetValue(out int minutes) || minutes < 0 || minutes > max)
+                throw new BadParamsException($"El camp '{field}' ha de ser un nombre de minuts entre 0 i {max:N0}.");
+            return TimeSpan.FromMinutes(minutes);
+        }
+        var rules = new SeparationRules(Read("trackMinutes", current.Track), Read("artistMinutes", current.Artist));
+        autoDj.Separation = rules;
+        var result = SeparationJson(rules);
+        _library?.SetSetting(SeparationSettingKey, result.ToJsonString());
+        return result;
+    }
+
+    /// <summary>
+    /// Les properes pistes que triaria una rotació, sense canviar res: <c>rotationId</c>, <c>count</c> (per defecte 20, com a
+    /// molt 100). Cada una amb el pas d'on surt (o la reserva), la regla que s'ha hagut d'afluixar i l'avís, si n'hi ha.
+    /// </summary>
+    private JsonObject RotationsPreview(JsonObject msg)
+    {
+        var rotations = _rotations ?? throw new BadParamsException("El motor no té rotacions.");
+        var autoDj = AutoDjOrError();
+        long id = RequiredId(msg, "rotationId");
+        var rotation = rotations.Get(id) ?? throw new BadParamsException($"No existeix la rotació {id}.");
+        int count = Math.Clamp(ReadInt(msg["count"]) ?? 20, 1, 100);
+        var items = autoDj.Preview(rotation, count);
+        return new JsonObject
+        {
+            ["rotationId"] = id,
+            ["fromStep"] = autoDj.Rotation?.Id == id ? autoDj.NextStep : 0,
+            ["separation"] = SeparationJson(autoDj.Separation),
+            ["items"] = new JsonArray(items.Select(i => (JsonNode)new JsonObject
+            {
+                ["stepIndex"] = i.StepIndex,
+                ["step"] = i.Step?.ToString(),
+                ["track"] = i.Track is null ? null : QueueJson.Track(i.Track),
+                ["relaxed"] = i.Relaxed,
+                ["problem"] = i.Problem,
+                ["fallback"] = i.Fallback,
+            }).ToArray()),
+        };
     }
 
     /// <summary>Esborra una rotació: <c>rotationId</c>. No es pot si és l'activa o si la posa algun esdeveniment (es diu quins).</summary>
