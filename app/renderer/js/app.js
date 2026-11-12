@@ -20,6 +20,8 @@ import { NotesView } from './ui/notes.js';
 import { ProcessorView } from './ui/processor.js';
 import { TrackManagerView } from './ui/track-manager.js';
 import { ImportView } from './ui/import.js';
+import { FoldersView } from './ui/folders.js';
+import { folderWarnings } from './folders-text.js';
 import { setupZoom, applyZoom } from './ui/zoom.js';
 import { setupWindowFrame } from './ui/window-frame.js';
 import { CollapsibleCards } from './ui/collapsible.js';
@@ -107,7 +109,8 @@ queueView.acceptDrops(TRACK_DRAG_TYPE, (track, position) => library.add(track, p
 const auxPlayers = new AuxPlayersView(send, TRACK_DRAG_TYPE);
 const notes = new NotesView(send);
 const processor = new ProcessorView(send);
-const trackManager = new TrackManagerView(send, (path) => bridge.chooseAudioFile(path));
+const folders = new FoldersView(send, (path) => bridge.chooseFolder(path));
+const trackManager = new TrackManagerView(send, (path) => bridge.chooseAudioFile(path), folders);
 const importView = new ImportView(send, (path) => bridge.chooseFolder(path), () => trackManager.importContext());
 
 // Pestanyes del quadre de la dreta: Cerca i Notes (fase 3, pas 4b)
@@ -157,8 +160,17 @@ async function loadUiSettings() {
 
 $('tab-search').addEventListener('click', () => showSideTab('search'));
 $('tab-notes').addEventListener('click', () => showSideTab('notes'));
-const problems = { autodj: /** @type {string | null} */ (null), output: /** @type {string | null} */ (null) };
+const problems = {
+  autodj: /** @type {string | null} */ (null),
+  output: /** @type {string | null} */ (null),
+  /** Les carpetes vigilades que no es poden revisar o tenen fitxers que falten (fase 3, pas 7c-2). @type {string[]} */
+  folders: [],
+};
 renderWarnings(problems);
+folders.onChange((list) => {
+  problems.folders = folderWarnings(list);
+  renderWarnings(problems);
+});
 
 /** @param {any} queue  docs/protocol.md, 4.2 */
 function showQueue(queue) {
@@ -241,7 +253,7 @@ $('btn-skip').addEventListener('click', async () => {
 
 // Els avisos, sencers, en clicar el comptador de la barra de sota
 $('status-warnings').addEventListener('click', () => {
-  const list = [problems.output, problems.autodj].filter(Boolean);
+  const list = [problems.output, problems.autodj, ...problems.folders].filter(Boolean);
   if (list.length === 0) return;
   confirmAction({ title: 'Avisos', message: list.join('\n\n'), confirm: 'D\'acord', info: true });
 });
@@ -348,6 +360,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   client.addEventListener('ev:notes.changed', (e) => notes.received(detail(e).text));
   client.addEventListener('ev:processor.changed', (e) => processor.render(detail(e).processor));
   client.addEventListener('ev:library.importProgress', (e) => importView.show(detail(e).import));
+  client.addEventListener('ev:folders.changed', (e) => folders.update(detail(e).folders));
   // Gestor de pistes (fase 3, pas 7a): una pista o les categories han canviat
   client.addEventListener('ev:library.changed', (e) => {
     const trackId = detail(e).trackId ?? null;
@@ -387,6 +400,7 @@ async function loadState() {
     processor.refresh();
     trackManager.refresh(); // només si es mostra
     importView.refresh();
+    folders.refresh();
   } catch (err) {
     console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }

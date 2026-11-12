@@ -42,13 +42,20 @@ export class TrackManagerView {
   /** Llegeix el formulari de la fitxa oberta. @type {(() => import('../track-form.js').TrackFormValues) | null} */
   #readForm = null;
 
+  /** Carpetes vigilades (marques a l'arbre i el diàleg de la carpeta). @type {import('./folders.js').FoldersView} */
+  #folders;
+
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
    * @param {(defaultPath?: string) => Promise<string | null>} chooseFile  diàleg de Windows per triar un fitxer d'àudio
+   * @param {import('./folders.js').FoldersView} folders
    */
-  constructor(send, chooseFile) {
+  constructor(send, chooseFile, folders) {
     this.#send = send;
     this.#chooseFile = chooseFile;
+    this.#folders = folders;
+    folders.onChange(() => this.#renderTree());
+    $('tm-folder').addEventListener('click', () => this.#folder());
     $('tm-search').addEventListener('input', () => {
       clearTimeout(this.#timer);
       this.#timer = window.setTimeout(() => this.#search(), SEARCH_DELAY_MS);
@@ -149,9 +156,42 @@ export class TrackManagerView {
     items.push(el('li', 'tm-tree-heading', 'Categories'));
     for (const c of f.categories) {
       item({ kind: 'category', id: c.id }, statusLabel('', 'bi-folder2', c.name), c.count, 'tm-tree-category');
-      for (const s of c.subcategories) item({ kind: 'subcategory', id: s.id }, el('span', '', s.name), s.count, 'tm-tree-sub');
+      for (const s of c.subcategories) item({ kind: 'subcategory', id: s.id }, this.#subLabel(s), s.count, 'tm-tree-sub');
     }
     list.replaceChildren(...items);
+  }
+
+  /**
+   * El nom d'una subcategoria a l'arbre, amb una marca si vigila una carpeta (i si té problemes o fitxers que falten).
+   * Sempre amb text a l'atribut title, no només el color. @param {any} sub
+   */
+  #subLabel(sub) {
+    const label = el('span', 'tm-sub-label');
+    label.append(el('span', '', sub.name));
+    const folder = this.#folders.statusOf(sub.id);
+    if (folder) {
+      const warn = folder.problem || folder.missing > 0;
+      const mark = icon(warn ? 'bi-exclamation-triangle-fill' : folder.renewable ? 'bi-arrow-repeat' : 'bi-folder-check');
+      mark.classList.add('tm-folder-mark', warn ? 'text-warning' : 'text-info');
+      mark.removeAttribute('aria-hidden');
+      mark.setAttribute('role', 'img');
+      const text = `Carpeta vigilada${folder.renewable ? ' (bossa renovable)' : ''}: ${folder.folder}` +
+        (folder.problem ? `\n${folder.problem}` : folder.missing > 0 ? `\n${folder.missing} amb el fitxer que falta` : '');
+      mark.setAttribute('aria-label', text);
+      mark.title = text;
+      label.append(' ', mark);
+    }
+    return label;
+  }
+
+  /** Obre la carpeta vigilada de la subcategoria triada. */
+  async #folder() {
+    const scope = this.#scope;
+    if (scope.kind !== 'subcategory') {
+      await confirmAction({ title: 'Carpeta vigilada', message: 'Tria primer, a l\'esquerra, la subcategoria.', confirm: 'D\'acord', info: true });
+      return;
+    }
+    await this.#folders.show({ id: scope.id, name: this.#scopeText() });
   }
 
   /** @param {Scope} a @param {Scope} b */

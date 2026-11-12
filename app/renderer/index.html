@@ -237,6 +237,7 @@
           <button id="tm-new-category" class="btn btn-sm btn-outline-secondary" type="button" title="Crea una categoria"><i class="bi bi-folder-plus" aria-hidden="true"></i> Categoria</button>
           <button id="tm-new-subcategory" class="btn btn-sm btn-outline-secondary" type="button" title="Crea una subcategoria dins de la categoria triada"><i class="bi bi-plus-lg" aria-hidden="true"></i> Subcategoria</button>
           <button id="tm-rename" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el nom de la categoria o subcategoria triada"><i class="bi bi-pencil" aria-hidden="true"></i><span class="visually-hidden">Canvia el nom</span></button>
+          <button id="tm-folder" class="btn btn-sm btn-outline-secondary" type="button" title="Carpeta vigilada de la subcategoria triada: les cançons que s'hi copien entren soles"><i class="bi bi-folder-check" aria-hidden="true"></i><span class="visually-hidden">Carpeta vigilada</span></button>
           <button id="tm-empty" class="btn btn-sm btn-outline-danger" type="button" title="Esborra totes les pistes de la subcategoria triada (per renovar una bossa)"><i class="bi bi-eraser" aria-hidden="true"></i><span class="visually-hidden">Buida la subcategoria</span></button>
           <button id="tm-import" class="btn btn-sm btn-outline-primary w-100" type="button" title="Afegeix a la biblioteca els fitxers d'una carpeta (i les subcarpetes)"><i class="bi bi-folder-symlink" aria-hidden="true"></i> Importa una carpeta…</button>
         </div>
@@ -325,6 +326,56 @@
       <div class="d-flex justify-content-end gap-2">
         <button class="btn btn-secondary" value="cancel" formnovalidate>Cancel·la</button>
         <button id="import-ok" class="btn btn-primary" value="ok">Importa</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Carpeta vigilada d'una subcategoria (fase 3, pas 7c-2; D-090) -->
+  <dialog id="folder-dialog" class="ob-dialog ob-dialog-wide">
+    <form method="dialog">
+      <h2 class="h5"><i class="bi bi-folder-check" aria-hidden="true"></i> Carpeta vigilada: <span id="folder-name"></span></h2>
+      <p class="ob-dialog-message">El motor revisa la carpeta cada 2 minuts: les cançons que s'hi copien entren soles a la subcategoria, les que tornen es recuperen i les que se substitueixen s'actualitzen. Els fitxers no es copien ni es mouen.</p>
+
+      <label for="folder-path" class="form-label">Carpeta</label>
+      <div class="d-flex gap-2 mb-2">
+        <input id="folder-path" class="form-control" type="text" readonly placeholder="Cap: aquesta subcategoria no vigila cap carpeta">
+        <button id="folder-choose" class="btn btn-outline-secondary" type="button">Tria…</button>
+        <button id="folder-clear" class="btn btn-outline-secondary" type="button" title="Deixa de vigilar la carpeta (les pistes es queden)">Cap</button>
+      </div>
+
+      <div class="form-check form-switch mb-1">
+        <input id="folder-renewable" class="form-check-input" type="checkbox">
+        <label for="folder-renewable" class="form-check-label">Bossa renovable</label>
+      </div>
+      <p id="folder-renewable-help" class="form-text mb-3"></p>
+
+      <div class="form-label mb-1">Com queden les cançons noves</div>
+      <div class="tm-pair">
+        <div class="mb-2">
+          <label for="folder-type" class="form-label small">Tipus</label>
+          <select id="folder-type" class="form-select form-select-sm"></select>
+        </div>
+        <div class="mb-2">
+          <label for="folder-tags" class="form-label small">Etiquetes</label>
+          <input id="folder-tags" class="form-control form-control-sm" type="text" maxlength="1000" placeholder="p. ex. català, 80s">
+        </div>
+      </div>
+      <div class="form-check form-switch mb-3">
+        <input id="folder-variable" class="form-check-input" type="checkbox">
+        <label for="folder-variable" class="form-check-label">Durada variable</label>
+      </div>
+
+      <div id="folder-status" class="folder-status mb-2"></div>
+      <details id="folder-log-box" class="mb-3">
+        <summary>Registre (últims canvis)</summary>
+        <ul id="folder-log" class="folder-log"></ul>
+      </details>
+      <p id="folder-problem" class="form-text text-warning"></p>
+
+      <div class="d-flex justify-content-end gap-2 flex-wrap">
+        <button id="folder-scan" class="btn btn-outline-secondary me-auto" type="button"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Revisa ara</button>
+        <button class="btn btn-secondary" value="cancel" formnovalidate>Tanca</button>
+        <button id="folder-save" class="btn btn-primary" value="save">Desa</button>
       </div>
     </form>
   </dialog>

@@ -37,11 +37,11 @@ export function renderNowPlaying(nowPlaying) {
 }
 
 /**
- * Avisos de l'AutoDJ i de la sortida, junts.
- * @param {{ autodj?: string | null, output?: string | null }} problems
+ * Avisos de la sortida, l'AutoDJ i les carpetes vigilades, junts.
+ * @param {{ autodj?: string | null, output?: string | null, folders?: string[] }} problems
  */
 export function renderWarnings(problems) {
-  const list = [problems.output, problems.autodj].filter(Boolean);
+  const list = [problems.output, problems.autodj, ...(problems.folders ?? [])].filter(Boolean);
   const target = $('status-warnings');
   if (list.length === 0) {
     target.replaceChildren(statusLabel('text-success', 'bi-check-circle', 'Cap avís'));

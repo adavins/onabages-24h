@@ -979,6 +979,51 @@ body {
   user-select: text;
 }
 
+/* Carpetes vigilades (fase 3, pas 7c-2) */
+.tm-sub-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.tm-sub-label > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tm-folder-mark {
+  font-size: 0.8rem;
+}
+
+.ob-dialog-wide {
+  width: min(44rem, 94vw);
+}
+
+.folder-status {
+  font-size: 0.9rem;
+}
+
+.folder-log {
+  max-height: 12rem;
+  overflow-y: auto;
+  margin: 0.4rem 0 0;
+  padding-left: 0;
+  list-style: none;
+  font-size: 0.8rem;
+}
+
+.folder-log li {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-log-time,
+.folder-log-detail {
+  color: var(--ob-muted);
+}
+
 /* Pantalla estreta: l'arbre a dalt, la fitxa a sota */
 @media (max-width: 1200px) {
   .tm-main {
