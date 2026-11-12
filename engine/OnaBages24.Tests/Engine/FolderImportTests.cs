@@ -81,6 +81,95 @@ public class FolderImportTests : IDisposable
     }
 
     [Fact]
+    public void Les_pistes_noves_porten_els_valors_per_defecte_i_les_que_faltaven_es_recuperen()
+    {
+        string path = Wav("Promo - Matinal.wav");
+        string missing = Wav("Tornada.wav");
+        long sub = _library.EnsureSubcategory(_library.EnsureCategory("Promos"), "Programes");
+        long old = _library.AddTrack(new Track { Path = missing, Title = "Ja hi era", FileState = FileState.Missing, SubcategoryId = sub });
+
+        var report = new FolderImportReport();
+        var defaults = new ImportDefaults(sub, TrackType.Promo, ["matins", "promo"], VariableDuration: true);
+        foreach (string file in FolderImporter.ListAudioFiles(_music))
+        {
+            var (outcome, withoutSound, error) = FolderImporter.ImportFile(_library, file, defaults);
+            FolderImporter.Count(report, file, outcome, withoutSound, error);
+        }
+
+        Assert.Equal((1, 1), (report.Added, report.Reactivated));
+        var added = _library.FindByPath(path)!;
+        Assert.Equal(TrackType.Promo, added.Type);
+        Assert.True(added.VariableDuration);
+        Assert.Equal(["matins", "promo"], _library.GetTags(added.Id));
+        var back = _library.GetTrack(old)!;
+        Assert.Equal(FileState.Ok, back.FileState);
+        Assert.Equal("Ja hi era", back.Title); // la mateixa fitxa
+    }
+
+    [Fact]
+    public void La_importacio_en_segon_pla_avisa_del_progres_i_acaba_amb_l_informe()
+    {
+        Wav("U.wav");
+        Wav(Path.Combine("subcarpeta", "Dos.wav"));
+        File.WriteAllText(Path.Combine(_music, "malmès.mp3"), "no és àudio");
+        long sub = _library.EnsureSubcategory(_library.EnsureCategory("Proves"), "Bossa");
+        using var importer = new LibraryImporter(_library);
+        var seen = new List<ImportStatus>();
+        importer.Progress += s => { lock (seen) seen.Add(s); };
+
+        var first = importer.Start(_music, new ImportDefaults(sub), "Proves / Bossa");
+        Assert.Equal(ImportState.Listing, first.State);
+        Assert.Throws<InvalidOperationException>(() => importer.Start(_music, new ImportDefaults(sub), "Proves / Bossa"));
+        Assert.True(importer.Wait(TimeSpan.FromSeconds(30)));
+
+        var last = importer.Status!;
+        Assert.Equal(ImportState.Done, last.State);
+        Assert.Equal((3, 3, 2), (last.Total, last.Done, last.Added));
+        Assert.Contains("malmès.mp3", Assert.Single(last.Unreadable));
+        Assert.NotNull(last.Finished);
+        lock (seen) Assert.Equal(ImportState.Done, seen[^1].State); // l'últim avís és el del final
+        Assert.False(importer.Cancel()); // ja no n'hi ha cap en curs
+    }
+
+    [Fact]
+    public void Una_carpeta_que_no_existeix_acaba_com_a_fallada()
+    {
+        long sub = _library.EnsureSubcategory(_library.EnsureCategory("Proves"), "Bossa");
+        using var importer = new LibraryImporter(_library);
+        importer.Start(Path.Combine(_temp.Path, "no-hi-és"), new ImportDefaults(sub), "Proves / Bossa");
+        Assert.True(importer.Wait(TimeSpan.FromSeconds(10)));
+        Assert.Equal(ImportState.Failed, importer.Status!.State);
+        Assert.Contains("No es troba la carpeta", importer.Status.Error);
+    }
+
+    [Fact]
+    public void Ordres_library_import_i_importStatus()
+    {
+        Wav("Una.wav");
+        long sub = _library.EnsureSubcategory(_library.EnsureCategory("Proves"), "Bossa");
+        using var importer = new LibraryImporter(_library);
+        var router = new OnaBages24.Engine.Protocol.CommandRouter(new OnaBages24.Engine.EngineState(), () => { }, _library, importer: importer);
+        System.Text.Json.Nodes.JsonObject Send(System.Text.Json.Nodes.JsonObject msg) { msg["v"] = 1; msg["id"] = 1; return router.Handle(msg.ToJsonString()); }
+        string Error(System.Text.Json.Nodes.JsonObject r) => r["error"]!["code"]!.GetValue<string>();
+
+        Assert.Null(Send(new() { ["cmd"] = "library.importStatus" })["result"]!["import"]);
+        Assert.Equal("bad_params", Error(Send(new() { ["cmd"] = "library.import", ["folder"] = @"relativa\carpeta", ["subcategoryId"] = sub })));
+        Assert.Equal("bad_params", Error(Send(new() { ["cmd"] = "library.import", ["folder"] = _music, ["subcategoryId"] = 999 })));
+        Assert.Equal("bad_params", Error(Send(new() { ["cmd"] = "library.import", ["folder"] = _music, ["subcategoryId"] = sub, ["type"] = "cançó" })));
+
+        var started = Send(new() { ["cmd"] = "library.import", ["folder"] = _music, ["subcategoryId"] = sub, ["type"] = "sweeper", ["tags"] = new System.Text.Json.Nodes.JsonArray("català") });
+        Assert.Equal("Proves / Bossa", started["result"]!["import"]!["subcategory"]!.GetValue<string>());
+        Assert.True(importer.Wait(TimeSpan.FromSeconds(30)));
+
+        var status = Send(new() { ["cmd"] = "library.importStatus" })["result"]!["import"]!;
+        Assert.Equal("done", status["state"]!.GetValue<string>());
+        Assert.Equal(1, status["added"]!.GetValue<int>());
+        var track = _library.FindByPath(Path.Combine(_music, "Una.wav"))!;
+        Assert.Equal(TrackType.Sweeper, track.Type);
+        Assert.Equal(["català"], _library.GetTags(track.Id));
+    }
+
+    [Fact]
     public void Les_pistes_d_una_carpeta_inclouen_les_subcarpetes_i_res_mes()
     {
         _library.AddTrack(new Track { Path = @"O:\musica\BOSSA 9\a.mp3" });

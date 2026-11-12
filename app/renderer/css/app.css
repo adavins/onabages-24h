@@ -922,6 +922,63 @@ body {
   border-top: 1px solid var(--ob-border);
 }
 
+/* Importació en curs o l'última (fase 3, pas 7b) */
+.tm-import-panel {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--ob-border);
+  background: #1d2127;
+  font-size: 0.9rem;
+}
+
+.tm-import-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.tm-import-head > .status-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-import-tools {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.tm-import-bar {
+  height: 0.4rem;
+  margin: 0.4rem 0 0.2rem;
+  border-radius: 0.2rem;
+  background: var(--ob-border);
+  overflow: hidden;
+}
+
+.tm-import-fill {
+  display: block;
+  height: 100%;
+  background: var(--ob-progress);
+}
+
+.tm-import-summary {
+  color: var(--ob-muted);
+  font-size: 0.85rem;
+  margin-top: 0.2rem;
+}
+
+.tm-import-errors {
+  max-height: 10rem;
+  overflow-y: auto;
+  margin: 0.4rem 0 0;
+  padding-left: 1.2rem;
+  font-family: var(--ob-mono);
+  font-size: 0.75rem;
+  user-select: text;
+}
+
 /* Pantalla estreta: l'arbre a dalt, la fitxa a sota */
 @media (max-width: 1200px) {
   .tm-main {

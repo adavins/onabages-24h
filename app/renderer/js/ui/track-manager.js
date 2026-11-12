@@ -73,6 +73,14 @@ export class TrackManagerView {
     this.#visible = false;
   }
 
+  /** Per al diàleg d'importar: les categories i la subcategoria triada a l'arbre (si n'hi ha). */
+  importContext() {
+    return {
+      categories: this.#filters?.categories ?? [],
+      subcategoryId: this.#scope.kind === 'subcategory' ? this.#scope.id : null,
+    };
+  }
+
   /** Hi ha canvis a la fitxa sense desar (per avisar abans de sortir-ne). */
   get dirty() {
     return !!(this.#track && this.#readForm && Object.keys(trackChanges(this.#track, this.#readForm())).length > 0);
@@ -96,6 +104,8 @@ export class TrackManagerView {
   async libraryChanged(trackId) {
     if (!this.#loaded) return;
     await this.#loadFilters();
+    // Categories noves o una importació acabada: la llista també pot haver canviat
+    if (trackId == null) await this.#search();
     if (trackId != null && this.#track?.id === trackId && !this.dirty) await this.#open(trackId, false);
   }
 

@@ -229,6 +229,17 @@ ipcMain.handle('dialog:choose-audio-file', async (_event, defaultPath) => {
   return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
 });
 
+// Importació (fase 3, pas 7b): triar una carpeta d'aquest ordinador.
+ipcMain.handle('dialog:choose-folder', async (_event, defaultPath) => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Tria la carpeta',
+    defaultPath: typeof defaultPath === 'string' && defaultPath ? defaultPath : undefined,
+    properties: ['openDirectory'],
+  });
+  return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+});
+
 // ---------------------------------------------------------------------------
 // Zoom i capçalera com a barra de títol
 // ---------------------------------------------------------------------------

@@ -19,6 +19,7 @@ import { AuxPlayersView } from './ui/aux-players.js';
 import { NotesView } from './ui/notes.js';
 import { ProcessorView } from './ui/processor.js';
 import { TrackManagerView } from './ui/track-manager.js';
+import { ImportView } from './ui/import.js';
 import { setupZoom, applyZoom } from './ui/zoom.js';
 import { setupWindowFrame } from './ui/window-frame.js';
 import { CollapsibleCards } from './ui/collapsible.js';
@@ -30,6 +31,7 @@ import { CollapsibleCards } from './ui/collapsible.js';
  *   onCloseRequested: (callback: () => void) => void,
  *   closeWindow: () => Promise<void>,
  *   chooseAudioFile: (defaultPath?: string) => Promise<string | null>,
+ *   chooseFolder: (defaultPath?: string) => Promise<string | null>,
  * }} Bridge
  */
 const bridge = /** @type {Bridge} */ (/** @type {any} */ (window).onabages);
@@ -106,6 +108,7 @@ const auxPlayers = new AuxPlayersView(send, TRACK_DRAG_TYPE);
 const notes = new NotesView(send);
 const processor = new ProcessorView(send);
 const trackManager = new TrackManagerView(send, (path) => bridge.chooseAudioFile(path));
+const importView = new ImportView(send, (path) => bridge.chooseFolder(path), () => trackManager.importContext());
 
 // Pestanyes del quadre de la dreta: Cerca i Notes (fase 3, pas 4b)
 /** @param {'search' | 'notes'} name */
@@ -337,6 +340,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   client.addEventListener('ev:aux.failed', (e) => auxPlayers.failed(detail(e).player, detail(e).message));
   client.addEventListener('ev:notes.changed', (e) => notes.received(detail(e).text));
   client.addEventListener('ev:processor.changed', (e) => processor.render(detail(e).processor));
+  client.addEventListener('ev:library.importProgress', (e) => importView.show(detail(e).import));
   // Gestor de pistes (fase 3, pas 7a): una pista o les categories han canviat
   client.addEventListener('ev:library.changed', (e) => {
     const trackId = detail(e).trackId ?? null;
@@ -375,6 +379,7 @@ async function loadState() {
     notes.refresh();
     processor.refresh();
     trackManager.refresh(); // només si es mostra
+    importView.refresh();
   } catch (err) {
     console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }

@@ -189,10 +189,25 @@ public static class EngineServer
             Broadcast(ev);
         };
 
+        // Importació de carpetes des de la pantalla (fase 3, pas 7b): en segon pla; el progrés i, en acabar, library.changed
+        var importer = new LibraryTools.LibraryImporter(library, log: message => log.LogInformation("{Message}", message));
+        importer.Progress += status =>
+        {
+            var ev = Messages.Event("library.importProgress");
+            ev["import"] = QueueJson.Import(status);
+            Broadcast(ev);
+            if (!status.Running)
+            {
+                var changed = Messages.Event("library.changed");
+                changed["trackId"] = null;
+                Broadcast(changed);
+            }
+        };
+
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
-            events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor);
+            events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer);
         // Gestor de pistes (fase 3, pas 7a): quan es canvia una pista o les categories, les interfícies tornen a demanar el que mostren
         router.LibraryChanged += trackId =>
         {
@@ -272,6 +287,7 @@ public static class EngineServer
         {
             log.LogInformation("Aturant el motor");
             recalculator.Dispose();
+            importer.Dispose();
             deviceWatcher.Dispose();
             control.Dispose();
             history.CloseAll(); // abans d'aturar la cua: les que sonen es tanquen amb el temps que han sonat

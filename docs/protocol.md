@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 7a (motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 7b (motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -106,6 +106,9 @@ El `message` és en català i es pot mostrar a l'operador.
 | `library.update` | `trackId` i els camps que es canvien (els altres es queden igual): `artist`, `title`, `album`, `year`, `type` (4.4), `subcategoryId` (`null` = cap), `tags` (llista de noms; substitueix les d'ara i crea les que no existeixen), `variableDuration`, `validFrom` i `validUntil` (`'AAAA-MM-DD'` o `null`), `enabled`, `notes` | `{ track }` (la fitxa sencera) i `library.changed`. Si un valor no és vàlid, `bad_params` i no es canvia res. El que ja és a la cua no canvia | fase 3, pas 7a |
 | `library.relink` | `trackId`, `path` (ruta completa d'un fitxer d'àudio que existeixi) | `{ track }` i `library.changed`. La pista passa a aquest fitxer (`fileState: ok`), amb la durada nova; es conserven la fitxa i l'historial. Si els punts no són manuals, l'analitzador els torna a calcular en segon pla (mentrestant, els d'abans). Si el fitxer ja és d'una altra pista, `database_error` | fase 3, pas 7a |
 | `library.delete` | `trackId` | `{ deleted }` i `library.changed`. Esborra la pista de la biblioteca (el fitxer no es toca mai). L'historial la conserva (artista, títol i ruta). Si la fa servir algun esdeveniment, `database_error` amb els noms | fase 3, pas 7a |
+| `library.import` | `folder` (ruta completa d'una carpeta que existeixi), `subcategoryId` i, per a les pistes noves, `type` (per defecte `music`), `tags` (llista) i `variableDuration` | `{ import }` (4.10). Comença a importar en segon pla els fitxers d'àudio de la carpeta i les subcarpetes; el progrés arriba amb `library.importProgress`. Una sola importació alhora (si n'hi ha una en curs, `bad_params`) | fase 3, pas 7b |
+| `library.importStatus` | — | `{ import }`: la importació en curs o l'última (`null` si no se n'ha fet cap des que ha arrencat el motor) | fase 3, pas 7b |
+| `library.importCancel` | — | `{ cancelled }`: `false` si no n'hi havia cap en curs. El que ja s'ha importat es queda | fase 3, pas 7b |
 | `category.save` | `name`; `categoryId` per canviar-ne el nom (sense, en crea una) | `{ id, name }` i `library.changed` (amb `trackId: null`). Nom repetit: `database_error` | fase 3, pas 7a |
 | `subcategory.save` | `name`; `categoryId` per crear-ne una, o `subcategoryId` per canviar-ne el nom | `{ id, name, categoryId, categoryName }` i `library.changed`. Nom repetit dins de la categoria: `database_error` | fase 3, pas 7a |
 | `autodj.get` | — | `{ autodj }` (vegeu 4.5) | fase 1, pas 8 |
@@ -339,6 +342,20 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 - `ceilingDb`: el sostre de seguretat, **sempre actiu** (també amb `cap`): la sortida no passa mai d'aquest nivell, encara que dues pistes fortes se solapin.
 - El processador retarda el so 1,5 ms (l'anticipació del sostre).
 
+### 4.10. Importació d'una carpeta (D-088)
+
+```json
+{ "folder": "O:\\musica\\BOSSA 9", "subcategory": "Music / Ona Bages Adult 9", "state": "running",
+  "total": 289, "done": 120, "added": 115, "alreadyThere": 3, "reactivated": 1, "withoutSound": 0,
+  "unreadable": ["O:\\musica\\BOSSA 9\\x.mp3: …"], "unreadableCount": 1,
+  "started": "2026-11-12T11:02:00.0000000+00:00", "finished": null, "error": null }
+```
+
+- `state`: `listing` (buscant els fitxers; `total` encara és 0), `running`, `done`, `cancelled` (aturada; el que s'ha importat es queda) o `failed` (`error` diu per què).
+- `added`: pistes noves, amb els punts calculats. `alreadyThere`: ja eren a la biblioteca (no es toquen). `reactivated`: ja hi eren amb el fitxer que faltava (o retirades) i el tornen a tenir, amb la mateixa fitxa. `withoutSound`: noves però tota silenci (sense punts).
+- `unreadable`: els que no es poden llegir, amb el motiu (com a molt els 200 primers; el total és `unreadableCount`, i tots surten al registre del motor).
+- Es fa en un fil de prioritat baixa, un fitxer cada vegada: l'emissió va primer.
+
 ## 5. Esdeveniments
 
 | Esdeveniment | Camps | Freqüència | Des de |
@@ -353,7 +370,8 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 | `aux.failed` | `player`, `item`, `message` | quan el fitxer d'un auxiliar no es pot fer sonar (la música continua) | fase 2, pas 5a |
 | `aux.loaded` | `player` (el que ha canviat), `loaded` (4.8) | quan es carrega o es treu la pista d'un reproductor | fase 3, pas 4a |
 | `notes.changed` | `text` | quan algú desa les notes | fase 3, pas 4a |
-| `library.changed` | `trackId` (la pista editada, canviada de fitxer o esborrada), o `null` si han canviat les categories | quan es canvia la biblioteca des d'una ordre (les interfícies tornen a demanar el que mostren) | fase 3, pas 7a |
+| `library.importProgress` | `import` (4.10) | unes 2 vegades per segon mentre s'importa, i una última en acabar | fase 3, pas 7b |
+| `library.changed` | `trackId` (la pista editada, canviada de fitxer o esborrada), o `null` si han canviat les categories o s'ha acabat una importació | quan es canvia la biblioteca des d'una ordre (les interfícies tornen a demanar el que mostren) | fase 3, pas 7a |
 | `processor.changed` | `processor` (4.9) | quan canvia el preajust o el volum del processador de la sortida | fase 3, pas 6 |
 | `output.changed` | `output` (4.3) | quan canvia la sortida, l'estat d'emergència o el problema | fase 1, pas 7c |
 | `autodj.changed` | `autodj` (4.5) | quan s'activa o es desactiva, canvia la rotació o canvia l'avís (les pistes que afegeix surten a `queue.changed`) | fase 1, pas 8 |

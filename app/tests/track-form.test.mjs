@@ -2,7 +2,21 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTags, trackChanges, trackProblems } from '../renderer/js/track-form.js';
+import { parseTags, trackChanges, trackProblems, guessType } from '../renderer/js/track-form.js';
+
+test('guessType: el tipus que proposa segons la categoria de l\'emissora', () => {
+  assert.equal(guessType('Music'), 'music');
+  assert.equal(guessType('Sweepers'), 'sweeper');
+  assert.equal(guessType('Station IDs'), 'stationId');
+  assert.equal(guessType('Jingles'), 'stationId');
+  assert.equal(guessType('Promos'), 'promo');
+  assert.equal(guessType('Commercials'), 'commercial');
+  assert.equal(guessType('Radio Shows'), 'program');
+  assert.equal(guessType('Capsules'), 'program');
+  assert.equal(guessType('News'), 'news');
+  assert.equal(guessType('Radio Streams'), 'stream');
+  assert.equal(guessType(null), 'music');
+});
 
 const track = {
   artist: 'Macy Gray', title: 'I Try', album: '', year: '1999', type: 'music', subcategoryId: 30, tags: ['català', '90s'],

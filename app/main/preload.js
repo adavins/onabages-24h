@@ -26,4 +26,7 @@ contextBridge.exposeInMainWorld('onabages', {
 
   /** Diàleg de Windows per triar un fitxer d'àudio (gestor de pistes). Retorna la ruta, o null si es cancel·la. */
   chooseAudioFile: (defaultPath) => ipcRenderer.invoke('dialog:choose-audio-file', defaultPath),
+
+  /** Diàleg de Windows per triar una carpeta (importació). Retorna la ruta, o null si es cancel·la. */
+  chooseFolder: (defaultPath) => ipcRenderer.invoke('dialog:choose-folder', defaultPath),
 });

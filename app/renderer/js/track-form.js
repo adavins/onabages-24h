@@ -13,6 +13,24 @@ export const TRACK_TYPES = ['music', 'sweeper', 'stationId', 'promo', 'commercia
  */
 
 /**
+ * El tipus de pista que segurament tenen les pistes d'una categoria (per proposar-lo en importar; es pot canviar).
+ * Pels noms de les categories de l'emissora (Sweepers, Jingles, Station IDs, Promos, Commercials, Radio Shows…).
+ * @param {string | null | undefined} categoryName
+ */
+export function guessType(categoryName) {
+  const name = (categoryName ?? '').toLowerCase();
+  if (/sweep/.test(name)) return 'sweeper';
+  if (/jingle|station|identifica|indicatiu/.test(name)) return 'stationId';
+  if (/promo/.test(name)) return 'promo';
+  if (/commercial|falca|falques|publicitat/.test(name)) return 'commercial';
+  if (/show|programa|capsul|càpsul|interview|entrevist/.test(name)) return 'program';
+  if (/news|informatiu|notíci|notici/.test(name)) return 'news';
+  if (/stream/.test(name)) return 'stream';
+  if (/effect|efecte/.test(name)) return 'other';
+  return 'music';
+}
+
+/**
  * Etiquetes escrites separades per comes: sense espais als extrems, sense buides i sense repetides (sense distingir
  * majúscules; es queda la primera).
  * @param {string} text

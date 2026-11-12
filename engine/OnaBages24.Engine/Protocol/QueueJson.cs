@@ -104,6 +104,33 @@ public static class QueueJson
         return json;
     }
 
+    /// <summary>Com va una importació de carpeta (fase 3, pas 7b; docs/protocol.md, 4.10).</summary>
+    public static JsonObject Import(LibraryTools.ImportStatus s) => new()
+    {
+        ["folder"] = s.Folder,
+        ["subcategory"] = s.SubcategoryName,
+        ["state"] = s.State switch
+        {
+            LibraryTools.ImportState.Listing => "listing",
+            LibraryTools.ImportState.Running => "running",
+            LibraryTools.ImportState.Done => "done",
+            LibraryTools.ImportState.Cancelled => "cancelled",
+            _ => "failed",
+        },
+        ["total"] = s.Total,
+        ["done"] = s.Done,
+        ["added"] = s.Added,
+        ["alreadyThere"] = s.AlreadyThere,
+        ["reactivated"] = s.Reactivated,
+        ["withoutSound"] = s.WithoutSound,
+        // Com a molt els 200 primers (s'envia 2 vegades per segon); el total, a part
+        ["unreadable"] = new JsonArray(s.Unreadable.Take(200).Select(u => (JsonNode)JsonValue.Create(u)!).ToArray()),
+        ["unreadableCount"] = s.Unreadable.Count,
+        ["started"] = s.Started.ToString("O"),
+        ["finished"] = s.Finished?.ToString("O"),
+        ["error"] = s.Error,
+    };
+
     public static JsonObject Output(OutputManager outputs) => new()
     {
         ["configured"] = new JsonObject { ["id"] = outputs.Configured.Id, ["name"] = outputs.Configured.Name },

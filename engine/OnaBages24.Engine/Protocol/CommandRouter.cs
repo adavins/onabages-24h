@@ -36,6 +36,7 @@ public sealed class CommandRouter
     private readonly AuxPlayers? _aux;
     private readonly SweeperOverlay? _sweepers;
     private readonly OutputProcessor? _processor;
+    private readonly LibraryTools.LibraryImporter? _importer;
 
     /// <param name="state">Estat del motor.</param>
     /// <param name="requestShutdown">Atura el motor (s'executa després de respondre).</param>
@@ -52,8 +53,9 @@ public sealed class CommandRouter
     public CommandRouter(EngineState state, Action requestShutdown, Library? library = null, Func<IReadOnlyList<AudioDevice>>? listDevices = null,
         QueuePlayer? queue = null, OutputManager? outputs = null, AutoDj? autoDj = null, Rotations? rotations = null,
         NowPlaying? nowPlaying = null, Events? events = null, Scheduler? scheduler = null, AuxPlayers? aux = null,
-        SweeperOverlay? sweepers = null, OutputProcessor? processor = null)
+        SweeperOverlay? sweepers = null, OutputProcessor? processor = null, LibraryTools.LibraryImporter? importer = null)
     {
+        _importer = importer;
         _sweepers = sweepers;
         _processor = processor;
         _state = state;
@@ -137,6 +139,9 @@ public sealed class CommandRouter
                 "library.delete" => LibraryDelete(msg),
                 "category.save" => CategorySave(msg),
                 "subcategory.save" => SubcategorySave(msg),
+                "library.import" => LibraryImport(msg),
+                "library.importStatus" => new JsonObject { ["import"] = ImporterOrError().Status is { } s ? QueueJson.Import(s) : null },
+                "library.importCancel" => new JsonObject { ["cancelled"] = ImporterOrError().Cancel() },
                 "autodj.get" => new JsonObject { ["autodj"] = QueueJson.AutoDj(AutoDjOrError()) },
                 "autodj.set" => AutoDjSet(msg),
                 "sweepers.set" => SweepersSet(msg),
@@ -576,6 +581,51 @@ public sealed class CommandRouter
         library.DeleteTrack(id);
         LibraryChanged?.Invoke(id);
         return new JsonObject { ["deleted"] = id };
+    }
+
+    // --- Importació de carpetes (fase 3, pas 7b) ---
+
+    private LibraryTools.LibraryImporter ImporterOrError() => _importer ?? throw new BadParamsException("El motor no pot importar carpetes.");
+
+    /// <summary>
+    /// Comença a importar una carpeta en segon pla: <c>folder</c> (ruta completa), <c>subcategoryId</c> i, per a les pistes
+    /// noves, <c>type</c> (per defecte <c>music</c>), <c>tags</c> i <c>variableDuration</c>. El progrés arriba amb
+    /// <c>library.importProgress</c>.
+    /// </summary>
+    private JsonObject LibraryImport(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        var importer = ImporterOrError();
+        string folder = (ReadString(msg["folder"]) ?? "").Trim();
+        if (folder.Length == 0 || !Path.IsPathFullyQualified(folder)) throw new BadParamsException("Falta 'folder' (la ruta completa de la carpeta).");
+        if (!Directory.Exists(folder)) throw new BadParamsException($"No es troba la carpeta: {folder}");
+        long subcategoryId = RequiredId(msg, "subcategoryId");
+        var subcategory = library.GetSubcategory(subcategoryId) ?? throw new BadParamsException($"No existeix la subcategoria {subcategoryId}.");
+        var type = TrackType.Music;
+        if (msg["type"] is not null)
+        {
+            try { type = NowPlayingSettings.ParseType(ReadString(msg["type"])); }
+            catch (FormatException ex) { throw new BadParamsException(ex.Message); }
+        }
+        List<string> tags = [];
+        if (msg["tags"] is not null)
+        {
+            if (msg["tags"] is not JsonArray list || list.Any(t => ReadString(t) is null))
+                throw new BadParamsException("El camp 'tags' ha de ser una llista de textos.");
+            tags = list.Select(t => ReadString(t)!.Trim()).Where(t => t.Length is > 0 and <= 100).ToList();
+        }
+        bool variable = msg["variableDuration"] is JsonValue v && v.TryGetValue(out bool b) && b;
+
+        try
+        {
+            var status = importer.Start(folder, new LibraryTools.ImportDefaults(subcategoryId, type, tags, variable),
+                $"{subcategory.CategoryName} / {subcategory.Name}");
+            return new JsonObject { ["import"] = QueueJson.Import(status) };
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new BadParamsException(ex.Message);
+        }
     }
 
     private static string RequiredName(JsonObject msg)
