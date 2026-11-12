@@ -131,6 +131,12 @@ public sealed class CommandRouter
                 "library.list" => LibraryList(msg),
                 "library.search" => LibrarySearch(msg),
                 "library.filters" => LibraryFilters(),
+                "library.get" => LibraryGet(msg),
+                "library.update" => LibraryUpdate(msg),
+                "library.relink" => LibraryRelink(msg),
+                "library.delete" => LibraryDelete(msg),
+                "category.save" => CategorySave(msg),
+                "subcategory.save" => SubcategorySave(msg),
                 "autodj.get" => new JsonObject { ["autodj"] = QueueJson.AutoDj(AutoDjOrError()) },
                 "autodj.set" => AutoDjSet(msg),
                 "sweepers.set" => SweepersSet(msg),
@@ -374,6 +380,15 @@ public sealed class CommandRouter
             CategoryId = Id("categoryId"),
             SubcategoryId = Id("subcategoryId"),
             TagId = Id("tagId"),
+            State = ReadString(msg["state"]) switch
+            {
+                null or "all" => TrackStateFilter.All,
+                "missing" => TrackStateFilter.Missing,
+                "retired" => TrackStateFilter.Retired,
+                "disabled" => TrackStateFilter.Disabled,
+                "unclassified" => TrackStateFilter.Unclassified,
+                var other => throw new BadParamsException($"El camp 'state' no és vàlid: «{other}» (all, missing, retired, disabled o unclassified)."),
+            },
             Offset = Math.Max(0, ReadInt(msg["offset"]) ?? 0),
             Limit = limit + 1,
         });
@@ -398,7 +413,204 @@ public sealed class CommandRouter
                 ["subcategories"] = new JsonArray(c.Subcategories.Select(s => (JsonNode)Option(s)).ToArray()),
             }).ToArray()),
             ["tags"] = new JsonArray(tags.Select(t => (JsonNode)Option(t)).ToArray()),
+            ["states"] = library.StateCounts() is var s
+                ? new JsonObject { ["all"] = s.All, ["missing"] = s.Missing, ["retired"] = s.Retired, ["disabled"] = s.Disabled, ["unclassified"] = s.Unclassified }
+                : null,
         };
+    }
+
+    // --- Gestor de pistes (fase 3, pas 7a) ---
+
+    /// <summary>
+    /// Quan canvia la biblioteca des d'una ordre: l'id de la pista (editada, canviada de fitxer o esborrada), o null si han
+    /// canviat les categories. Les interfícies tornen a demanar el que mostren (<c>library.changed</c>).
+    /// </summary>
+    public event Action<long?>? LibraryChanged;
+
+    private Library LibraryOrError() => _library ?? throw new BadParamsException("El motor no té biblioteca.");
+
+    private static long RequiredId(JsonObject msg, string field = "id") =>
+        msg[field] is JsonValue v && v.TryGetValue(out long id) ? id : throw new BadParamsException($"Falta '{field}' (un número).");
+
+    private Track TrackOrError(Library library, long id) =>
+        library.GetTrack(id) ?? throw new BadParamsException($"No existeix la pista {id}.");
+
+    /// <summary>La fitxa sencera d'una pista, amb les etiquetes, la subcategoria i els esdeveniments que la fan servir.</summary>
+    private JsonObject TrackDetail(Library library, Track track) => new()
+    {
+        ["track"] = QueueJson.TrackDetail(track, library.GetTags(track.Id),
+            track.SubcategoryId is { } sub ? library.GetSubcategory(sub) : null, library.EventsUsingTrack(track.Id)),
+    };
+
+    private JsonObject LibraryGet(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        return TrackDetail(library, TrackOrError(library, RequiredId(msg, "trackId")));
+    }
+
+    /// <summary>
+    /// Canvia els camps de la fitxa que s'envien (els altres es queden com estan): <c>artist</c>, <c>title</c>, <c>album</c>,
+    /// <c>year</c>, <c>type</c>, <c>subcategoryId</c> (null = cap), <c>tags</c> (llista de noms; substitueix les d'ara),
+    /// <c>variableDuration</c>, <c>validFrom</c> i <c>validUntil</c> ('AAAA-MM-DD' o null), <c>enabled</c> i <c>notes</c>.
+    /// </summary>
+    private JsonObject LibraryUpdate(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        var track = TrackOrError(library, RequiredId(msg, "trackId"));
+
+        string Text(string field, string current, int max = 500)
+        {
+            if (msg[field] is null) return current;
+            string value = (ReadString(msg[field]) ?? throw new BadParamsException($"El camp '{field}' ha de ser un text.")).Trim();
+            return value.Length <= max ? value : throw new BadParamsException($"El camp '{field}' és massa llarg (com a molt {max} caràcters).");
+        }
+        bool Bool(string field, bool current) =>
+            msg[field] is null ? current
+            : msg[field] is JsonValue v && v.TryGetValue(out bool b) ? b : throw new BadParamsException($"El camp '{field}' ha de ser true o false.");
+        DateOnly? Date(string field, DateOnly? current)
+        {
+            if (!msg.ContainsKey(field)) return current;
+            if (msg[field] is null) return null;
+            return DateOnly.TryParseExact(ReadString(msg[field]), "yyyy-MM-dd", out var d)
+                ? d : throw new BadParamsException($"El camp '{field}' ha de ser una data 'AAAA-MM-DD' o null.");
+        }
+
+        long? subcategoryId = track.SubcategoryId;
+        if (msg.ContainsKey("subcategoryId"))
+        {
+            if (msg["subcategoryId"] is null) subcategoryId = null;
+            else
+            {
+                long sub = RequiredId(msg, "subcategoryId");
+                if (library.GetSubcategory(sub) is null) throw new BadParamsException($"No existeix la subcategoria {sub}.");
+                subcategoryId = sub;
+            }
+        }
+        var type = track.Type;
+        if (msg["type"] is not null)
+        {
+            try { type = NowPlayingSettings.ParseType(ReadString(msg["type"])); }
+            catch (FormatException ex) { throw new BadParamsException(ex.Message); }
+        }
+        List<string>? tags = null;
+        if (msg["tags"] is not null)
+        {
+            if (msg["tags"] is not JsonArray list || list.Any(t => ReadString(t) is null))
+                throw new BadParamsException("El camp 'tags' ha de ser una llista de textos.");
+            tags = list.Select(t => ReadString(t)!.Trim()).Where(t => t.Length > 0).ToList();
+            if (tags.Any(t => t.Length > 100)) throw new BadParamsException("Una etiqueta pot tenir com a molt 100 caràcters.");
+        }
+
+        string? notes = track.Notes;
+        if (msg.ContainsKey("notes"))
+        {
+            notes = msg["notes"] is null ? null : Text("notes", "", 5000);
+            if (notes is { Length: 0 }) notes = null;
+        }
+
+        var updated = track with
+        {
+            Artist = Text("artist", track.Artist),
+            Title = Text("title", track.Title),
+            Album = Text("album", track.Album),
+            Year = Text("year", track.Year, 20),
+            Type = type,
+            SubcategoryId = subcategoryId,
+            VariableDuration = Bool("variableDuration", track.VariableDuration),
+            ValidFrom = Date("validFrom", track.ValidFrom),
+            ValidUntil = Date("validUntil", track.ValidUntil),
+            Enabled = Bool("enabled", track.Enabled),
+            Notes = notes,
+        };
+        if (updated.ValidFrom is { } from && updated.ValidUntil is { } until && until < from)
+            throw new BadParamsException("La data de fi no pot ser anterior a la d'inici.");
+
+        library.UpdateTrack(updated);
+        if (tags is not null) library.SetTags(track.Id, tags);
+        LibraryChanged?.Invoke(track.Id);
+        return TrackDetail(library, TrackOrError(library, track.Id));
+    }
+
+    /// <summary>
+    /// Torna a apuntar una pista a un altre fitxer (<c>path</c>, ruta completa d'un fitxer d'àudio que existeixi): per a les
+    /// pistes amb el fitxer que falta o quan s'ha mogut. Es conserven la fitxa i l'historial; es torna a llegir la durada i,
+    /// si els punts no són manuals, l'analitzador els torna a calcular en segon pla.
+    /// </summary>
+    private JsonObject LibraryRelink(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        var track = TrackOrError(library, RequiredId(msg, "trackId"));
+        string path =(ReadString(msg["path"]) ?? "").Trim();
+        if (path.Length == 0 || !Path.IsPathFullyQualified(path)) throw new BadParamsException("Falta 'path' (la ruta completa del fitxer).");
+        if (!LibraryTools.FolderImporter.AudioExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
+            throw new BadParamsException($"No és un fitxer d'àudio que es pugui fer servir ({string.Join(", ", LibraryTools.FolderImporter.AudioExtensions)}).");
+        if (!File.Exists(path)) throw new BadParamsException($"No es troba el fitxer: {path}");
+
+        TimeSpan duration;
+        try { duration = TrackInfo.ReadMetadata(path).Duration; }
+        catch (Exception ex) when (ex is AudioFileException or IOException or UnauthorizedAccessException)
+        {
+            throw new BadParamsException($"No es pot llegir el fitxer: {ex.Message}");
+        }
+        var info = new FileInfo(path);
+        library.UpdateTrack(track with
+        {
+            Path = path,
+            FileState = FileState.Ok,
+            DurationMs = (long)duration.TotalMilliseconds,
+            FileSize = info.Length,
+            FileModified = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero),
+            // Els punts d'ara es fan servir fins que l'analitzador els torni a calcular (els manuals no es toquen)
+            CueSource = track.CueSource == CueSource.Manual ? CueSource.Manual : null,
+        });
+        LibraryChanged?.Invoke(track.Id);
+        return TrackDetail(library, TrackOrError(library, track.Id));
+    }
+
+    /// <summary>Esborra una pista de la biblioteca (el fitxer no es toca). No es pot si la fa servir algun esdeveniment.</summary>
+    private JsonObject LibraryDelete(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        long id = RequiredId(msg, "trackId");
+        TrackOrError(library, id);
+        library.DeleteTrack(id);
+        LibraryChanged?.Invoke(id);
+        return new JsonObject { ["deleted"] = id };
+    }
+
+    private static string RequiredName(JsonObject msg)
+    {
+        string name = (ReadString(msg["name"]) ?? "").Trim();
+        if (name.Length == 0) throw new BadParamsException("Falta 'name' (el nom).");
+        if (name.Length > 100) throw new BadParamsException("El nom pot tenir com a molt 100 caràcters.");
+        return name;
+    }
+
+    /// <summary>Crea una categoria (sense <c>categoryId</c>) o en canvia el nom (amb <c>categoryId</c>). <c>name</c>.</summary>
+    private JsonObject CategorySave(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        string name = RequiredName(msg);
+        long id;
+        if (msg["categoryId"] is null) id = library.CreateCategory(name);
+        else library.RenameCategory(id = RequiredId(msg, "categoryId"), name);
+        LibraryChanged?.Invoke(null);
+        return new JsonObject { ["id"] = id, ["name"] = name };
+    }
+
+    /// <summary>
+    /// Crea una subcategoria (sense <c>subcategoryId</c>, amb <c>categoryId</c>) o en canvia el nom (amb <c>subcategoryId</c>). <c>name</c>.
+    /// </summary>
+    private JsonObject SubcategorySave(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        string name = RequiredName(msg);
+        long id;
+        if (msg["subcategoryId"] is null) id = library.CreateSubcategory(RequiredId(msg, "categoryId"), name);
+        else library.RenameSubcategory(id = RequiredId(msg, "subcategoryId"), name);
+        LibraryChanged?.Invoke(null);
+        var sub = library.GetSubcategory(id)!;
+        return new JsonObject { ["id"] = sub.Id, ["name"] = sub.Name, ["categoryId"] = sub.CategoryId, ["categoryName"] = sub.CategoryName };
     }
 
     // --- Reproductors auxiliars (fase 2, pas 5) ---

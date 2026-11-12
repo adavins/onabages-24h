@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 3, pas 6a (motor, dispositius, sortida i processador de la sortida, cua, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 3, pas 7a (motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -100,8 +100,14 @@ El `message` és en català i es pot mostrar a l'operador.
 | `ui.set` | `zoom` (de 0,5 a 1,5) i `collapsed` (nom del requadre → `true`/`false`; els que no s'envien es queden com estan), tots dos opcionals | `{ zoom, collapsed }`. Es desa a la configuració. No avisa les altres interfícies: cadascuna l'aplica en connectar-se | fase 3, pas 4c |
 | `notes.set` | `text` (pot ser buit; com a molt 20.000 caràcters) | `{ text }`. Es desa a la configuració (es conserva en reiniciar) i s'avisa les altres interfícies amb `notes.changed` | fase 3, pas 4a |
 | `library.list` | `folder`, `limit` (per defecte 100, com a molt 1.000) | `{ tracks: [ … ] }` (vegeu 4.4): pistes de la carpeta i subcarpetes. De moment, per a les proves | fase 1, pas 7c |
-| `library.search` | `text` (paraules que han de sortir totes a l'artista, al títol, a l'àlbum o a la ruta; **sense distingir accents ni majúscules**: «magazin» troba «Magazín»; buit = totes), `categoryId`, `subcategoryId`, `tagId` (filtres, opcionals), `offset` (per anar carregant; per defecte 0), `limit` (per defecte 50, com a molt 200) | `{ tracks: [ … ], more }` (vegeu 4.4), per artista i títol. `more`: n'hi ha més que les retornades | fase 2, pas 8b; filtres, `offset` i sense accents, fase 3, pas 3a |
-| `library.filters` | — | `{ categories: [ { id, name, count, subcategories: [ { id, name, count } ] } ], tags: [ { id, name, count } ] }`: les opcions dels filtres de la cerca, amb quantes pistes tenen | fase 3, pas 3a |
+| `library.search` | `text` (paraules que han de sortir totes a l'artista, al títol, a l'àlbum o a la ruta; **sense distingir accents ni majúscules**: «magazin» troba «Magazín»; buit = totes), `categoryId`, `subcategoryId`, `tagId` (filtres, opcionals), `state` (`all`, `missing`: el fitxer falta, `retired`: retirades, `disabled`: desactivades, `unclassified`: sense subcategoria; per defecte `all`), `offset` (per anar carregant; per defecte 0), `limit` (per defecte 50, com a molt 200) | `{ tracks: [ … ], more }` (vegeu 4.4), per artista i títol. `more`: n'hi ha més que les retornades | fase 2, pas 8b; filtres, `offset` i sense accents, fase 3, pas 3a; `state`, fase 3, pas 7a |
+| `library.filters` | — | `{ categories: [ { id, name, count, subcategories: [ { id, name, count } ] } ], tags: [ { id, name, count } ], states: { all, missing, retired, disabled, unclassified } }`: les opcions dels filtres de la cerca, amb quantes pistes tenen | fase 3, pas 3a; `states`, pas 7a |
+| `library.get` | `trackId` | `{ track }`: la fitxa sencera (4.4) | fase 3, pas 7a |
+| `library.update` | `trackId` i els camps que es canvien (els altres es queden igual): `artist`, `title`, `album`, `year`, `type` (4.4), `subcategoryId` (`null` = cap), `tags` (llista de noms; substitueix les d'ara i crea les que no existeixen), `variableDuration`, `validFrom` i `validUntil` (`'AAAA-MM-DD'` o `null`), `enabled`, `notes` | `{ track }` (la fitxa sencera) i `library.changed`. Si un valor no és vàlid, `bad_params` i no es canvia res. El que ja és a la cua no canvia | fase 3, pas 7a |
+| `library.relink` | `trackId`, `path` (ruta completa d'un fitxer d'àudio que existeixi) | `{ track }` i `library.changed`. La pista passa a aquest fitxer (`fileState: ok`), amb la durada nova; es conserven la fitxa i l'historial. Si els punts no són manuals, l'analitzador els torna a calcular en segon pla (mentrestant, els d'abans). Si el fitxer ja és d'una altra pista, `database_error` | fase 3, pas 7a |
+| `library.delete` | `trackId` | `{ deleted }` i `library.changed`. Esborra la pista de la biblioteca (el fitxer no es toca mai). L'historial la conserva (artista, títol i ruta). Si la fa servir algun esdeveniment, `database_error` amb els noms | fase 3, pas 7a |
+| `category.save` | `name`; `categoryId` per canviar-ne el nom (sense, en crea una) | `{ id, name }` i `library.changed` (amb `trackId: null`). Nom repetit: `database_error` | fase 3, pas 7a |
+| `subcategory.save` | `name`; `categoryId` per crear-ne una, o `subcategoryId` per canviar-ne el nom | `{ id, name, categoryId, categoryName }` i `library.changed`. Nom repetit dins de la categoria: `database_error` | fase 3, pas 7a |
 | `autodj.get` | — | `{ autodj }` (vegeu 4.5) | fase 1, pas 8 |
 | `sweepers.set` | `subcategoryId` (un número, o `null` perquè no n'hi hagi cap; obligatori) | `{ autodj }`, amb la categoria nova a `sweepers` (4.5). La categoria de sweepers del trepitjador: d'on surten els sweepers dels passos de rotació amb `sweeper` (com el desplegable de RadioDJ). Es desa i es manté en tornar a arrencar. Les pistes que ja són a la cua es queden amb el sweeper que tenien. Si la subcategoria no existeix, `bad_params`. També la canvia l'acció `SWEEPERS` dels esdeveniments; tots dos avisen amb `autodj.changed` | fase 3, pas 5a |
 | `autodj.set` | `enabled` (`true`/`false`), `rotationId`, `minutes` (si s'atura: quant temps, d'1 a 720; per defecte 120). Tots opcionals: el que no s'envia es queda com està. Aturat, es torna a activar sol quan s'acaba el temps o si la cua es queda sense res (D-073) | `{ autodj }`. La rotació es desa i es manté en tornar a arrencar; `enabled` no: el motor sempre arrenca amb l'AutoDJ actiu (D-053). Si la rotació no existeix, `bad_params` | fase 1, pas 8 |
@@ -187,6 +193,20 @@ El `message` és en català i es pot mostrar a l'operador.
 - `fileState`: `ok`, `missing` (el fitxer falta) o `retired` (ha sortit d'una bossa renovable).
 
 - Pista (fase 3, pas 3a): també `album`, `lastPlayed` (l'última vegada que ha sonat, hora ISO, o `null`) i `playCount`.
+- `type`: `music`, `sweeper`, `stationId`, `promo`, `commercial`, `program`, `news`, `timeAnnouncement`, `timeSignal`, `stream` o `other`.
+
+**Fitxa sencera** (`library.get`, `library.update`, `library.relink`; fase 3, pas 7a): el mateix i, a més:
+
+```json
+{ "year": "1998", "variableDuration": false, "subcategoryId": 5,
+  "subcategory": { "id": 5, "name": "Adult 5", "categoryId": 1, "categoryName": "Music" },
+  "tags": ["català"], "validFrom": null, "validUntil": "2027-01-06", "enabled": true, "notes": null,
+  "startMs": 120, "mixMs": 208300, "endMs": 214900, "priority": 50,
+  "fileSize": 8615822, "fileModified": "2026-10-02T09:12:00.0000000+00:00", "radioDjId": 23977,
+  "usedBy": [ { "id": 12, "name": "Senyal de les 12" } ] }
+```
+
+- `usedBy`: els esdeveniments que la fan servir (accions PISTA o AUXILIAR). Mentre n'hi hagi, no es pot esborrar.
 
 ### 4.5. AutoDJ i rotacions (D-049)
 
@@ -332,6 +352,7 @@ Línia del registre (`scheduler.log` i `scheduler.fired`):
 | `aux.failed` | `player`, `item`, `message` | quan el fitxer d'un auxiliar no es pot fer sonar (la música continua) | fase 2, pas 5a |
 | `aux.loaded` | `player` (el que ha canviat), `loaded` (4.8) | quan es carrega o es treu la pista d'un reproductor | fase 3, pas 4a |
 | `notes.changed` | `text` | quan algú desa les notes | fase 3, pas 4a |
+| `library.changed` | `trackId` (la pista editada, canviada de fitxer o esborrada), o `null` si han canviat les categories | quan es canvia la biblioteca des d'una ordre (les interfícies tornen a demanar el que mostren) | fase 3, pas 7a |
 | `processor.changed` | `processor` (4.9) | quan canvia el preajust o el volum del processador de la sortida | fase 3, pas 6 |
 | `output.changed` | `output` (4.3) | quan canvia la sortida, l'estat d'emergència o el problema | fase 1, pas 7c |
 | `autodj.changed` | `autodj` (4.5) | quan s'activa o es desactiva, canvia la rotació o canvia l'avís (les pistes que afegeix surten a `queue.changed`) | fase 1, pas 8 |

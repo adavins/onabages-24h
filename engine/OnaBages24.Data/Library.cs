@@ -33,9 +33,34 @@ public sealed record TrackQuery
     public long? CategoryId { get; init; }
     public long? SubcategoryId { get; init; }
     public long? TagId { get; init; }
+    /// <summary>Només les pistes en aquest estat (gestor de pistes, fase 3, pas 7a).</summary>
+    public TrackStateFilter State { get; init; } = TrackStateFilter.All;
     public int Offset { get; init; }
     public int Limit { get; init; } = 100;
 }
+
+/// <summary>Filtre per estat del gestor de pistes (fase 3, pas 7a).</summary>
+public enum TrackStateFilter
+{
+    All,
+    /// <summary>Amb el fitxer que falta.</summary>
+    Missing,
+    /// <summary>Retirades d'una bossa renovable.</summary>
+    Retired,
+    /// <summary>Desactivades a mà.</summary>
+    Disabled,
+    /// <summary>Sense subcategoria.</summary>
+    Unclassified,
+}
+
+/// <summary>Quantes pistes hi ha en cada estat que mira el gestor de pistes.</summary>
+public sealed record TrackStateCounts(int All, int Missing, int Retired, int Disabled, int Unclassified);
+
+/// <summary>Una subcategoria amb la seva categoria.</summary>
+public sealed record SubcategoryRef(long Id, string Name, long CategoryId, string CategoryName);
+
+/// <summary>Un esdeveniment que fa servir una pista (en una acció PISTA o AUXILIAR).</summary>
+public sealed record TrackUse(long EventId, string EventName);
 
 /// <summary>Una opció dels filtres de la cerca, amb quantes pistes té.</summary>
 public sealed record FilterOption(long Id, string Name, int Count);
@@ -123,6 +148,74 @@ public sealed class Library(Database database)
         }
     }
 
+    /// <summary>Crea una categoria (gestor de pistes, fase 3, pas 7a). Retorna l'id.</summary>
+    /// <exception cref="DatabaseException">Si ja n'hi ha una amb aquest nom.</exception>
+    public long CreateCategory(string name) =>
+        InsertNamed("INSERT INTO categoria (nom) VALUES ($nom); SELECT last_insert_rowid();", name, null, $"Ja hi ha una categoria «{name}».");
+
+    /// <summary>Crea una subcategoria dins d'una categoria. Retorna l'id.</summary>
+    /// <exception cref="DatabaseException">Si la categoria ja en té una amb aquest nom, o la categoria no existeix.</exception>
+    public long CreateSubcategory(long categoryId, string name) =>
+        InsertNamed("INSERT INTO subcategoria (categoria_id, nom) VALUES ($cat, $nom); SELECT last_insert_rowid();", name, categoryId,
+            $"Aquesta categoria ja té una subcategoria «{name}» (o la categoria no existeix).");
+
+    /// <summary>Canvia el nom d'una categoria. Les rotacions i els esdeveniments hi apunten per id: no cal tocar-los.</summary>
+    public void RenameCategory(long id, string name) =>
+        RenameNamed("UPDATE categoria SET nom = $nom WHERE id = $id;", id, name, $"Ja hi ha una categoria «{name}».", "categoria");
+
+    /// <summary>Canvia el nom d'una subcategoria.</summary>
+    public void RenameSubcategory(long id, string name) =>
+        RenameNamed("UPDATE subcategoria SET nom = $nom WHERE id = $id;", id, name, $"Aquesta categoria ja té una subcategoria «{name}».", "subcategoria");
+
+    private long InsertNamed(string sql, string name, long? categoryId, string duplicate)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(sql);
+            command.Parameters.AddWithValue("$nom", name);
+            if (categoryId is { } cat) command.Parameters.AddWithValue("$cat", cat);
+            try
+            {
+                return (long)command.ExecuteScalar()!;
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 19) // restricció: nom repetit o categoria que no existeix
+            {
+                throw new DatabaseException(duplicate, ex);
+            }
+        }
+    }
+
+    private void RenameNamed(string sql, long id, string name, string duplicate, string what)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(sql);
+            command.Parameters.AddWithValue("$nom", name);
+            command.Parameters.AddWithValue("$id", id);
+            try
+            {
+                if (command.ExecuteNonQuery() == 0) throw new DatabaseException($"No existeix la {what} {id}.");
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 19)
+            {
+                throw new DatabaseException(duplicate, ex);
+            }
+        }
+    }
+
+    /// <summary>Una subcategoria amb la seva categoria, o null si no existeix.</summary>
+    public SubcategoryRef? GetSubcategory(long id)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT s.id, s.nom, c.id, c.nom FROM subcategoria s JOIN categoria c ON c.id = s.categoria_id WHERE s.id = $id;");
+            command.Parameters.AddWithValue("$id", id);
+            using var r = command.ExecuteReader();
+            return r.Read() ? new SubcategoryRef(r.GetInt64(0), r.GetString(1), r.GetInt64(2), r.GetString(3)) : null;
+        }
+    }
+
     /// <summary>«Categoria / Subcategoria» d'una subcategoria (per descriure-la a la interfície), o null si no existeix.</summary>
     public string? SubcategoryName(long subcategoryId)
     {
@@ -174,8 +267,69 @@ public sealed class Library(Database database)
             AddTrackParameters(command, track);
             command.Parameters.AddWithValue("$ara", DbTime.ToText(DateTimeOffset.UtcNow));
             command.Parameters.AddWithValue("$id", track.Id);
-            if (command.ExecuteNonQuery() == 0)
-                throw new DatabaseException($"No existeix la pista {track.Id}.");
+            try
+            {
+                if (command.ExecuteNonQuery() == 0)
+                    throw new DatabaseException($"No existeix la pista {track.Id}.");
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 19) // restricció: la ruta ja és d'una altra pista
+            {
+                throw new DatabaseException($"Ja hi ha una altra pista amb aquesta ruta: {track.Path}", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Els esdeveniments que fan servir una pista (accions PISTA o AUXILIAR), per ordre de nom. Per avisar abans d'esborrar-la
+    /// o de canviar-la (gestor de pistes, fase 3, pas 7a).
+    /// </summary>
+    public IReadOnlyList<TrackUse> EventsUsingTrack(long trackId)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT DISTINCT e.id, e.nom FROM accio a JOIN esdeveniment e ON e.id = a.esdeveniment_id " +
+                "WHERE a.tipus IN ('PISTA', 'AUXILIAR') AND json_valid(a.params) AND json_extract(a.params, '$.songId') = $id " +
+                "ORDER BY e.nom COLLATE NOCASE, e.id;");
+            command.Parameters.AddWithValue("$id", trackId);
+            using var r = command.ExecuteReader();
+            var list = new List<TrackUse>();
+            while (r.Read()) list.Add(new TrackUse(r.GetInt64(0), r.GetString(1)));
+            return list;
+        }
+    }
+
+    /// <summary>
+    /// Esborra una pista de la biblioteca (el fitxer no es toca mai). L'historial la conserva (artista, títol i ruta, sense
+    /// l'enllaç) i les etiquetes se'n treuen. No es pot esborrar si la fa servir algun esdeveniment.
+    /// </summary>
+    /// <exception cref="DatabaseException">Si no existeix o la fa servir algun esdeveniment.</exception>
+    public void DeleteTrack(long id)
+    {
+        lock (database.Sync)
+        {
+            var uses = EventsUsingTrack(id);
+            if (uses.Count > 0)
+                throw new DatabaseException($"No es pot esborrar: la fa servir {(uses.Count == 1 ? "l'esdeveniment" : "els esdeveniments")} " +
+                                            string.Join(", ", uses.Select(u => $"«{u.EventName}»")) + ".");
+            using var command = database.Command("DELETE FROM pista WHERE id = $id;");
+            command.Parameters.AddWithValue("$id", id);
+            if (command.ExecuteNonQuery() == 0) throw new DatabaseException($"No existeix la pista {id}.");
+        }
+    }
+
+    /// <summary>Quantes pistes hi ha en cada estat que mira el gestor de pistes.</summary>
+    public TrackStateCounts StateCounts()
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT count(*), " +
+                "coalesce(sum(estat_fitxer = 'FALTA'), 0), coalesce(sum(estat_fitxer = 'RETIRADA'), 0), " +
+                "coalesce(sum(activa = 0), 0), coalesce(sum(subcategoria_id IS NULL), 0) FROM pista;");
+            using var r = command.ExecuteReader();
+            r.Read();
+            return new TrackStateCounts(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), r.GetInt32(3), r.GetInt32(4));
         }
     }
 
@@ -227,6 +381,13 @@ public sealed class Library(Database database)
         {
             conditions.Add("EXISTS (SELECT 1 FROM pista_etiqueta pe WHERE pe.pista_id = pista.id AND pe.etiqueta_id = $tag)");
             parameters.Add(("$tag", tag));
+        }
+        switch (query.State)
+        {
+            case TrackStateFilter.Missing: conditions.Add("estat_fitxer = 'FALTA'"); break;
+            case TrackStateFilter.Retired: conditions.Add("estat_fitxer = 'RETIRADA'"); break;
+            case TrackStateFilter.Disabled: conditions.Add("activa = 0"); break;
+            case TrackStateFilter.Unclassified: conditions.Add("subcategoria_id IS NULL"); break;
         }
         string where = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
         return QueryTracks($"{where} ORDER BY artista COLLATE NOCASE, titol COLLATE NOCASE, id LIMIT $limit OFFSET $offset", parameters.ToArray());

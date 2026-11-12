@@ -193,6 +193,13 @@ public static class EngineServer
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
             events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor);
+        // Gestor de pistes (fase 3, pas 7a): quan es canvia una pista o les categories, les interfícies tornen a demanar el que mostren
+        router.LibraryChanged += trackId =>
+        {
+            var ev = Messages.Event("library.changed");
+            ev["trackId"] = trackId;
+            Broadcast(ev);
+        };
         // Notes (fase 3, pas 4a): quan algú les desa, les altres interfícies connectades les reben
         router.NotesChanged += text =>
         {

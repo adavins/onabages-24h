@@ -106,7 +106,12 @@ Les accions `ESPERA`, `ATURA`, `EXECUTA` i `PLANTILLA` s'afegeixen al pas 3 o al
 4c. ✔ Pantalla a 1280 × 1024 i 1920 × 1080 (D-083): (a) finestra sense la barra de Windows (la capçalera en fa la feina) i zoom amb Ctrl + roda, desat al motor; (b) redistribució: la pantalla ocupa l'alçada de la finestra, l'AutoDJ a la capçalera de la cua i requadres plegables.
 5. ✔ Trepitjador (D-084): sweepers a sobre de l'inici de la pista, amb atenuació, i acció SWEEPERS. Amb l'**atenuació per defecte** de D-078 per als sweepers (−8 dB, provisional); la dels auxiliars (−10 dB) i les ordres `ducking.get` / `ducking.set` ja es van fer al pas 4b. En dues parts: 5a ✔ motor (categoria de sweepers activa, `sweepers.set`, acció SWEEPERS, el sweeper a la cua i sonant al mateix fotograma que la pista, historial); 5b ✔ interfície (categoria de sweepers a la barra de l'AutoDJ, el sweeper a la cua, l'acció «Sweepers» a l'editor i el valor per defecte de l'atenuació). **Pendent: escoltar-ho** amb sweepers de debò (en aquest ordinador no hi ha els fitxers de `D:\EMISSIO`) i decidir l'atenuació (−8 dB, provisional). «A la intro», pendent (cap pista té el punt d'intro).
 6. ✔ Processador d'àudio (compressor i volum) a la sortida (D-086). En dues parts: 6a ✔ motor (preajusts «Sense compressió», «Suau», «Mitjà» i «Fort», volum de sortida, sostre de seguretat sempre actiu, `processor.get` / `processor.set` i la reducció als mesuradors); 6b ✔ interfície (a la barra d'estat de l'Emissió, «Processador: Suau · 0 dB» amb una barreta de quant comprimeix; en fer-hi clic, un diàleg amb el preajust, el volum i la compressió d'ara). **Pendent: escoltar-ho** al PC 24h, comparar-ho amb RadioDJ i decidir els valors dels preajusts i el volum (ara, provisionals).
-7. Gestor de pistes: fitxa editable i etiquetes, editor senzill de punts, importació de carpetes amb informe, carpetes vigilades (D-026), bosses renovables (D-033) i canvi d'arrel (D-025).
+7. Gestor de pistes: fitxa editable i etiquetes, editor senzill de punts, importació de carpetes amb informe, carpetes vigilades (D-026), bosses renovables (D-033) i canvi d'arrel (D-025). En parts (D-087):
+   - 7a. Pantalla «Biblioteca» i fitxa editable. Motor ✔ (`library.get` / `update` / `relink` / `delete`, `category.save`, `subcategory.save`, filtre per estat); interfície, pendent.
+   - 7b. Importació de carpetes amb informe, des de la pantalla.
+   - 7c. Carpetes vigilades i bosses renovables, amb l'assistent «Renova la bossa».
+   - 7d. Canvi d'arrel de les rutes.
+   - 7e. Editor senzill de punts (sense escolta: forma d'ona, punts arrossegables i «Recalcula»).
 8. Rotacions: editor, separació real, previsualització, bosses amb nom (D-014) i rotació de reserva.
 9. Prova de tancament (criteri de sota).
 

@@ -72,6 +72,36 @@ public static class QueueJson
         },
     };
 
+    /// <summary>
+    /// La fitxa sencera d'una pista (gestor de pistes, fase 3, pas 7a; docs/protocol.md, 4.4): el que porta <see cref="Track(Track)"/>
+    /// i, a més, tots els camps que es poden editar, els punts, la subcategoria, les etiquetes i els esdeveniments que la fan servir.
+    /// </summary>
+    public static JsonObject TrackDetail(Track track, IReadOnlyList<string> tags, SubcategoryRef? subcategory, IReadOnlyList<TrackUse> usedBy)
+    {
+        var json = Track(track);
+        json["year"] = track.Year;
+        json["variableDuration"] = track.VariableDuration;
+        json["subcategoryId"] = track.SubcategoryId;
+        json["subcategory"] = subcategory is null ? null : new JsonObject
+        {
+            ["id"] = subcategory.Id, ["name"] = subcategory.Name, ["categoryId"] = subcategory.CategoryId, ["categoryName"] = subcategory.CategoryName,
+        };
+        json["tags"] = new JsonArray(tags.Select(t => (JsonNode)JsonValue.Create(t)!).ToArray());
+        json["validFrom"] = track.ValidFrom?.ToString("yyyy-MM-dd");
+        json["validUntil"] = track.ValidUntil?.ToString("yyyy-MM-dd");
+        json["enabled"] = track.Enabled;
+        json["notes"] = track.Notes;
+        json["startMs"] = track.StartMs;
+        json["mixMs"] = track.MixMs;
+        json["endMs"] = track.EndMs;
+        json["priority"] = track.Priority;
+        json["fileSize"] = track.FileSize;
+        json["fileModified"] = track.FileModified?.ToString("O");
+        json["radioDjId"] = track.RadioDjId;
+        json["usedBy"] = new JsonArray(usedBy.Select(u => (JsonNode)new JsonObject { ["id"] = u.EventId, ["name"] = u.EventName }).ToArray());
+        return json;
+    }
+
     public static JsonObject Output(OutputManager outputs) => new()
     {
         ["configured"] = new JsonObject { ["id"] = outputs.Configured.Id, ["name"] = outputs.Configured.Name },
