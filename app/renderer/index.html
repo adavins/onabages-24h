@@ -12,7 +12,7 @@
 <body>
 
   <header class="topbar">
-    <div class="brand"><i class="bi bi-broadcast-pin"></i> Ona Bages 24h</div>
+    <div class="brand"><img class="brand-logo" src="img/logo.png" alt=""> Ona Bages 24h</div>
     <nav class="sections" aria-label="Pantalles">
       <button id="nav-emissio" class="section active" type="button" aria-current="page"><i class="bi bi-broadcast" aria-hidden="true"></i> Emissió</button>
       <button id="nav-planificador" class="section" type="button"><i class="bi bi-calendar-week" aria-hidden="true"></i> Planificador</button>
@@ -107,6 +107,9 @@
         <div class="autodj-bar" aria-label="AutoDJ">
           <span id="autodj-state" class="autodj-state"></span>
           <select id="autodj-rotation" class="form-select form-select-sm autodj-rotation" aria-label="Rotació de l'AutoDJ"></select>
+          <!-- Categoria de sweepers del trepitjador (fase 3, pas 5b; D-084) -->
+          <label class="autodj-label" for="autodj-sweepers"><i class="bi bi-soundwave" aria-hidden="true"></i> Sweepers</label>
+          <select id="autodj-sweepers" class="form-select form-select-sm autodj-rotation"></select>
           <span id="autodj-next" class="autodj-next"></span>
           <button id="btn-autodj-toggle" class="btn btn-sm btn-outline-warning ms-auto" type="button">Atura l'AutoDJ</button>
         </div>

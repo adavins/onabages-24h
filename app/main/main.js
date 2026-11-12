@@ -54,6 +54,9 @@ function createWindow() {
     ...bounds,
     show: false,
     title: 'Ona Bages 24h',
+    // Icona de la finestra i de la barra de tasques: el mateix logotip de la capçalera. Si se substitueix el fitxer,
+    // es veu en tornar a obrir l'aplicació. La de l'executable (.ico) la crea empaquetar.cmd a partir d'aquest mateix PNG.
+    icon: path.join(__dirname, '..', 'renderer', 'img', 'logo.png'),
     backgroundColor: '#121417',
     autoHideMenuBar: true,
     // Sense la barra de títol de Windows (com a Ona Bages Play): la capçalera de l'aplicació en fa la feina

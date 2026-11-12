@@ -161,6 +161,13 @@ export class QueueView {
     time.title = 'Hora prevista';
     const text = el('div', 'queue-text');
     text.append(el('div', 'queue-title', item.title || '(sense títol)'), el('div', 'queue-artist', item.artist || ''));
+    // Trepitjador (fase 3, pas 5b; D-084): el sweeper que sonarà a sobre de l'inici
+    if (item.sweeper) {
+      const sweeper = el('div', 'queue-sweeper');
+      sweeper.append(icon('bi-soundwave'), ' ', el('span', '', `Amb sweeper: ${item.sweeper.title || item.sweeper.path}`));
+      sweeper.title = 'Sonarà a sobre de l\'inici d\'aquesta pista, amb la música atenuada';
+      text.append(sweeper);
+    }
 
     const origin = el('span', 'queue-origin');
     origin.append(icon(ORIGIN_ICONS[item.origin] ?? 'bi-hand-index'), ' ',

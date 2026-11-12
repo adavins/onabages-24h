@@ -11,6 +11,7 @@ import {
   newEvent, cloneEvent, eventToSave, sameEvent, duplicateEvent, normalizeTime, minutesToSeconds, secondsToMinutes,
   intOrNull, numberOrNull, parseHours, formatHours, parseMonthDays, formatMonthDays, setDay, moveItem, withMode, quickCheck,
 } from '../event-form.js';
+import { sweeperOptions, fillSweeperSelect } from '../subcategories.js';
 
 const DAY_NAMES = ['dl', 'dt', 'dc', 'dj', 'dv', 'ds', 'dg'];
 const RECURRENCES = [
@@ -42,6 +43,10 @@ export class EventEditor {
   #draft = null;
   /** @type {any[]} */
   #rotations = [];
+  /** Col·leccions de sweepers per a l'acció «Sweepers». @type {import('../subcategories.js').SubcategoryOption[]} */
+  #sweeperOptions = [];
+  /** @type {{ auxiliary: number, sweepers: number } | null} */
+  #ducking = null;
   /** @type {string | null} */
   #error = null;
   /** Quin cercador de pistes és obert: per afegir una PISTA o un AUXILIAR. @type {'PISTA' | 'AUXILIAR' | null} */
@@ -76,6 +81,16 @@ export class EventEditor {
   /** Les rotacions, per a les accions «Rotació». @param {any[]} rotations */
   setRotations(rotations) {
     this.#rotations = rotations;
+  }
+
+  /** Les categories de la biblioteca (library.filters), per a les accions «Sweepers» (fase 3, pas 5b). @param {any[]} categories */
+  setCategories(categories) {
+    this.#sweeperOptions = sweeperOptions(categories);
+  }
+
+  /** L'atenuació per defecte (ducking.get, D-078): es mostra quan el camp és buit. @param {{ auxiliary: number, sweepers: number } | null} ducking */
+  setDucking(ducking) {
+    this.#ducking = ducking;
   }
 
   /** Obre un esdeveniment existent (o tanca l'editor amb null). No pregunta res: qui el crida mira abans {@link dirty}. @param {any | null} ev */
@@ -249,8 +264,11 @@ export class EventEditor {
         { inputmode: 'numeric', placeholder: '1000' }, '0 = tall sec. Buit = 1.000 ms.'));
     }
     if (ev.mode === 'SUPERPOSA' || ev.actions.some((/** @type {any} */ a) => a.type === 'AUXILIAR')) {
+      // Buit = la per defecte de la configuració (D-078); 0 = sense atenuació
+      const standard = this.#ducking ? dbText(this.#ducking.auxiliary) : null;
       panel.append(this.#textField('Atenuació de la música mentre sona l\'auxiliar (dB)', ev.duckingDb == null ? '' : String(ev.duckingDb).replace('.', ','),
-        (v) => { ev.duckingDb = numberOrNull(v); }, { inputmode: 'decimal', placeholder: 'cap' }, 'Negatiu: −12 vol dir 12 dB més fluix. Buit = no s\'atenua.'));
+        (v) => { ev.duckingDb = numberOrNull(v); }, { inputmode: 'decimal', placeholder: standard ? `per defecte, ${standard}` : 'per defecte' },
+        `Negatiu: −12 vol dir 12 dB més fluix. Buit = la per defecte${standard ? ` (${standard})` : ''}. 0 = no s'atenua.`));
     }
     const advanced = el('div', 'ee-row');
     advanced.append(
@@ -426,6 +444,32 @@ export class EventEditor {
         this.#restructured();
       }));
     }
+    if (action.type === 'SWEEPERS') {
+      // Categoria de sweepers del trepitjador (fase 3, pas 5b; D-084), com «Set Sweeper Category» de RadioDJ
+      const id = uid();
+      const wrap = el('div', 'mb-2');
+      const label = /** @type {HTMLLabelElement} */ (el('label', 'form-label', 'Categoria de sweepers'));
+      label.htmlFor = id;
+      const select = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
+      select.id = id;
+      fillSweeperSelect(select, this.#sweeperOptions, p.subcategoriaId == null ? '(tria una subcategoria)' : null);
+      if (p.subcategoriaId != null && ![...select.options].some((o) => o.value === String(p.subcategoriaId))) {
+        const unknown = document.createElement('option');
+        unknown.value = String(p.subcategoriaId);
+        unknown.textContent = action.label ?? `Subcategoria ${p.subcategoriaId}`;
+        select.prepend(unknown);
+      }
+      select.value = p.subcategoriaId == null ? '' : String(p.subcategoriaId);
+      select.addEventListener('change', () => {
+        p.subcategoriaId = select.value === '' ? null : Number(select.value);
+        action.label = select.selectedOptions[0]?.textContent ?? 'Sweepers';
+        this.#restructured();
+      });
+      const standard = this.#ducking ? ` La música baixa ${dbText(this.#ducking.sweepers)} mentre sonen (per defecte, a la configuració).` : '';
+      wrap.append(label, select, el('div', 'form-text',
+        `A partir d'aquí, els passos de rotació amb trepitjador fan sonar un sweeper d'aquesta categoria a sobre de l'inici de la cançó.${standard}`));
+      li.append(wrap);
+    }
     if (action.type === 'AUTODJ') {
       li.append(this.#select('Què fa', [['true', 'Activa l\'AutoDJ'], ['false', 'Atura l\'AutoDJ']], String(p.actiu !== false), (v) => {
         p.actiu = v === 'true';
@@ -480,6 +524,11 @@ export class EventEditor {
     });
     add('bi-shuffle', 'AutoDJ', 'Activa o atura l\'AutoDJ', () => {
       ev.actions = [...ev.actions, { type: 'AUTODJ', params: { actiu: true }, daysMask: null, label: 'Activa l\'AutoDJ' }];
+      this.#restructured();
+    });
+    add('bi-soundwave', 'Sweepers', 'Canvia la categoria de sweepers del trepitjador (sonen a sobre de l\'inici de les cançons)', () => {
+      const first = this.#sweeperOptions[0];
+      ev.actions = [...ev.actions, { type: 'SWEEPERS', params: { subcategoriaId: first?.id ?? null }, daysMask: null, label: first?.label ?? 'Sweepers' }];
       this.#restructured();
     });
     add('bi-broadcast', 'Stream', 'Un stream d\'internet (sonarà a partir del pas 7)', () => {
@@ -816,6 +865,11 @@ const MODE_HELP = {
   SUPERPOSA: 'Sona per sobre del que soni (senyals horaris), sense tocar la cua.',
   SISTEMA: 'Només accions sense àudio (canviar la rotació, l\'AutoDJ…).',
 };
+
+/** «−10 dB», o «0 dB (sense atenuació)». @param {number} db */
+function dbText(db) {
+  return db === 0 ? '0 dB (sense atenuació)' : `${String(db).replace('.', ',').replace('-', '−')} dB`;
+}
 
 const ACTION_NAMES = {
   PISTA: 'Pista', AUXILIAR: 'Auxiliar', ROTACIO: 'Rotació', AUTODJ: 'AutoDJ', STREAM: 'Stream', SWEEPERS: 'Sweepers',

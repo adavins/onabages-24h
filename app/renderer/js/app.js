@@ -344,6 +344,8 @@ async function loadState() {
     ]);
     showQueue(queue.queue);
     autoDjView.setRotations(rotations.rotations);
+    // Les subcategories, per triar la categoria de sweepers (fase 3, pas 5b)
+    send('library.filters').then((f) => autoDjView.setCategories(f.categories)).catch(() => {});
     showAutoDj(autodj.autodj);
     showOutput(output.output);
     await Promise.all([historyView.refresh(), refreshNowPlayingStatus()]);

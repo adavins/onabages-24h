@@ -63,8 +63,12 @@ body {
   white-space: nowrap;
 }
 
-.brand .bi {
-  color: var(--ob-mix);
+/* El logotip (img/logo.png, també la icona de l'aplicació): només se'n fixa l'alçada */
+.brand-logo {
+  height: 1.4em;
+  width: auto;
+  vertical-align: -0.3em;
+  margin-right: 0.15em;
 }
 
 .sections {
@@ -449,6 +453,12 @@ body {
   flex: none;
 }
 
+.autodj-label {
+  flex: none;
+  color: var(--ob-muted);
+  font-size: 0.88rem;
+}
+
 .autodj-rotation {
   width: auto;
   max-width: 16rem;
@@ -546,6 +556,15 @@ body {
 .queue-origin {
   white-space: nowrap;
   width: 8rem;
+}
+
+/* El sweeper que sonarà a sobre de l'inici (trepitjador, D-084) */
+.queue-sweeper {
+  font-size: 0.85rem;
+  color: #b9a8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .queue-duration {

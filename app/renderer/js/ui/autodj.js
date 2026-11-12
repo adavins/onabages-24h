@@ -6,6 +6,7 @@
 import { $, el, statusLabel } from './dom.js';
 import { confirmAction } from './confirm.js';
 import { askDuration } from './duration.js';
+import { sweeperOptions, fillSweeperSelect } from '../subcategories.js';
 
 /** «18:30» d'una hora ISO. @param {string} iso */
 function hhmm(iso) {
@@ -32,6 +33,13 @@ export class AutoDjView {
     this.#send = send;
     $('btn-autodj-toggle').addEventListener('click', () => this.#toggle());
     $('autodj-rotation').addEventListener('change', (e) => this.#changeRotation(/** @type {HTMLSelectElement} */ (e.target)));
+    $('autodj-sweepers').addEventListener('change', (e) => this.#changeSweepers(/** @type {HTMLSelectElement} */ (e.target)));
+  }
+
+  /** Les categories de la biblioteca (library.filters), per triar la categoria de sweepers. @param {any[]} categories */
+  setCategories(categories) {
+    fillSweeperSelect(/** @type {HTMLSelectElement} */ ($('autodj-sweepers')), sweeperOptions(categories), 'Cap', true);
+    if (this.#state) this.render(this.#state);
   }
 
   /** @param {any[]} rotations  de rotations.list */
@@ -80,6 +88,14 @@ export class AutoDjView {
     $('autodj-next').title = [stepLine, origin].filter(Boolean).join('\n');
     select.title = origin || 'Rotació de l\'AutoDJ';
 
+    // Categoria de sweepers del trepitjador (fase 3, pas 5b; D-084) i d'on ve
+    const sweepers = /** @type {HTMLSelectElement} */ ($('autodj-sweepers'));
+    sweepers.value = state.sweepers ? String(state.sweepers.subcategoryId) : '';
+    sweepers.title = 'Sweepers del trepitjador: sonen a sobre de l\'inici de les cançons dels passos de la rotació que ho demanen' +
+      (state.sweepers?.changedAt
+        ? `\nDes de les ${hhmm(state.sweepers.changedAt)}${state.sweepers.changedBy ? `, ${state.sweepers.changedBy}` : ''}`
+        : '');
+
     const problem = $('autodj-problem');
     problem.classList.toggle('d-none', !state.problem);
     $('autodj-problem-text').textContent = state.problem ?? '';
@@ -111,6 +127,18 @@ export class AutoDjView {
     const id = Number(select.value);
     if (!Number.isFinite(id)) return;
     await this.#set({ rotationId: id });
+  }
+
+  /** La categoria de sweepers (sweepers.set). No interromp res: les pistes de la cua es queden el sweeper que tenen. @param {HTMLSelectElement} select */
+  async #changeSweepers(select) {
+    const subcategoryId = select.value === '' ? null : Number(select.value);
+    try {
+      const { autodj } = await this.#send('sweepers.set', { subcategoryId });
+      this.render(autodj);
+    } catch (err) {
+      if (this.#state) this.render(this.#state);
+      await confirmAction({ title: 'No s\'han pogut canviar els sweepers', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+    }
   }
 
   /** @param {object} params */
