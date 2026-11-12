@@ -192,6 +192,30 @@ public sealed class TrackManagerTests : IDisposable
     }
 
     [Fact]
+    public void Buidar_una_subcategoria_primer_diu_que_fara_i_despres_esborra_i_retira()
+    {
+        long free = Track("Lliure", _adult5);
+        long used = Track("En un esdeveniment", _adult5);
+        long other = Track("D'una altra", _library.EnsureSubcategory(_music, "Adult 9"));
+        _events.Save(new ScheduledEvent { Name = "Promo", Mode = EventMode.Queue, StartTime = new TimeOnly(10, 0),
+            Actions = [new EventAction { Type = EventActionType.Track, Params = $$"""{"songId":{{used}}}""" }] });
+        new Rotations(_db).Save("OnaBages", [new RotationStep { SubcategoryId = _adult5 }]);
+
+        var preview = Result(Send($$"""{ "v": 1, "id": 1, "cmd": "subcategory.empty", "subcategoryId": {{_adult5}}, "dryRun": true }"""));
+        Assert.Equal((2, 1), (preview["tracks"]!.GetValue<int>(), preview["usedByEvents"]!.GetValue<int>()));
+        Assert.Equal(["OnaBages"], preview["rotations"]!.AsArray().Select(r => r!.GetValue<string>()));
+        Assert.NotNull(_library.GetTrack(free)); // la prova no toca res
+        Assert.Empty(_changed);
+
+        var done = Result(Send($$"""{ "v": 1, "id": 2, "cmd": "subcategory.empty", "subcategoryId": {{_adult5}} }"""));
+        Assert.Equal((1, 1), (done["removed"]!.GetValue<int>(), done["retired"]!.GetValue<int>()));
+        Assert.Null(_library.GetTrack(free));
+        Assert.Equal(FileState.Retired, _library.GetTrack(used)!.FileState);
+        Assert.NotNull(_library.GetTrack(other));
+        Assert.Equal([null], _changed);
+    }
+
+    [Fact]
     public void La_cerca_filtra_per_estat_i_els_filtres_porten_els_comptes()
     {
         Track("Bona", _adult5);

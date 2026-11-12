@@ -60,6 +60,7 @@ export class TrackManagerView {
     $('tm-new-category').addEventListener('click', () => this.#newCategory());
     $('tm-new-subcategory').addEventListener('click', () => this.#newSubcategory());
     $('tm-rename').addEventListener('click', () => this.#rename());
+    $('tm-empty').addEventListener('click', () => this.#empty());
     this.#renderDetail();
   }
 
@@ -221,6 +222,48 @@ export class TrackManagerView {
     }
     await this.#loadFilters();
     if (this.#track) await this.#open(this.#track.id, false); // la fitxa diu el nom de la subcategoria
+  }
+
+  /**
+   * Buida la subcategoria triada (D-089): esborra totes les seves pistes de la biblioteca, p. ex. per renovar una bossa
+   * abans d'importar-ne la nova. Primer es demana al motor què faria i es confirma.
+   */
+  async #empty() {
+    const scope = this.#scope;
+    if (scope.kind !== 'subcategory') {
+      await confirmAction({ title: 'Buidar una subcategoria', message: 'Tria primer, a l\'esquerra, la subcategoria que vols buidar.', confirm: 'D\'acord', info: true });
+      return;
+    }
+    const preview = await this.#try('No s\'ha pogut buidar la subcategoria',
+      () => this.#send('subcategory.empty', { subcategoryId: scope.id, dryRun: true }));
+    if (!preview) return;
+    if (preview.tracks === 0) {
+      await confirmAction({ title: 'Buidar la subcategoria', message: `«${preview.name}» ja és buida.`, confirm: 'D\'acord', info: true });
+      return;
+    }
+    const lines = [`S'esborraran de la biblioteca les ${preview.tracks} pistes de «${preview.name}». ` +
+      'L\'historial (i els certificats) les conserven i els fitxers no es toquen, però no es pot desfer.'];
+    if (preview.usedByEvents > 0)
+      lines.push(`${preview.usedByEvents} les fan servir esdeveniments: no s'esborraran, quedaran retirades.`);
+    if (preview.rotations.length > 0)
+      lines.push(`⚠ Les rotacions ${preview.rotations.map((/** @type {string} */ r) => `«${r}»`).join(', ')} tenen passos d'aquesta ` +
+        'subcategoria: fins que no s\'hi importi música nova, l\'AutoDJ saltarà aquests passos (amb un avís).');
+    const ok = await confirmAction({ title: 'Buidar la subcategoria', message: lines.join('\n\n'), confirm: `Esborra les ${preview.tracks} pistes` });
+    if (!ok) return;
+    const done = await this.#try('No s\'ha pogut buidar la subcategoria', () => this.#send('subcategory.empty', { subcategoryId: scope.id }));
+    if (!done) return;
+    if (this.#track && this.#track.subcategoryId === scope.id) {
+      this.#track = null;
+      this.#renderDetail();
+    }
+    await this.#loadFilters();
+    await this.#search();
+    await confirmAction({
+      title: 'Subcategoria buidada',
+      message: `«${done.name}»: ${done.removed} pistes esborrades${done.retired ? `, ${done.retired} retirades (les fan servir esdeveniments)` : ''}.`,
+      confirm: 'D\'acord',
+      info: true,
+    });
   }
 
   // --- Llista de pistes ---

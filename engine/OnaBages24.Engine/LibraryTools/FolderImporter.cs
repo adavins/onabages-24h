@@ -54,6 +54,8 @@ public static class FolderImporter
 {
     public static readonly string[] AudioExtensions = [".mp3", ".wav", ".flac", ".m4a", ".mp4", ".aac", ".ogg", ".wma"];
 
+    private static readonly object RelinkLock = new();
+
     /// <summary>Els fitxers d'àudio de la carpeta i les subcarpetes, per ordre alfabètic.</summary>
     /// <exception cref="DirectoryNotFoundException">Si la carpeta no existeix.</exception>
     public static List<string> ListAudioFiles(string folder)
@@ -127,19 +129,23 @@ public static class FolderImporter
             // A la mateixa subcategoria hi ha una pista que falta amb el mateix nom de fitxer: és la mateixa cançó, que s'ha
             // mogut (o que en aquest ordinador es veu amb una altra ruta). Es recupera, amb la fitxa i l'historial, en lloc de
             // duplicar-la. Els punts es tornen a calcular en segon pla (excepte els manuals); mentrestant, els d'abans.
-            if (library.FindMissingByFileName(defaults.SubcategoryId, Path.GetFileName(path)) is { } moved)
+            // Amb un bloqueig: si s'importen dos fitxers alhora amb el mateix nom (de subcarpetes diferents), només un la recupera.
+            lock (RelinkLock)
             {
-                var found = new FileInfo(path);
-                library.UpdateTrack(moved with
+                if (library.FindMissingByFileName(defaults.SubcategoryId, Path.GetFileName(path)) is { } moved)
                 {
-                    Path = path,
-                    FileState = FileState.Ok,
-                    DurationMs = (long)metadata.Duration.TotalMilliseconds,
-                    FileSize = found.Length,
-                    FileModified = new DateTimeOffset(found.LastWriteTimeUtc, TimeSpan.Zero),
-                    CueSource = moved.CueSource == CueSource.Manual ? CueSource.Manual : null,
-                });
-                return (ImportOutcome.Reactivated, false, null);
+                    var found = new FileInfo(path);
+                    library.UpdateTrack(moved with
+                    {
+                        Path = path,
+                        FileState = FileState.Ok,
+                        DurationMs = (long)metadata.Duration.TotalMilliseconds,
+                        FileSize = found.Length,
+                        FileModified = new DateTimeOffset(found.LastWriteTimeUtc, TimeSpan.Zero),
+                        CueSource = moved.CueSource == CueSource.Manual ? CueSource.Manual : null,
+                    });
+                    return (ImportOutcome.Reactivated, false, null);
+                }
             }
 
             var cues = CueAnalyzer.AnalyzeFile(path, thresholds, cancel);

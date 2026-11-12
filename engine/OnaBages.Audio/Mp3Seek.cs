@@ -61,13 +61,13 @@ public static class Mp3Seek
 
     /// <summary>
     /// Lectura des d'uns quants fotogrames abans de <paramref name="startAt"/>, descartant fins al punt.
-    /// <paramref name="delayFrames"/>: mostres (a la freqüència del fitxer) que cal saltar de més respecte del temps del
-    /// fotograma (la diferència fixa amb la lectura des del principi).
+    /// <paramref name="delayFrames"/>: la diferència fixa amb la lectura des del principi (<see cref="Calibrate"/>): llegint
+    /// des del fotograma del temps T, el so que surt és el que, llegint des del principi, és a T + <paramref name="delayFrames"/>.
     /// </summary>
     private static AudioFileSource? OpenAt(Mp3FrameIndex index, string path, int targetSampleRate, TimeSpan startAt, int delayFrames)
     {
         int fileRate = index.SampleRate;
-        long target = (long)Math.Round(startAt.TotalSeconds * fileRate) + delayFrames;
+        long target = TargetSample((long)Math.Round(startAt.TotalSeconds * fileRate), delayFrames);
         if (target < 0 || index.FrameCount == 0) return null;
         int frame = (int)Math.Min(index.FrameCount - 1, target / index.SamplesPerFrame);
         int first = Math.Max(0, frame - PrerollFrames);
@@ -91,6 +91,14 @@ public static class Mp3Seek
             throw;
         }
     }
+
+    /// <summary>
+    /// Mostra (comptada pels fotogrames de l'índex) des d'on s'ha de llegir per obtenir el so que, llegint des del principi,
+    /// és a <paramref name="sample"/>. Si llegint des d'un fotograma el so surt <paramref name="delayFrames"/> mostres més
+    /// endavant, s'ha de començar aquestes mostres <b>abans</b>. (Ona Bages 24h, D-089: abans se sumaven, i en els fitxers
+    /// amb diferència —p. ex. 1.152 mostres— el salt quedava el doble de lluny, 2.304 mostres: 52 ms a 44,1 kHz.)
+    /// </summary>
+    public static long TargetSample(long sample, int delayFrames) => sample - delayFrames;
 
     private static Entry? Get(string path)
     {

@@ -149,6 +149,35 @@ public class Mp3SeekTests : IDisposable
         Assert.Equal(Rate * 2 * 2, ReadFrames(source, Rate * 2).Length); // continua sonant sencer
     }
 
+    /// <summary>
+    /// MP3 real en què llegir des d'un fotograma dona el so 1.152 mostres més endavant que llegir des del principi (D-089).
+    /// Només a l'ordinador del desenvolupador; si no hi és, la prova no fa res.
+    /// </summary>
+    private const string RealFileWithDelay = @"O:\musica\BOSSA 9 ADULT CONTEMPORARY_edit\Aerosmith - Dream On.mp3";
+
+    [Fact]
+    public void La_diferencia_del_calibratge_es_compensa_començant_abans()
+    {
+        // Si des del fotograma el so surt 1.152 mostres més endavant, per tenir el de la mostra 100.000 cal començar a 98.848
+        Assert.Equal(98_848, Mp3Seek.TargetSample(100_000, 1152));
+        Assert.Equal(100_000, Mp3Seek.TargetSample(100_000, 0));
+    }
+
+    [Fact]
+    public void Amb_un_MP3_real_amb_diferencia_de_calibratge_el_salt_cau_a_la_mostra()
+    {
+        if (!File.Exists(RealFileWithDelay)) return; // només a l'ordinador del desenvolupador
+        double[] points = [20, 100, 200];
+        var reference = Reference(RealFileWithDelay, points);
+        foreach (double s in points)
+        {
+            var (error, score, _) = SeekError(RealFileWithDelay, s, reference[s]);
+            _output.WriteLine($"Salt a {s} s: error {error} mostres, correlació {score:F4}");
+            Assert.InRange(error, -1, 1); // abans: +2.304 (52 ms)
+            Assert.True(score > 0.99, $"correlació {score}");
+        }
+    }
+
     [Fact]
     public void Amb_un_MP3_real_de_bitrate_variable_el_salt_cau_a_la_mostra()
     {

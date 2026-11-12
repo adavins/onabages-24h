@@ -36,8 +36,8 @@ public sealed record ImportStatus(
 
 /// <summary>
 /// Importa una carpeta en segon pla, des de la pantalla «Biblioteca» (fase 3, pas 7b; D-088). Una sola importació alhora,
-/// en un fil propi de prioritat baixa i un fitxer cada vegada: l'anàlisi dels punts descodifica el fitxer sencer i
-/// l'emissió va primer (com el recàlcul de punts, D-069). Avisa del progrés unes 2 vegades per segon i en acabar.
+/// amb dos fils de prioritat baixa (dos fitxers alhora, D-089): l'emissió va primer (com el recàlcul de punts, D-069) i
+/// l'ordinador del 24h en té prou amb la resta de nuclis. Avisa del progrés unes 2 vegades per segon i en acabar.
 /// Es pot aturar: el que ja s'ha importat es queda.
 /// </summary>
 public sealed class LibraryImporter : IDisposable
@@ -142,14 +142,36 @@ public sealed class LibraryImporter : IDisposable
             var files = FolderImporter.ListAudioFiles(folder);
             total = files.Count;
             Publish(ImportState.Running, force: true);
-            foreach (string path in files)
+
+            // Dos fitxers alhora (D-089), cadascun en un fil de prioritat baixa: es van repartint la llista
+            int next = -1;
+            var sync = new object();
+            Exception? failure = null;
+            void Work()
             {
-                if (cancel.IsCancellationRequested) break;
-                var (outcome, withoutSound, error) = FolderImporter.ImportFile(_library, path, defaults, _thresholds, cancel);
-                FolderImporter.Count(report, path, outcome, withoutSound, error);
-                done++;
-                Publish(ImportState.Running);
+                try
+                {
+                    int i;
+                    while (!cancel.IsCancellationRequested && (i = Interlocked.Increment(ref next)) < files.Count)
+                    {
+                        string path = files[i];
+                        var (outcome, withoutSound, error) = FolderImporter.ImportFile(_library, path, defaults, _thresholds, cancel);
+                        lock (sync)
+                        {
+                            FolderImporter.Count(report, path, outcome, withoutSound, error);
+                            done++;
+                            Publish(ImportState.Running);
+                        }
+                    }
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex) { lock (sync) failure ??= ex; }
             }
+            var helper = new Thread(Work) { IsBackground = true, Name = "Importació de carpeta (2)", Priority = ThreadPriority.Lowest };
+            helper.Start();
+            Work();
+            helper.Join();
+            if (failure is not null) throw failure;
             var end = cancel.IsCancellationRequested ? ImportState.Cancelled : ImportState.Done;
 
             // Buidar la subcategoria (com RadioDJ): només si la importació ha acabat bé, perquè una importació aturada o

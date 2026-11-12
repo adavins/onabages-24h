@@ -139,6 +139,7 @@ public sealed class CommandRouter
                 "library.delete" => LibraryDelete(msg),
                 "category.save" => CategorySave(msg),
                 "subcategory.save" => SubcategorySave(msg),
+                "subcategory.empty" => SubcategoryEmpty(msg),
                 "library.import" => LibraryImport(msg),
                 "library.importStatus" => new JsonObject { ["import"] = ImporterOrError().Status is { } s ? QueueJson.Import(s) : null },
                 "library.importCancel" => new JsonObject { ["cancelled"] = ImporterOrError().Cancel() },
@@ -581,6 +582,38 @@ public sealed class CommandRouter
         library.DeleteTrack(id);
         LibraryChanged?.Invoke(id);
         return new JsonObject { ["deleted"] = id };
+    }
+
+    /// <summary>
+    /// Buida una subcategoria (fase 3, pas 7b; D-089): esborra totes les seves pistes de la biblioteca; les que fan servir
+    /// esdeveniments queden retirades. Amb <c>dryRun: true</c> no fa res i només diu què faria (per confirmar-ho): quantes
+    /// pistes hi ha, quantes fan servir esdeveniments i quines rotacions hi tenen algun pas.
+    /// </summary>
+    private JsonObject SubcategoryEmpty(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        long id = RequiredId(msg, "subcategoryId");
+        var sub = library.GetSubcategory(id) ?? throw new BadParamsException($"No existeix la subcategoria {id}.");
+        if (_importer?.Status is { Running: true }) throw new BadParamsException("S'està important una carpeta: espera que acabi.");
+        bool dryRun = msg["dryRun"] is JsonValue v && v.TryGetValue(out bool d) && d;
+
+        var tracks = library.TracksInSubcategory(id);
+        int used = tracks.Count(t => library.EventsUsingTrack(t.Id).Count > 0);
+        var result = new JsonObject
+        {
+            ["subcategoryId"] = id,
+            ["name"] = $"{sub.CategoryName} / {sub.Name}",
+            ["tracks"] = tracks.Count,
+            ["usedByEvents"] = used,
+            ["rotations"] = new JsonArray(library.RotationsUsingSubcategory(id).Select(r => (JsonNode)JsonValue.Create(r)!).ToArray()),
+        };
+        if (dryRun) return result;
+
+        var (removed, retired) = LibraryTools.FolderImporter.RemoveOthers(library, id, []);
+        result["removed"] = removed;
+        result["retired"] = retired;
+        LibraryChanged?.Invoke(null);
+        return result;
     }
 
     // --- Importació de carpetes (fase 3, pas 7b) ---

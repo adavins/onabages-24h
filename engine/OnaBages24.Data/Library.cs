@@ -203,6 +203,21 @@ public sealed class Library(Database database)
         }
     }
 
+    /// <summary>Els noms de les rotacions amb algun pas d'aquesta subcategoria (per avisar abans de buidar-la).</summary>
+    public IReadOnlyList<string> RotationsUsingSubcategory(long subcategoryId)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT DISTINCT r.nom FROM rotacio_pas p JOIN rotacio r ON r.id = p.rotacio_id WHERE p.subcategoria_id = $id ORDER BY r.nom COLLATE NOCASE;");
+            command.Parameters.AddWithValue("$id", subcategoryId);
+            using var reader = command.ExecuteReader();
+            var list = new List<string>();
+            while (reader.Read()) list.Add(reader.GetString(0));
+            return list;
+        }
+    }
+
     /// <summary>Una subcategoria amb la seva categoria, o null si no existeix.</summary>
     public SubcategoryRef? GetSubcategory(long id)
     {
