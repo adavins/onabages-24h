@@ -229,6 +229,21 @@ ipcMain.handle('dialog:choose-audio-file', async (_event, defaultPath) => {
   return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
 });
 
+// Importació de fitxers solts: triar un o diversos fitxers d'àudio. Retorna la llista de rutes, o null si es cancel·la.
+ipcMain.handle('dialog:choose-audio-files', async (_event, defaultPath) => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Tria els fitxers d\'àudio',
+    defaultPath: typeof defaultPath === 'string' && defaultPath ? defaultPath : undefined,
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'Àudio', extensions: ['mp3', 'wav', 'flac', 'm4a', 'mp4', 'aac', 'ogg', 'wma'] },
+      { name: 'Tots els fitxers', extensions: ['*'] },
+    ],
+  });
+  return result.canceled || result.filePaths.length === 0 ? null : result.filePaths;
+});
+
 // Importació (fase 3, pas 7b): triar una carpeta d'aquest ordinador.
 ipcMain.handle('dialog:choose-folder', async (_event, defaultPath) => {
   if (!mainWindow) return null;

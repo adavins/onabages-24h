@@ -38,7 +38,16 @@ public sealed record ImportStatus(
 
     /// <summary>En una renovació: les cançons que es mantenen i han passat a apuntar a la carpeta nova.</summary>
     public int Moved { get; init; }
+
+    /// <summary>
+    /// Amb fitxers solts (D-100), en acabar: les pistes que en surten (noves o que ja hi eren), per obrir-ne la fitxa.
+    /// Null en importar una carpeta o mentre s'importa.
+    /// </summary>
+    public IReadOnlyList<ImportedTrack>? Tracks { get; init; }
 }
+
+/// <summary>Una pista que surt d'una importació de fitxers solts: l'id, l'artista i el títol.</summary>
+public sealed record ImportedTrack(long Id, string Artist, string Title);
 
 /// <summary>
 /// Importa una carpeta en segon pla, des de la pantalla «Biblioteca» (fase 3, pas 7b; D-088). Una sola importació alhora,
@@ -79,20 +88,39 @@ public sealed class LibraryImporter : IDisposable
     /// Comença a importar <paramref name="folder"/> amb els valors per defecte. Torna de seguida; la feina es fa en segon pla.
     /// </summary>
     /// <exception cref="InvalidOperationException">Si ja n'hi ha una en curs.</exception>
-    public ImportStatus Start(string folder, ImportDefaults defaults, string subcategoryName)
+    public ImportStatus Start(string folder, ImportDefaults defaults, string subcategoryName) =>
+        Start(folder, () => FolderImporter.ListAudioFiles(folder), defaults, subcategoryName, listTracks: false);
+
+    /// <summary>Com a molt, quantes pistes es diuen en importar fitxers solts.</summary>
+    public const int MaxListedTracks = 100;
+
+    /// <summary>
+    /// Comença a importar uns fitxers solts (no una carpeta), amb els valors per defecte. No buida ni renova la subcategoria.
+    /// A l'estat, <see cref="ImportStatus.Folder"/> és el fitxer o, si n'hi ha diversos, «carpeta (N fitxers)».
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Si ja n'hi ha una en curs.</exception>
+    public ImportStatus StartFiles(IReadOnlyList<string> files, ImportDefaults defaults, string subcategoryName)
+    {
+        string label = files.Count == 1 ? files[0] : $"{Path.GetDirectoryName(files[0])} ({files.Count} fitxers)";
+        var list = files.ToList();
+        return Start(label, () => list, defaults with { EmptySubcategory = false, Renew = false, WatchAfter = false }, subcategoryName,
+            listTracks: true);
+    }
+
+    private ImportStatus Start(string label, Func<List<string>> listFiles, ImportDefaults defaults, string subcategoryName, bool listTracks)
     {
         lock (_lock)
         {
-            if (_status is { Running: true }) throw new InvalidOperationException("Ja s'està important una carpeta: espera que acabi o atura-la.");
+            if (_status is { Running: true }) throw new InvalidOperationException("Ja s'està important: espera que acabi o atura-la.");
             _cancel?.Dispose();
             _cancel = new CancellationTokenSource();
-            _status = new ImportStatus(folder, subcategoryName, ImportState.Listing, 0, 0, 0, 0, 0, 0, [], DateTimeOffset.UtcNow, null, null)
+            _status = new ImportStatus(label, subcategoryName, ImportState.Listing, 0, 0, 0, 0, 0, 0, [], DateTimeOffset.UtcNow, null, null)
             {
                 EmptySubcategory = defaults.EmptySubcategory || defaults.Renew,
                 Renew = defaults.Renew,
             };
             var token = _cancel.Token;
-            _thread = new Thread(() => Run(folder, defaults, token)) { IsBackground = true, Name = "Importació de carpeta", Priority = ThreadPriority.Lowest };
+            _thread = new Thread(() => Run(label, listFiles, defaults, listTracks, token)) { IsBackground = true, Name = "Importació", Priority = ThreadPriority.Lowest };
             _thread.Start();
             return _status;
         }
@@ -112,11 +140,14 @@ public sealed class LibraryImporter : IDisposable
     /// <summary>Espera que acabi la importació en curs (per a les proves). Retorna false si no ha acabat a temps.</summary>
     public bool Wait(TimeSpan timeout) => _thread?.Join(timeout) ?? true;
 
-    private void Run(string folder, ImportDefaults defaults, CancellationToken cancel)
+    /// <param name="folder">La carpeta (o, amb fitxers solts, el text que els descriu): per als registres i la renovació.</param>
+    /// <param name="listTracks">En acabar, diu quines pistes surten dels fitxers (<see cref="ImportStatus.Tracks"/>).</param>
+    private void Run(string folder, Func<List<string>> listFiles, ImportDefaults defaults, bool listTracks, CancellationToken cancel)
     {
         var report = new FolderImportReport();
         int total = 0, done = 0, removed = 0, kept = 0, moved = 0;
         string? warning = null;
+        IReadOnlyList<ImportedTrack>? tracks = null;
         long lastProgress = 0;
         void Publish(ImportState state, string? error = null, bool force = false)
         {
@@ -136,6 +167,7 @@ public sealed class LibraryImporter : IDisposable
                     KeptForEvents = kept,
                     Moved = moved,
                     Warning = warning,
+                    Tracks = tracks,
                 };
                 _status = status;
             }
@@ -147,7 +179,7 @@ public sealed class LibraryImporter : IDisposable
         {
             _log?.Invoke($"Importació de {folder}: buscant fitxers");
             Publish(ImportState.Listing, force: true);
-            var files = FolderImporter.ListAudioFiles(folder);
+            var files = listFiles();
             var toImport = files;
             if (defaults.Renew)
             {
@@ -212,6 +244,11 @@ public sealed class LibraryImporter : IDisposable
                 warning = defaults.Renew
                     ? "La renovació no ha acabat: les cançons que sortien no s'han esborrat (les que entraven fins aquí ja hi són)."
                     : "La importació no ha acabat: no s'ha buidat la subcategoria.";
+
+            // Fitxers solts (D-100): les pistes que en surten (noves o que ja hi eren), per poder obrir-ne la fitxa de seguida
+            if (listTracks)
+                tracks = files.Take(MaxListedTracks).Select(f => _library.FindByPath(f)).OfType<Track>()
+                    .Select(t => new ImportedTrack(t.Id, t.Artist, t.Title)).ToList();
 
             Publish(end, force: true);
             _log?.Invoke($"Importació de {folder} {(end == ImportState.Cancelled ? "aturada" : "acabada")}: {report.ToString().Split('\n')[0]}");

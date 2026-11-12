@@ -217,10 +217,49 @@ public class FolderImportTests : IDisposable
         var last = importer.Status!;
         Assert.Equal(ImportState.Done, last.State);
         Assert.Equal((3, 3, 2), (last.Total, last.Done, last.Added));
+        Assert.Null(last.Tracks); // d'una carpeta no es diuen
         Assert.Contains("malmès.mp3", Assert.Single(last.Unreadable));
         Assert.NotNull(last.Finished);
         lock (seen) Assert.Equal(ImportState.Done, seen[^1].State); // l'últim avís és el del final
         Assert.False(importer.Cancel()); // ja no n'hi ha cap en curs
+    }
+
+    [Fact]
+    public void Fitxers_solts_nomes_importen_aquests_i_no_buiden_la_subcategoria()
+    {
+        string one = Wav("Un.wav");
+        string two = Wav(Path.Combine("subcarpeta", "Dos.wav"));
+        Wav("No triat.wav");
+        long sub = _library.EnsureSubcategory(_library.EnsureCategory("Music"), "Actualitat");
+        long old = _library.AddTrack(new Track { Path = @"C:\vella\Una.mp3", SubcategoryId = sub });
+        using var importer = new LibraryImporter(_library);
+        var router = new OnaBages24.Engine.Protocol.CommandRouter(new OnaBages24.Engine.EngineState(), () => { }, _library, importer: importer);
+        System.Text.Json.Nodes.JsonObject Send(System.Text.Json.Nodes.JsonObject msg) { msg["v"] = 1; msg["id"] = 1; return router.Handle(msg.ToJsonString()); }
+        string Error(System.Text.Json.Nodes.JsonObject r) => r["error"]!["code"]!.GetValue<string>();
+
+        Assert.Equal("bad_params", Error(Send(new() { ["cmd"] = "library.import", ["files"] = new System.Text.Json.Nodes.JsonArray(), ["subcategoryId"] = sub })));
+        Assert.Equal("bad_params", Error(Send(new() { ["cmd"] = "library.import", ["files"] = new System.Text.Json.Nodes.JsonArray(Path.Combine(_music, "no-hi-és.wav")), ["subcategoryId"] = sub })));
+        string text = Path.Combine(_music, "notes.txt");
+        File.WriteAllText(text, "no és àudio");
+        Assert.Equal("bad_params", Error(Send(new() { ["cmd"] = "library.import", ["files"] = new System.Text.Json.Nodes.JsonArray(text), ["subcategoryId"] = sub })));
+
+        // Encara que es demani buidar la subcategoria, amb fitxers solts no es buida
+        var started = Send(new() { ["cmd"] = "library.import", ["files"] = new System.Text.Json.Nodes.JsonArray(one, two), ["subcategoryId"] = sub, ["emptySubcategory"] = true });
+        Assert.EndsWith("(2 fitxers)", started["result"]!["import"]!["folder"]!.GetValue<string>());
+        Assert.True(importer.Wait(TimeSpan.FromSeconds(30)));
+
+        var status = importer.Status!;
+        Assert.Equal((ImportState.Done, 2, 2), (status.State, status.Total, status.Added));
+        Assert.NotNull(_library.FindByPath(one));
+        Assert.NotNull(_library.FindByPath(two));
+        Assert.Null(_library.FindByPath(Path.Combine(_music, "No triat.wav")));
+        Assert.NotNull(_library.GetTrack(old)); // no s'ha buidat
+        Assert.Equal(0, status.Removed);
+
+        // Diu quines pistes en surten, per poder obrir-ne la fitxa
+        Assert.Equal([_library.FindByPath(one)!.Id, _library.FindByPath(two)!.Id], status.Tracks!.Select(t => t.Id));
+        var json = Send(new() { ["cmd"] = "library.importStatus" })["result"]!["import"]!;
+        Assert.Equal(2, json["tracks"]!.AsArray().Count);
     }
 
     [Fact]

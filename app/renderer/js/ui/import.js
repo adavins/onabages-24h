@@ -11,25 +11,47 @@ import { TRACK_TYPES, parseTags, guessType } from '../track-form.js';
 export class ImportView {
   #send;
   #chooseFolder;
+  #chooseFiles;
   #context;
+  #openTrack;
+  /** De quina importació (hora d'inici) ja s'ha obert la fitxa sola, perquè no es torni a obrir. @type {string | null} */
+  #openedFor = null;
   /** @type {any} */
   #status = null;
   #showReport = false;
+  /** Què s'importa: una carpeta o uns fitxers solts. @type {'folder' | 'files'} */
+  #mode = 'folder';
+  /** Els fitxers triats (en el mode «fitxers»). @type {string[]} */
+  #files = [];
 
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
    * @param {(defaultPath?: string) => Promise<string | null>} chooseFolder  diàleg de Windows per triar una carpeta
+   * @param {(defaultPath?: string) => Promise<string[] | null>} chooseFiles  diàleg de Windows per triar fitxers d'àudio
    * @param {() => { categories: any[], subcategoryId: number | null }} context  les categories i la subcategoria triada a l'arbre
+   * @param {(trackId: number) => void} openTrack  obre la fitxa d'una pista (les dels fitxers solts, en acabar)
    */
-  constructor(send, chooseFolder, context) {
+  constructor(send, chooseFolder, chooseFiles, context, openTrack) {
     this.#send = send;
     this.#chooseFolder = chooseFolder;
+    this.#chooseFiles = chooseFiles;
     this.#context = context;
-    $('tm-import').addEventListener('click', () => this.#open());
+    this.#openTrack = openTrack;
+    $('tm-import').addEventListener('click', () => this.#open('folder'));
+    $('tm-import-files').addEventListener('click', () => this.#open('files'));
     $('import-choose').addEventListener('click', async () => {
       const input = /** @type {HTMLInputElement} */ ($('import-folder'));
-      const folder = await this.#chooseFolder(input.value || undefined);
-      if (folder) input.value = folder;
+      if (this.#mode === 'folder') {
+        const folder = await this.#chooseFolder(input.value || undefined);
+        if (folder) input.value = folder;
+      } else {
+        const files = await this.#chooseFiles(this.#files[0] || undefined);
+        if (files) {
+          this.#files = files;
+          input.value = files.length === 1 ? files[0] : `${files.length} fitxers: ${files.map(fileName).join(', ')}`;
+          input.title = files.join('\n');
+        }
+      }
       this.#validate();
     });
     $('import-subcategory').addEventListener('change', () => {
@@ -128,6 +150,26 @@ export class ImportView {
     parts.push(summary);
     if (status.warning) parts.push(statusLabel('text-warning', 'bi-exclamation-triangle-fill', status.warning));
 
+    // Fitxers solts (D-100): les pistes que n'han sortit, amb un botó per obrir-ne la fitxa. Si només n'hi ha una, s'obre sola
+    if (!running && status.tracks?.length > 0) {
+      const list = el('ul', 'tm-import-tracks');
+      for (const t of status.tracks) {
+        const b = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-link p-0'));
+        b.type = 'button';
+        b.append(icon('bi-pencil-square'), ' ', el('span', '', `${t.artist ? `${t.artist} - ` : ''}${t.title || '(sense títol)'}`));
+        b.title = 'Obre la fitxa (per canviar el títol, l\'artista, les etiquetes…)';
+        b.addEventListener('click', () => this.#openTrack(t.id));
+        const li = el('li', '');
+        li.append(b);
+        list.append(li);
+      }
+      parts.push(list);
+      if (status.tracks.length === 1 && this.#openedFor !== status.started) {
+        this.#openedFor = status.started;
+        this.#openTrack(status.tracks[0].id);
+      }
+    }
+
     if (this.#showReport && !running && status.unreadableCount > 0) {
       const list = el('ul', 'tm-import-errors');
       list.append(...status.unreadable.map((/** @type {string} */ u) => el('li', '', u)));
@@ -140,11 +182,27 @@ export class ImportView {
 
   // --- Diàleg ---
 
-  async #open() {
+  /** @param {'folder' | 'files'} mode */
+  async #open(mode) {
     if (this.#status && (this.#status.state === 'listing' || this.#status.state === 'running')) {
       await confirmAction({ title: 'Ja s\'està important', message: 'Espera que acabi la importació en curs (o atura-la).', confirm: 'D\'acord', info: true });
       return;
     }
+    // Carpeta o fitxers solts: canvien els textos, i amb fitxers no es pot buidar la subcategoria
+    this.#mode = mode;
+    this.#files = [];
+    const folders = mode === 'folder';
+    const title = $('import-title');
+    title.replaceChildren(icon(folders ? 'bi-folder-symlink' : 'bi-file-earmark-music'), folders ? ' Importar una carpeta' : ' Importar fitxers');
+    $('import-message').textContent = folders
+      ? 'Els fitxers d\'àudio de la carpeta i de les subcarpetes que encara no són a la biblioteca s\'hi afegeixen. Els fitxers no es copien ni es mouen. Es fa en segon pla: l\'emissió continua.'
+      : 'Els fitxers triats que encara no són a la biblioteca s\'hi afegeixen (se\'n poden triar diversos amb Ctrl o Maj). No es copien ni es mouen. Es fa en segon pla: l\'emissió continua.';
+    $('import-folder-label').textContent = folders ? 'Carpeta' : 'Fitxers';
+    const input = /** @type {HTMLInputElement} */ ($('import-folder'));
+    input.value = '';
+    input.title = '';
+    input.placeholder = folders ? 'Tria la carpeta…' : 'Tria els fitxers…';
+    $('import-empty-box').classList.toggle('d-none', !folders);
     const { categories, subcategoryId } = this.#context();
     const select = /** @type {HTMLSelectElement} */ ($('import-subcategory'));
     select.replaceChildren(option('', 'Tria la subcategoria…'));
@@ -171,12 +229,12 @@ export class ImportView {
     if (!ok) return;
 
     const params = {
-      folder: /** @type {HTMLInputElement} */ ($('import-folder')).value,
+      ...(folders ? { folder: input.value } : { files: this.#files }),
       subcategoryId: Number(select.value),
       type: type.value,
       tags: parseTags(/** @type {HTMLInputElement} */ ($('import-tags')).value),
       variableDuration: /** @type {HTMLInputElement} */ ($('import-variable')).checked,
-      emptySubcategory: /** @type {HTMLInputElement} */ ($('import-empty')).checked,
+      emptySubcategory: folders && /** @type {HTMLInputElement} */ ($('import-empty')).checked,
     };
     // Buidar esborra pistes: es confirma, dient de quina subcategoria i quantes n'hi ha ara
     if (params.emptySubcategory) {
@@ -210,7 +268,7 @@ export class ImportView {
   #validate() {
     const folder = /** @type {HTMLInputElement} */ ($('import-folder')).value;
     const sub = /** @type {HTMLSelectElement} */ ($('import-subcategory')).value;
-    const problem = !folder ? 'Tria la carpeta.' : !sub ? 'Tria la subcategoria.' : '';
+    const problem = !folder ? (this.#mode === 'folder' ? 'Tria la carpeta.' : 'Tria els fitxers.') : !sub ? 'Tria la subcategoria.' : '';
     $('import-problem').textContent = problem;
     /** @type {HTMLButtonElement} */ ($('import-ok')).disabled = !!problem;
   }
@@ -220,6 +278,11 @@ export class ImportView {
 function folderName(path) {
   const parts = path.replace(/[\\/]+$/, '').split(/[\\/]/);
   return parts[parts.length - 1] || path;
+}
+
+/** El nom del fitxer, sense la carpeta. @param {string} path */
+function fileName(path) {
+  return path.split(/[\\/]/).pop() || path;
 }
 
 /** @param {string} value @param {string} text */

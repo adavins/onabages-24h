@@ -922,7 +922,8 @@ public sealed class CommandRouter
     private LibraryTools.LibraryImporter ImporterOrError() => _importer ?? throw new BadParamsException("El motor no pot importar carpetes.");
 
     /// <summary>
-    /// Comença a importar una carpeta en segon pla: <c>folder</c> (ruta completa), <c>subcategoryId</c> i, per a les pistes
+    /// Comença a importar una carpeta en segon pla: <c>folder</c> (ruta completa) o, en lloc d'una carpeta, uns fitxers
+    /// solts, <c>files</c> (llista de rutes completes; no buiden la subcategoria), <c>subcategoryId</c> i, per a les pistes
     /// noves, <c>type</c> (per defecte <c>music</c>), <c>tags</c> i <c>variableDuration</c>. El progrés arriba amb
     /// <c>library.importProgress</c>.
     /// </summary>
@@ -930,9 +931,29 @@ public sealed class CommandRouter
     {
         var library = LibraryOrError();
         var importer = ImporterOrError();
-        string folder = (ReadString(msg["folder"]) ?? "").Trim();
-        if (folder.Length == 0 || !Path.IsPathFullyQualified(folder)) throw new BadParamsException("Falta 'folder' (la ruta completa de la carpeta).");
-        if (!Directory.Exists(folder)) throw new BadParamsException($"No es troba la carpeta: {folder}");
+
+        // Fitxers solts (en lloc d'una carpeta): «files», una llista de rutes completes de fitxers d'àudio que existeixin
+        List<string>? files = null;
+        string folder = "";
+        if (msg["files"] is not null)
+        {
+            if (msg["files"] is not JsonArray list || list.Count == 0 || list.Any(f => ReadString(f) is null))
+                throw new BadParamsException("El camp 'files' ha de ser una llista de rutes de fitxers.");
+            files = list.Select(f => ReadString(f)!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            foreach (string file in files)
+            {
+                if (!Path.IsPathFullyQualified(file)) throw new BadParamsException($"Cal la ruta completa del fitxer: {file}");
+                if (!File.Exists(file)) throw new BadParamsException($"No es troba el fitxer: {file}");
+                if (!LibraryTools.FolderImporter.AudioExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
+                    throw new BadParamsException($"No és un fitxer d'àudio que es pugui importar: {Path.GetFileName(file)}");
+            }
+        }
+        else
+        {
+            folder = (ReadString(msg["folder"]) ?? "").Trim();
+            if (folder.Length == 0 || !Path.IsPathFullyQualified(folder)) throw new BadParamsException("Falta 'folder' (la ruta completa de la carpeta) o 'files'.");
+            if (!Directory.Exists(folder)) throw new BadParamsException($"No es troba la carpeta: {folder}");
+        }
         long subcategoryId = RequiredId(msg, "subcategoryId");
         var subcategory = library.GetSubcategory(subcategoryId) ?? throw new BadParamsException($"No existeix la subcategoria {subcategoryId}.");
         var type = TrackType.Music;
@@ -953,8 +974,9 @@ public sealed class CommandRouter
 
         try
         {
-            var status = importer.Start(folder, new LibraryTools.ImportDefaults(subcategoryId, type, tags, variable, empty),
-                $"{subcategory.CategoryName} / {subcategory.Name}");
+            var defaults = new LibraryTools.ImportDefaults(subcategoryId, type, tags, variable, empty);
+            string name = $"{subcategory.CategoryName} / {subcategory.Name}";
+            var status = files is null ? importer.Start(folder, defaults, name) : importer.StartFiles(files, defaults, name);
             return new JsonObject { ["import"] = QueueJson.Import(status) };
         }
         catch (InvalidOperationException ex)

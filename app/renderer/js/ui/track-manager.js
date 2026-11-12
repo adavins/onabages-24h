@@ -397,6 +397,11 @@ export class TrackManagerView {
     if (old) old.replaceWith(this.#row(track, new Date()));
   }
 
+  /** Obre la fitxa d'una pista (p. ex. la que s'acaba d'importar, D-100). Si l'oberta té canvis, ho pregunta. @param {number} id */
+  openTrack(id) {
+    return this.#select(id);
+  }
+
   /** @param {number} id */
   async #select(id) {
     if (this.#track?.id === id) return;

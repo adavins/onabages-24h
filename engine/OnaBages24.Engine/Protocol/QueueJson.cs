@@ -183,6 +183,11 @@ public static class QueueJson
         ["renew"] = s.Renew,
         ["moved"] = s.Moved,
         ["warning"] = s.Warning,
+        // Fitxers solts (D-100): les pistes que en surten, per obrir-ne la fitxa; null amb una carpeta o mentre s'importa
+        ["tracks"] = s.Tracks is null ? null : new JsonArray(s.Tracks.Select(t => (JsonNode)new JsonObject
+        {
+            ["id"] = t.Id, ["artist"] = t.Artist, ["title"] = t.Title,
+        }).ToArray()),
         ["started"] = s.Started.ToString("O"),
         ["finished"] = s.Finished?.ToString("O"),
         ["error"] = s.Error,

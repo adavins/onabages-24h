@@ -241,7 +241,10 @@
           <button id="tm-folder" class="btn btn-sm btn-outline-secondary" type="button" title="Carpeta vigilada de la subcategoria triada: les cançons que s'hi copien entren soles"><i class="bi bi-folder-check" aria-hidden="true"></i><span class="visually-hidden">Carpeta vigilada</span></button>
           <button id="tm-empty" class="btn btn-sm btn-outline-danger" type="button" title="Esborra totes les pistes de la subcategoria triada (per renovar una bossa)"><i class="bi bi-eraser" aria-hidden="true"></i><span class="visually-hidden">Buida la subcategoria</span></button>
           <button id="tm-reroot" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el principi de les rutes de moltes pistes alhora (p. ex. si les carpetes de música s'han mogut o en aquest ordinador es veuen amb una altra lletra)"><i class="bi bi-signpost-split" aria-hidden="true"></i><span class="visually-hidden">Canvia l'arrel de les rutes</span></button>
-          <button id="tm-import" class="btn btn-sm btn-outline-primary w-100" type="button" title="Afegeix a la biblioteca els fitxers d'una carpeta (i les subcarpetes)"><i class="bi bi-folder-symlink" aria-hidden="true"></i> Importa una carpeta…</button>
+          <div class="d-flex gap-1 w-100">
+            <button id="tm-import" class="btn btn-sm btn-outline-primary flex-fill" type="button" title="Afegeix a la biblioteca els fitxers d'una carpeta (i les subcarpetes)"><i class="bi bi-folder-symlink" aria-hidden="true"></i> Importa una carpeta…</button>
+            <button id="tm-import-files" class="btn btn-sm btn-outline-primary flex-fill" type="button" title="Afegeix a la biblioteca un o diversos fitxers d'àudio"><i class="bi bi-file-earmark-music" aria-hidden="true"></i> Importa fitxers…</button>
+          </div>
         </div>
         <ul id="tm-tree-list" class="tm-tree-list"></ul>
       </aside>
@@ -338,10 +341,10 @@
   <!-- Importar una carpeta (fase 3, pas 7b; D-088) -->
   <dialog id="import-dialog" class="ob-dialog">
     <form method="dialog">
-      <h2 class="h5"><i class="bi bi-folder-symlink" aria-hidden="true"></i> Importar una carpeta</h2>
-      <p class="ob-dialog-message">Els fitxers d'àudio de la carpeta i de les subcarpetes que encara no són a la biblioteca s'hi afegeixen. Els fitxers no es copien ni es mouen. Es fa en segon pla: l'emissió continua.</p>
+      <h2 id="import-title" class="h5"><i class="bi bi-folder-symlink" aria-hidden="true"></i> Importar una carpeta</h2>
+      <p id="import-message" class="ob-dialog-message">Els fitxers d'àudio de la carpeta i de les subcarpetes que encara no són a la biblioteca s'hi afegeixen. Els fitxers no es copien ni es mouen. Es fa en segon pla: l'emissió continua.</p>
 
-      <label for="import-folder" class="form-label">Carpeta</label>
+      <label id="import-folder-label" for="import-folder" class="form-label">Carpeta</label>
       <div class="d-flex gap-2 mb-3">
         <input id="import-folder" class="form-control" type="text" readonly placeholder="Tria la carpeta…">
         <button id="import-choose" class="btn btn-outline-secondary" type="button">Tria…</button>
@@ -364,11 +367,13 @@
         <input id="import-variable" class="form-check-input" type="checkbox">
         <label for="import-variable" class="form-check-label">Durada variable (el fitxer se substitueix de tant en tant)</label>
       </div>
-      <div class="form-check form-switch mb-1">
-        <input id="import-empty" class="form-check-input" type="checkbox">
-        <label for="import-empty" class="form-check-label">Buida la subcategoria</label>
+      <div id="import-empty-box">
+        <div class="form-check form-switch mb-1">
+          <input id="import-empty" class="form-check-input" type="checkbox">
+          <label for="import-empty" class="form-check-label">Buida la subcategoria</label>
+        </div>
+        <p class="form-text mb-3">En acabar la importació (només si acaba bé), les pistes de la subcategoria que no siguin a la carpeta s'esborren de la biblioteca. Les que fan servir esdeveniments no es toquen. Els fitxers tampoc.</p>
       </div>
-      <p class="form-text mb-3">En acabar la importació (només si acaba bé), les pistes de la subcategoria que no siguin a la carpeta s'esborren de la biblioteca. Les que fan servir esdeveniments no es toquen. Els fitxers tampoc.</p>
       <p id="import-problem" class="form-text text-warning"></p>
 
       <div class="d-flex justify-content-end gap-2">
