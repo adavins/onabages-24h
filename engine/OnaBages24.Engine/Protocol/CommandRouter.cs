@@ -11,7 +11,7 @@ namespace OnaBages24.Engine.Protocol;
 /// Rep el text d'una ordre, la valida i en retorna la resposta (docs/protocol.md).
 /// Cada ordre nova s'afegeix aquí, a docs/protocol.md i a les proves, en el mateix canvi.
 /// </summary>
-public sealed class CommandRouter
+public sealed partial class CommandRouter
 {
     /// <summary>Clau de la configuració on es desa la sortida (JSON: <c>{ "id": …, "name": … }</c>).</summary>
     public const string OutputSettingKey = "sortida";
@@ -143,8 +143,16 @@ public sealed class CommandRouter
                 "library.update" => LibraryUpdate(msg),
                 "library.relink" => LibraryRelink(msg),
                 "library.delete" => LibraryDelete(msg),
+                "library.ids" => LibraryIds(msg),
+                "library.bulk" => LibraryBulk(msg),
                 "category.save" => CategorySave(msg),
+                "category.delete" => CategoryDelete(msg),
                 "subcategory.save" => SubcategorySave(msg),
+                "subcategory.delete" => SubcategoryDelete(msg),
+                "tags.list" => TagsList(),
+                "tags.rename" => TagsRename(msg),
+                "tags.merge" => TagsMerge(msg),
+                "tags.delete" => TagsDelete(msg),
                 "subcategory.empty" => SubcategoryEmpty(msg),
                 "folders.get" => FoldersGet(msg),
                 "folders.set" => FoldersSet(msg),
@@ -419,44 +427,6 @@ public sealed class CommandRouter
         return new JsonObject { ["queue"] = QueueJson.Queue(queue) };
     }
 
-    /// <summary>
-    /// Cerca a tota la biblioteca (fase 2, pas 8b; fase 3, pas 3a): <c>text</c> (paraules que han de sortir a l'artista, al
-    /// títol, a l'àlbum o a la ruta, sense accents ni majúscules), <c>categoryId</c>, <c>subcategoryId</c>, <c>tagId</c>,
-    /// <c>offset</c> (per anar carregant) i <c>limit</c> (per defecte 50, com a molt 200).
-    /// </summary>
-    private JsonObject LibrarySearch(JsonObject msg)
-    {
-        var library = _library ?? throw new BadParamsException("El motor no té biblioteca.");
-        int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 50, 1, 200);
-        long? Id(string field) => msg[field] is JsonValue v && v.TryGetValue(out long id) ? id : null;
-        var tracks = library.Search(new TrackQuery
-        {
-            Text = ReadString(msg["text"]) ?? "",
-            CategoryId = Id("categoryId"),
-            SubcategoryId = Id("subcategoryId"),
-            TagId = Id("tagId"),
-            Type = ReadString(msg["type"]) is { } type
-                ? Enum.GetValues<TrackType>().FirstOrDefault(t => QueueJson.Type(t) == type) is var found && QueueJson.Type(found) == type
-                    ? found : throw new BadParamsException($"El camp 'type' no és un tipus de pista: «{type}».")
-                : null,
-            State = ReadString(msg["state"]) switch
-            {
-                null or "all" => TrackStateFilter.All,
-                "missing" => TrackStateFilter.Missing,
-                "retired" => TrackStateFilter.Retired,
-                "disabled" => TrackStateFilter.Disabled,
-                "unclassified" => TrackStateFilter.Unclassified,
-                var other => throw new BadParamsException($"El camp 'state' no és vàlid: «{other}» (all, missing, retired, disabled o unclassified)."),
-            },
-            Offset = Math.Max(0, ReadInt(msg["offset"]) ?? 0),
-            Limit = limit + 1,
-        });
-        return new JsonObject
-        {
-            ["tracks"] = new JsonArray(tracks.Take(limit).Select(t => (JsonNode)QueueJson.Track(t)).ToArray()),
-            ["more"] = tracks.Count > limit,
-        };
-    }
 
     /// <summary>Les opcions dels filtres de la cerca (fase 3, pas 3a): categories amb subcategories i etiquetes, amb comptes.</summary>
     private JsonObject LibraryFilters()

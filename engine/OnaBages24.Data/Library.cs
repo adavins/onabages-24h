@@ -37,6 +37,23 @@ public sealed record TrackQuery
     public TrackType? Type { get; init; }
     /// <summary>Només les pistes en aquest estat (gestor de pistes, fase 3, pas 7a).</summary>
     public TrackStateFilter State { get; init; } = TrackStateFilter.All;
+    /// <summary>Dins d'esdeveniments (true), fora (false) o totes (null) (pestanya Pistes, D-111).</summary>
+    public bool? InEvents { get; init; }
+    /// <summary>Vigència segons les dates de la pista (D-111), respecte de <see cref="Today"/>.</summary>
+    public TrackValidity Validity { get; init; } = TrackValidity.All;
+    /// <summary>Per a <see cref="TrackValidity.Overlaps"/>: l'interval (tots dos opcionals).</summary>
+    public DateOnly? ValidFrom { get; init; }
+    public DateOnly? ValidTo { get; init; }
+    /// <summary>Avui (per a la vigència).</summary>
+    public DateOnly Today { get; init; } = DateOnly.FromDateTime(DateTime.Today);
+    /// <summary>Última reproducció: a partir d'aquest instant, i abans d'aquest altre (D-111).</summary>
+    public DateTimeOffset? PlayedFrom { get; init; }
+    public DateTimeOffset? PlayedBefore { get; init; }
+    /// <summary>Només les que no han sonat mai.</summary>
+    public bool NeverPlayed { get; init; }
+    /// <summary>Per quina columna s'ordena (D-111).</summary>
+    public TrackSort Sort { get; init; } = TrackSort.Artist;
+    public bool Descending { get; init; }
     public int Offset { get; init; }
     public int Limit { get; init; } = 100;
 }
@@ -132,7 +149,7 @@ public sealed record HistoryEntry(
 /// Biblioteca: pistes, categories, subcategories, etiquetes, historial i configuració.
 /// Cada mètode és una operació completa i segura des de qualsevol fil.
 /// </summary>
-public sealed class Library(Database database)
+public sealed partial class Library(Database database)
 {
     // --- Categories i subcategories ---
 
@@ -562,46 +579,10 @@ public sealed class Library(Database database)
     /// </summary>
     public IReadOnlyList<Track> Search(TrackQuery query)
     {
-        var words = (TextSearch.Fold(query.Text) ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(8).ToArray();
-        var conditions = new List<string>();
-        var parameters = new List<(string, object)> { ("$limit", query.Limit), ("$offset", query.Offset) };
-        for (int i = 0; i < words.Length; i++)
-        {
-            // LIKE amb els caràcters especials escapats (%, _ i el mateix caràcter d'escapament)
-            string pattern = "%" + words[i].Replace("!", "!!").Replace("%", "!%").Replace("_", "!_") + "%";
-            conditions.Add($"(sense_accents(artista) LIKE $w{i} ESCAPE '!' OR sense_accents(titol) LIKE $w{i} ESCAPE '!' " +
-                           $"OR sense_accents(album) LIKE $w{i} ESCAPE '!' OR sense_accents(ruta) LIKE $w{i} ESCAPE '!')");
-            parameters.Add(($"$w{i}", pattern));
-        }
-        if (query.SubcategoryId is { } sub)
-        {
-            conditions.Add("subcategoria_id = $sub");
-            parameters.Add(("$sub", sub));
-        }
-        else if (query.CategoryId is { } cat)
-        {
-            conditions.Add("subcategoria_id IN (SELECT id FROM subcategoria WHERE categoria_id = $cat)");
-            parameters.Add(("$cat", cat));
-        }
-        if (query.TagId is { } tag)
-        {
-            conditions.Add("EXISTS (SELECT 1 FROM pista_etiqueta pe WHERE pe.pista_id = pista.id AND pe.etiqueta_id = $tag)");
-            parameters.Add(("$tag", tag));
-        }
-        if (query.Type is { } type)
-        {
-            conditions.Add("tipus = $type");
-            parameters.Add(("$type", ToText(type)));
-        }
-        switch (query.State)
-        {
-            case TrackStateFilter.Missing: conditions.Add("estat_fitxer = 'FALTA'"); break;
-            case TrackStateFilter.Retired: conditions.Add("estat_fitxer = 'RETIRADA'"); break;
-            case TrackStateFilter.Disabled: conditions.Add("activa = 0"); break;
-            case TrackStateFilter.Unclassified: conditions.Add("subcategoria_id IS NULL"); break;
-        }
-        string where = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
-        return QueryTracks($"{where} ORDER BY artista COLLATE NOCASE, titol COLLATE NOCASE, id LIMIT $limit OFFSET $offset", parameters.ToArray());
+        var (where, parameters) = SearchCondition(query);
+        parameters.Add(("$limit", query.Limit));
+        parameters.Add(("$offset", query.Offset));
+        return QueryTracks($"{where} {SearchOrder(query)} LIMIT $limit OFFSET $offset", parameters.ToArray());
     }
 
     /// <summary>Les opcions dels filtres de la cerca: categories (amb les subcategories) i etiquetes, amb quantes pistes tenen.</summary>
@@ -735,7 +716,8 @@ public sealed class Library(Database database)
             clear.Parameters.AddWithValue("$p", trackId);
             clear.ExecuteNonQuery();
         }
-        foreach (string tag in tags.Select(t => t.Trim()).Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (string tag in tags.Select(t => t.Trim()).Where(t => t.Length > 0).Distinct(StringComparer.InvariantCultureIgnoreCase)
+                     .Select(t => ExistingTagName(t, transaction) ?? t))
         {
             using var add = database.Command(
                 "INSERT OR IGNORE INTO etiqueta (nom) VALUES ($nom); " +
@@ -752,13 +734,14 @@ public sealed class Library(Database database)
     {
         lock (database.Sync)
         {
+            name = ExistingTagName(name.Trim()) ?? name.Trim(); // «CATALÀ» és «català» (D-111)
             using (var insert = database.Command("INSERT OR IGNORE INTO etiqueta (nom) VALUES ($nom);"))
             {
-                insert.Parameters.AddWithValue("$nom", name.Trim());
+                insert.Parameters.AddWithValue("$nom", name);
                 insert.ExecuteNonQuery();
             }
             using var select = database.Command("SELECT id FROM etiqueta WHERE nom = $nom;");
-            select.Parameters.AddWithValue("$nom", name.Trim());
+            select.Parameters.AddWithValue("$nom", name);
             return (long)select.ExecuteScalar()!;
         }
     }
