@@ -201,4 +201,22 @@ public sealed class TrackManagementTests : IDisposable
         Result(new() { ["cmd"] = "tags.delete", ["tagId"] = vuitanta });
         Assert.Equal(["català"], _library.GetTags(b));
     }
+
+    [Fact]
+    public void Els_filtres_diuen_el_tipus_que_predomina_a_cada_subcategoria_i_categoria()
+    {
+        Add("A", _falques);
+        Add("B", _falques);
+        Add("Promo", _falques, TrackType.Promo);
+        Add("Cançó", _musica, TrackType.Music);
+        long buida = _library.EnsureSubcategory(_library.EnsureCategory("Falques"), "Buida");
+
+        var categories = Result(new() { ["cmd"] = "library.filters" })["categories"]!.AsArray();
+        var falques = categories.Single(c => c!["name"]!.GetValue<string>() == "Falques")!;
+        Assert.Equal("commercial", falques["mainType"]!.GetValue<string>());
+        var subs = falques["subcategories"]!.AsArray();
+        Assert.Equal("commercial", subs.Single(s => s!["name"]!.GetValue<string>() == "Comerços")!["mainType"]!.GetValue<string>());
+        Assert.Null(subs.Single(s => s!["id"]!.GetValue<long>() == buida)!["mainType"]); // sense pistes, no se sap
+        Assert.Equal("music", categories.Single(c => c!["name"]!.GetValue<string>() == "Música")!["mainType"]!.GetValue<string>());
+    }
 }

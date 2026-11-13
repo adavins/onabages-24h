@@ -1512,10 +1512,11 @@ body {
 
 .rt-steps td:nth-child(1) { width: 1.5rem; padding-right: 0; }
 .rt-steps td:nth-child(3) { min-width: 16rem; }
-.rt-steps td:nth-child(4) { min-width: 8rem; }
-.rt-steps td:nth-child(5) { min-width: 13rem; }
-.rt-steps td:nth-child(6),
-.rt-steps td:nth-child(7) { text-align: center; }
+.rt-steps td:nth-child(4) { white-space: nowrap; }
+.rt-steps td:nth-child(5) { min-width: 8rem; }
+.rt-steps td:nth-child(6) { min-width: 13rem; }
+.rt-steps td:nth-child(7),
+.rt-steps td:nth-child(8) { text-align: center; }
 
 /* Arrossegar un pas (D-117): la nansa, el pas que es mou i on quedarà */
 .rt-handle {
@@ -3195,3 +3196,28 @@ button.pl-chip.is-off {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Tipus de pista (D-118): una etiqueta de color per tipus, sempre amb el text. Fons fosc i text clar del mateix to
+   (contrast alt amb el tema fosc) */
+.type-badge {
+  display: inline-block;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 0.3rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.type-music            { background: #1d3f66; border-color: #2f5d91; color: #d4e6ff; }
+.type-sweeper          { background: #4b2560; border-color: #6c3a88; color: #f0d9ff; }
+.type-stationId        { background: #5c4300; border-color: #85620a; color: #ffe9a8; }
+.type-promo            { background: #6b2626; border-color: #943a3a; color: #ffd6d6; }
+.type-commercial       { background: #1b5233; border-color: #2a7a4c; color: #c8f5da; }
+.type-program          { background: #0e5258; border-color: #19767e; color: #c4f2f5; }
+.type-news             { background: #474a16; border-color: #6a6e22; color: #eef2b0; }
+.type-timeAnnouncement { background: #36366a; border-color: #50509a; color: #dcdcff; }
+.type-timeSignal       { background: #5a3418; border-color: #844d25; color: #ffd9bd; }
+.type-stream           { background: #5e1c46; border-color: #882b66; color: #ffd0ec; }
+.type-other            { background: #343a41; border-color: #4b525b; color: #e1e5ea; }
+.type-unknown          { background: transparent; border-color: var(--ob-border); color: var(--ob-muted); }

@@ -6,8 +6,9 @@
 // Tot ho calcula el motor; aquí només es mostra.
 
 import { $, el, icon, statusLabel } from './dom.js';
+import { typeBadge } from './type-badge.js';
 import { confirmAction } from './confirm.js';
-import { typeName, formatDuration } from '../format.js';
+import { formatDuration } from '../format.js';
 import { modeInfo } from '../schedule.js';
 import {
   DAY_SHORT, DAY_NAMES, cellWarnings, cellTitle, blockTimeProblem, normalizeBlockTime, dateText, monthText, passes, periodText,
@@ -123,7 +124,7 @@ export class CalendarView {
     const head = el('div', 'cal-head');
     const title = el('div', 'cal-title');
     title.append(el('strong', '', `${t.artist ? `${t.artist} - ` : ''}${t.title || '(sense títol)'}`), ' ',
-      el('span', 'badge text-bg-secondary', typeName(t.type)), ' ',
+      typeBadge(t.type), ' ',
       el('span', 'text-body-secondary', formatDuration(t.durationMs)));
     const dates = t.validFrom || t.validUntil
       ? `Vigent ${t.validFrom ? `del ${dateText(t.validFrom)}` : ''}${t.validUntil ? ` al ${dateText(t.validUntil)}` : ' sense data de fi'}`

@@ -433,12 +433,18 @@ public sealed partial class CommandRouter
     {
         var library = _library ?? throw new BadParamsException("El motor no té biblioteca.");
         var (categories, tags) = library.SearchFilters();
-        JsonObject Option(FilterOption o) => new() { ["id"] = o.Id, ["name"] = o.Name, ["count"] = o.Count };
+        JsonObject Option(FilterOption o)
+        {
+            var json = new JsonObject { ["id"] = o.Id, ["name"] = o.Name, ["count"] = o.Count };
+            if (o.MainType is { } t) json["mainType"] = QueueJson.Type(t); // D-118
+            return json;
+        }
         return new JsonObject
         {
             ["categories"] = new JsonArray(categories.Select(c => (JsonNode)new JsonObject
             {
                 ["id"] = c.Id, ["name"] = c.Name, ["count"] = c.Count,
+                ["mainType"] = c.MainType is { } t ? QueueJson.Type(t) : null,
                 ["subcategories"] = new JsonArray(c.Subcategories.Select(s => (JsonNode)Option(s)).ToArray()),
             }).ToArray()),
             ["tags"] = new JsonArray(tags.Select(t => (JsonNode)Option(t)).ToArray()),

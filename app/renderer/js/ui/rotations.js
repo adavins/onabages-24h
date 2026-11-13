@@ -4,6 +4,7 @@
 // es poden afegir, moure i treure. Es desa al motor (rotations.save); si és l'activa, l'AutoDJ agafa els passos nous.
 
 import { $, el, icon, statusLabel } from './dom.js';
+import { typeBadge } from './type-badge.js';
 import { confirmAction } from './confirm.js';
 import { askText } from './ask-text.js';
 import { SELECTIONS, newStep, stepFromApi, stepToApi, rotationChanged, rotationProblems, moveTo } from '../rotation-form.js';
@@ -434,7 +435,8 @@ export class RotationsView {
     const table = el('table', 'table table-sm rt-steps');
     const thead = el('thead', '');
     const hr = el('tr', '');
-    for (const [text, title] of [['', 'Arrossega per moure el pas'], ['#', ''], ['D\'on surt la pista', ''], ['Etiqueta', 'Només les pistes amb aquesta etiqueta'],
+    for (const [text, title] of [['', 'Arrossega per moure el pas'], ['#', ''], ['D\'on surt la pista', ''],
+      ['Tipus', 'El tipus de les pistes d\'on surt el pas (el que hi predomina)'], ['Etiqueta', 'Només les pistes amb aquesta etiqueta'],
       ['Com es tria', ''], ['No repetir', 'Criteris de repetició: no repetir la pista ni l\'artista (música)'],
       ['Trepitjador', 'Sweeper a sobre de l\'inici de la pista (de la categoria de sweepers activa)'], ['', '']]) {
       const th = el('th', '', text);
@@ -541,6 +543,26 @@ export class RotationsView {
     }
   }
 
+  /**
+   * El tipus de pista d'on surt un pas (D-118): el que predomina a la subcategoria, a la categoria o a la subcategoria
+   * que la bossa té ara (ho diu el motor a library.filters). Amb el text per al ratolí.
+   * @param {string} source  'c:<id>', 's:<id>', 'b:<id>' o ''
+   * @returns {{ type: string | null, title: string }}
+   */
+  #sourceType(source) {
+    const [kind, raw] = source.split(':');
+    const id = Number(raw);
+    const subs = this.#categories.flatMap((c) => c.subcategories);
+    if (kind === 's') return { type: subs.find((s) => s.id === id)?.mainType ?? null, title: 'El tipus que predomina a la subcategoria' };
+    if (kind === 'c') return { type: this.#categories.find((c) => c.id === id)?.mainType ?? null, title: 'El tipus que predomina a la categoria' };
+    if (kind === 'b') {
+      const bag = this.#bags.find((b) => b.id === id);
+      const sub = subs.find((s) => s.id === bag?.subcategoryId);
+      return { type: sub?.mainType ?? null, title: `El tipus que predomina a la subcategoria que la bossa té ara${bag?.subcategory ? ` (${bag.subcategory})` : ''}` };
+    }
+    return { type: null, title: 'Encara no s\'ha triat d\'on surt la pista' };
+  }
+
   /** @param {import('../rotation-form.js').FormStep} step @param {number} index */
   #stepRow(step, index) {
     const tr = el('tr', '');
@@ -604,8 +626,16 @@ export class RotationsView {
       source.append(group);
     }
     source.value = step.source;
-    source.addEventListener('change', () => { step.source = source.value; changed(); });
+    // El tipus de pista del pas (D-118): el que predomina d'on surt; canvia amb el desplegable
+    const typeCell = el('span', '');
+    const showType = () => {
+      const { type, title } = this.#sourceType(source.value);
+      typeCell.replaceChildren(typeBadge(type, title));
+    };
+    showType();
+    source.addEventListener('change', () => { step.source = source.value; showType(); changed(); });
     cell(source);
+    cell(typeCell);
 
     const tag = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
     tag.setAttribute('aria-label', `Pas ${index + 1}: etiqueta`);

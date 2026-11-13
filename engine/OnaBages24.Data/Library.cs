@@ -96,10 +96,11 @@ public sealed record FolderLogEntry(long Id, DateTimeOffset Time, long? Subcateg
 public sealed record TrackUse(long EventId, string EventName);
 
 /// <summary>Una opció dels filtres de la cerca, amb quantes pistes té.</summary>
-public sealed record FilterOption(long Id, string Name, int Count);
+/// <param name="MainType">El tipus de pista que hi predomina (D-118), o null si no té pistes (o és una etiqueta).</param>
+public sealed record FilterOption(long Id, string Name, int Count, TrackType? MainType = null);
 
 /// <summary>Una categoria amb les seves subcategories.</summary>
-public sealed record CategoryFilter(long Id, string Name, int Count, IReadOnlyList<FilterOption> Subcategories);
+public sealed record CategoryFilter(long Id, string Name, int Count, IReadOnlyList<FilterOption> Subcategories, TrackType? MainType = null);
 
 /// <summary>D'on ve un element de la cua (D-034).</summary>
 public enum QueueOrigin { AutoDj, Manual, Event }
@@ -592,11 +593,14 @@ public sealed partial class Library(Database database)
         {
             var subs = new List<(long CategoryId, FilterOption Option)>();
             using (var command = database.Command(
-                "SELECT s.categoria_id, s.id, s.nom, (SELECT count(*) FROM pista p WHERE p.subcategoria_id = s.id) " +
+                "SELECT s.categoria_id, s.id, s.nom, (SELECT count(*) FROM pista p WHERE p.subcategoria_id = s.id), " +
+                // El tipus que hi predomina (D-118): per saber de quin tipus són les pistes d'un pas de rotació
+                "(SELECT tipus FROM pista p WHERE p.subcategoria_id = s.id GROUP BY tipus ORDER BY count(*) DESC, tipus LIMIT 1) " +
                 "FROM subcategoria s ORDER BY s.nom COLLATE NOCASE;"))
             using (var r = command.ExecuteReader())
             {
-                while (r.Read()) subs.Add((r.GetInt64(0), new FilterOption(r.GetInt64(1), r.GetString(2), r.GetInt32(3))));
+                while (r.Read())
+                    subs.Add((r.GetInt64(0), new FilterOption(r.GetInt64(1), r.GetString(2), r.GetInt32(3), r.IsDBNull(4) ? null : ParseType(r.GetString(4)))));
             }
             var categories = new List<CategoryFilter>();
             using (var command = database.Command("SELECT id, nom FROM categoria ORDER BY nom COLLATE NOCASE;"))
@@ -606,7 +610,10 @@ public sealed partial class Library(Database database)
                 {
                     long id = r.GetInt64(0);
                     var own = subs.Where(s => s.CategoryId == id).Select(s => s.Option).ToList();
-                    categories.Add(new CategoryFilter(id, r.GetString(1), own.Sum(s => s.Count), own));
+                    // El de la categoria: el tipus amb més pistes sumant les subcategories (aproximat: cada una pel seu predominant)
+                    var main = own.Where(s => s.MainType is not null).GroupBy(s => s.MainType!.Value)
+                        .OrderByDescending(g => g.Sum(s => s.Count)).Select(g => (TrackType?)g.Key).FirstOrDefault();
+                    categories.Add(new CategoryFilter(id, r.GetString(1), own.Sum(s => s.Count), own, main));
                 }
             }
             var tags = new List<FilterOption>();

@@ -5,6 +5,7 @@
 // Tot es desa al motor (library.update…); la interfície no toca mai la base de dades ni els fitxers.
 
 import { $, el, icon, statusLabel } from './dom.js';
+import { typeBadge } from './type-badge.js';
 import { confirmAction } from './confirm.js';
 import { askText } from './ask-text.js';
 import { formDialog, dialogField } from './form-dialog.js';
@@ -849,7 +850,7 @@ export class TrackManagerView {
     cell('tm-c-check', check);
     cell('tm-c-title', track.title || '(sense títol)');
     cell('tm-c-artist', track.artist || '');
-    cell('tm-c-type', typeName(track.type));
+    cell('tm-c-type', typeBadge(track.type));
     cell('tm-c-num', formatDuration(track.durationMs));
     const states = el('span', 'tm-states');
     for (const s of trackStates(track, today)) {
