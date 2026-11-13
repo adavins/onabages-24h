@@ -2313,6 +2313,67 @@ button.pl-chip.is-off {
   padding: 0.2rem 0.8rem 0.8rem;
 }
 
+/* Botonera: «Desa» i el menú «Més» (descarta, duplica, esborra), que s'obre cap amunt */
+.ee-more {
+  position: relative;
+}
+
+.ee-menu {
+  position: absolute;
+  bottom: calc(100% + 0.3rem);
+  left: 0;
+  z-index: 5;
+  min-width: 13rem;
+  padding: 0.25rem 0;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.375rem;
+  background: var(--ob-panel);
+  box-shadow: 0 0.4rem 1rem rgba(0, 0, 0, 0.5);
+}
+
+.ee-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.35rem 0.8rem;
+  border: 0;
+  background: transparent;
+  color: var(--bs-body-color);
+  text-align: left;
+}
+
+.ee-menu-item:hover,
+.ee-menu-item:focus-visible {
+  background: rgba(255, 255, 255, 0.07);
+  outline: none;
+}
+
+/* Dies que no s'emet: subsecció replegable dins de «Quan» */
+.ee-sub {
+  margin-bottom: 0.6rem;
+}
+
+.ee-sub-title {
+  color: var(--ob-muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.ee-sub[open] > .ee-sub-title {
+  margin-bottom: 0.35rem;
+}
+
+.ee-link {
+  padding: 0;
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.ee-days-warning {
+  margin: -0.2rem 0 0.6rem;
+}
+
 .ee-search-filters {
   display: flex;
   gap: 0.3rem;

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   newEvent, cloneEvent, eventToSave, sameEvent, duplicateEvent, normalizeTime, minutesToSeconds, secondsToMinutes,
   intOrNull, numberOrNull, parseHours, formatHours, parseMonthDays, formatMonthDays, setDay, moveItem, withMode, quickCheck,
-  hasCustomOptions, initialSections, optionsSummary,
+  hasCustomOptions, initialSections, optionsSummary, unreachableDays, unreachableDaysText, todayIso,
 } from '../renderer/js/event-form.js';
 
 test('newEvent: un TALLA cada dia que esborra la cua', () => {
@@ -129,4 +129,18 @@ test('optionsSummary: el resum de les opcions', () => {
   assert.equal(optionsSummary(newEvent()), 'esborra la cua');
   assert.equal(optionsSummary({ ...newEvent(), fadeMs: 0, priority: 70 }), 'esborra la cua · tall sec · prioritat 70');
   assert.equal(optionsSummary(withMode(newEvent(), 'SISTEMA')), 'per defecte');
+});
+
+test('unreachableDays: els dies triats que no caben entre les dates d\'inici i de fi', () => {
+  const ev = { ...newEvent(), daysMask: 0b0011111 }; // de dilluns a divendres
+  assert.deepEqual(unreachableDays(ev), []); // sense dates
+  // Del dijous 19 al dissabte 21 de novembre del 2026: només dijous i divendres
+  const short = { ...ev, startDate: '2026-11-19', endDate: '2026-11-21' };
+  assert.deepEqual(unreachableDays(short), [0, 1, 2]);
+  assert.equal(unreachableDaysText(short), 'Dilluns, dimarts i dimecres no s\'executaran mai: entre les dates d\'inici i de fi no n\'hi ha cap.');
+  // Un cap de setmana: cap dels dies triats
+  assert.match(unreachableDaysText({ ...ev, startDate: '2026-11-21', endDate: '2026-11-22' }) ?? '', /^No s'executarà mai/);
+  assert.deepEqual(unreachableDays({ ...ev, startDate: '2026-11-16', endDate: '2026-11-30' }), []); // més d'una setmana
+  assert.deepEqual(unreachableDays({ ...short, recurrence: 'DATES' }), []);
+  assert.equal(todayIso(new Date(2026, 10, 5)), '2026-11-05');
 });

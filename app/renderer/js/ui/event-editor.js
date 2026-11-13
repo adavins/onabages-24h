@@ -10,7 +10,7 @@ import { MODES, modeInfo, parseDate, shortDate, shortTime, daysText, recurrenceT
 import {
   newEvent, cloneEvent, eventToSave, sameEvent, duplicateEvent, normalizeTime, minutesToSeconds, secondsToMinutes,
   intOrNull, numberOrNull, parseHours, formatHours, parseMonthDays, formatMonthDays, setDay, moveItem, withMode, quickCheck,
-  initialSections, optionsSummary,
+  initialSections, optionsSummary, unreachableDaysText, todayIso,
 } from '../event-form.js';
 import { sweeperOptions, fillSweeperSelect } from '../subcategories.js';
 
@@ -62,6 +62,8 @@ export class EventEditor {
   /** Filtres del cercador de pistes de les accions. */
   #searchCategory = '';
   #searchSubcategory = '';
+  /** S'està afegint la primera excepció (la subsecció és oberta). */
+  #addingException = false;
 
   /**
    * @param {HTMLElement} panel
@@ -72,6 +74,10 @@ export class EventEditor {
     this.#panel = panel;
     this.#send = send;
     this.#callbacks = callbacks;
+    document.addEventListener('click', (e) => {
+      if (!(/** @type {HTMLElement} */ (e.target).closest?.('.ee-more'))) this.#closeMenu();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.#closeMenu(); });
     this.#render();
   }
 
@@ -116,6 +122,7 @@ export class EventEditor {
   open(ev) {
     // El mateix esdeveniment (p. ex. després de desar-lo): es mantenen les seccions obertes
     if (!ev || ev.id !== this.#draft?.id || this.#draft?.id === 0) this.#openSections = ev ? initialSections(ev, false) : new Set();
+    this.#addingException = false;
     this.#original = ev ? cloneEvent(ev) : null;
     this.#draft = ev ? cloneEvent(ev) : null;
     this.#error = null;
@@ -127,6 +134,7 @@ export class EventEditor {
     this.#original = null;
     this.#draft = { ...newEvent(), ...values };
     this.#openSections = initialSections(this.#draft, true);
+    this.#addingException = false;
     this.#error = null;
     this.#render();
   }
@@ -157,13 +165,58 @@ export class EventEditor {
   #changed() {
     this.#error = null;
     this.#syncButtons();
+    this.#showDaysWarning();
     this.#schedulePreview();
+  }
+
+  /** L'avís dels dies que no s'executaran per les dates d'inici i de fi (D-109). */
+  #showDaysWarning() {
+    const box = this.#panel.querySelector('#ee-days-warning');
+    if (!box || !this.#draft) return;
+    const text = unreachableDaysText(this.#draft);
+    box.classList.toggle('d-none', !text);
+    box.replaceChildren(...(text ? [statusLabel('text-warning small', 'bi-exclamation-triangle-fill', text)] : []));
+  }
+
+  /**
+   * Els dies que no s'emet (excepcions; D-109): si no n'hi ha cap, només un botó per afegir-ne; si n'hi ha, una
+   * subsecció replegable amb quantes són.
+   * @param {any} ev
+   */
+  #exceptions(ev) {
+    const list = () => this.#dateList('', ev.excludedDates, (dates) => { ev.excludedDates = dates; }, todayIso());
+    if (ev.excludedDates.length === 0 && !this.#addingException) {
+      const b = el('button', 'btn btn-sm btn-link ee-link');
+      b.type = 'button';
+      b.append(icon('bi-plus-lg'), ' ', el('span', '', 'Afegeix un dia que no s\'emet (excepció)'));
+      b.addEventListener('click', () => {
+        this.#addingException = true;
+        this.#restructured();
+      });
+      const wrap = el('div', 'ee-field');
+      wrap.append(b);
+      return wrap;
+    }
+    const box = /** @type {HTMLDetailsElement} */ (el('details', 'ee-sub'));
+    box.open = this.#addingException;
+    box.addEventListener('toggle', () => { this.#addingException = box.open; });
+    const n = ev.excludedDates.length;
+    box.append(el('summary', 'ee-sub-title', n === 0 ? 'Dies que no s\'emet' : `Dies que no s'emet (${n} ${n === 1 ? 'excepció' : 'excepcions'})`), list());
+    return box;
   }
 
   /** Canvi que fa aparèixer o desaparèixer camps (mode, recurrència, accions…): es torna a dibuixar tot. */
   #restructured() {
     this.#error = null;
     this.#render();
+  }
+
+  /** Tanca el menú «Més» de la botonera, si és obert. */
+  #closeMenu() {
+    const menu = this.#panel.querySelector('.ee-menu');
+    if (!menu || menu.classList.contains('d-none')) return;
+    menu.classList.add('d-none');
+    this.#panel.querySelector('.ee-more > button')?.setAttribute('aria-expanded', 'false');
   }
 
   /** Obre una secció (sense tornar a dibuixar res). @param {string} key */
@@ -298,7 +351,11 @@ export class EventEditor {
         this.#field('Des del dia (opcional)', 'date', ev.startDate ?? '', (v) => { ev.startDate = v || null; }),
         this.#field('Fins al dia (opcional)', 'date', ev.endDate ?? '', (v) => { ev.endDate = v || null; }),
       );
-      when.push(datesRow, this.#dateList('Dies que no s\'emet (excepcions)', ev.excludedDates, (dates) => { ev.excludedDates = dates; }));
+      // Avís (D-109): dies triats que no s'executaran mai per les dates d'inici i de fi. S'actualitza mentre s'escriu
+      const daysWarning = el('div', 'ee-days-warning d-none');
+      daysWarning.id = 'ee-days-warning';
+      daysWarning.setAttribute('role', 'status');
+      when.push(datesRow, daysWarning, this.#exceptions(ev));
     }
     when.push(this.#select('Repetició dins del dia', REPEATS, ev.repeat, (v) => {
       ev.repeat = v;
@@ -360,41 +417,59 @@ export class EventEditor {
     save.addEventListener('click', () => this.#save());
     buttons.append(save);
 
-    const discard = el('button', 'btn btn-outline-secondary');
-    discard.id = 'ee-discard';
-    discard.type = 'button';
-    discard.append(el('span', '', 'Descarta els canvis'));
-    discard.addEventListener('click', () => {
+    // La resta d'opcions, en un menú (redisseny, D-109): descarta els canvis, duplica i esborra
+    const more = el('div', 'ee-more');
+    const toggle = el('button', 'btn btn-outline-secondary');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.append(icon('bi-three-dots'), ' ', el('span', '', 'Més'));
+    const menu = el('div', 'ee-menu d-none');
+    menu.setAttribute('role', 'menu');
+    const item = (/** @type {string} */ iconName, /** @type {string} */ text, /** @type {() => void} */ run, danger = false) => {
+      const b = el('button', `ee-menu-item${danger ? ' text-danger' : ''}`);
+      b.type = 'button';
+      b.setAttribute('role', 'menuitem');
+      b.append(icon(iconName), ' ', el('span', '', text));
+      b.addEventListener('click', () => {
+        this.#closeMenu();
+        run();
+      });
+      menu.append(b);
+      return b;
+    };
+    const discard = item('bi-arrow-counterclockwise', 'Descarta els canvis', () => {
       if (this.#original) this.open(this.#original);
       else {
         this.open(null);
         this.#callbacks.onClosed();
       }
     });
-    buttons.append(discard);
-
+    discard.id = 'ee-discard';
     if (ev.id !== 0) {
-      const duplicate = el('button', 'btn btn-outline-secondary');
-      duplicate.type = 'button';
-      duplicate.append(icon('bi-copy'), ' ', el('span', '', 'Duplica'));
-      duplicate.addEventListener('click', async () => {
+      item('bi-copy', 'Duplica', async () => {
         if (!(await this.confirmDiscard())) return;
         this.#original = null;
         this.#draft = duplicateEvent(ev);
         this.#openSections = initialSections(this.#draft, false);
         this.#restructured();
       });
-      const remove = el('button', 'btn btn-outline-danger');
-      remove.type = 'button';
-      remove.append(icon('bi-trash'), ' ', el('span', '', 'Esborra…'));
-      remove.addEventListener('click', () => this.#delete());
-      buttons.append(duplicate, remove);
+      item('bi-trash', 'Esborra…', () => this.#delete(), true);
     }
+    toggle.addEventListener('click', () => {
+      const open = menu.classList.contains('d-none');
+      menu.classList.toggle('d-none', !open);
+      toggle.setAttribute('aria-expanded', String(open));
+      if (open) /** @type {HTMLElement | null} */ (menu.querySelector('.ee-menu-item:not(.d-none)'))?.focus();
+    });
+    more.append(toggle, menu);
+    buttons.append(more);
     panel.append(buttons);
 
     panel.scrollTop = scroll;
     this.#showError();
     this.#syncButtons();
+    this.#showDaysWarning();
     this.#schedulePreview(0);
   }
 
@@ -868,8 +943,12 @@ export class EventEditor {
     return this.#labelled(label, group);
   }
 
-  /** Una llista de dates: un camp per afegir-ne i una etiqueta per cada una, amb el botó per treure-la. @param {string} label @param {string[]} dates @param {(dates: string[]) => void} onChange */
-  #dateList(label, dates, onChange) {
+  /**
+   * Una llista de dates: un camp per afegir-ne i una etiqueta per cada una, amb el botó per treure-la.
+   * @param {string} label @param {string[]} dates @param {(dates: string[]) => void} onChange
+   * @param {string} [notBefore]  'AAAA-MM-DD': no es deixa afegir cap data anterior (p. ex. avui, per a les excepcions)
+   */
+  #dateList(label, dates, onChange, notBefore) {
     const box = el('div', 'ee-datelist');
     const chips = el('div', 'ee-chips');
     for (const date of [...dates].sort()) {
@@ -891,16 +970,24 @@ export class EventEditor {
     const input = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
     input.type = 'date';
     input.setAttribute('aria-label', `${label}: data per afegir`);
+    if (notBefore) input.min = notBefore;
+    const problem = el('div', 'form-text text-danger d-none');
     const add = el('button', 'btn btn-sm btn-outline-secondary');
     add.type = 'button';
     add.append(icon('bi-plus-lg'), ' ', el('span', '', 'Afegeix'));
     add.addEventListener('click', () => {
       if (!input.value || dates.includes(input.value)) return;
+      if (notBefore && input.value < notBefore) {
+        problem.textContent = 'No es pot posar una data que ja ha passat.';
+        problem.classList.remove('d-none');
+        return;
+      }
       onChange([...dates, input.value].sort());
       this.#restructured();
     });
+    input.addEventListener('input', () => problem.classList.add('d-none'));
     row.append(input, add);
-    box.append(chips, row);
+    box.append(chips, row, problem);
     return this.#labelled(label, box);
   }
 
@@ -914,6 +1001,8 @@ export class EventEditor {
     save.disabled = !dirty || this.#saving;
     discard.disabled = !dirty || this.#saving;
     discard.classList.toggle('d-none', !dirty);
+    const more = this.#panel.querySelector('.ee-more');
+    more?.classList.toggle('d-none', !more.querySelector('.ee-menu-item:not(.d-none)'));
     if (this.#error === null) this.#showError();
   }
 
@@ -1074,18 +1163,17 @@ function actionsSummary(actions) {
 /** El desplegable «Afegeix» de les accions. */
 const ADD_TYPES = [
   ['PISTA', 'Pista'], ['AUXILIAR', 'Auxiliar'], ['ROTACIO', 'Rotació'], ['AUTODJ', 'AutoDJ'],
-  ['SWEEPERS', 'Sweepers'], ['BOSSA', 'Bossa'], ['STREAM', 'Stream'],
+  ['SWEEPERS', 'Sweepers'], ['BOSSA', 'Bossa'], // els streams, com a pista (D-109)
 ];
 
 /** Què fa cada tipus d'acció, en una frase (a sota del desplegable). */
 const ADD_HELP = {
-  PISTA: 'Una pista de la biblioteca, a la cua.',
+  PISTA: "Una pista de la biblioteca, a la cua. Un stream (p. ex. de «Radio Streams») també s'hi afegeix així, i porta la durada.",
   AUXILIAR: 'Una pista que sona per sobre del que soni (senyals horaris).',
   ROTACIO: 'Canvia la rotació de l\'AutoDJ.',
   AUTODJ: 'Activa o atura l\'AutoDJ.',
   SWEEPERS: 'Canvia la categoria de sweepers del trepitjador (sonen a sobre de l\'inici de les cançons).',
   BOSSA: 'Canvia la subcategoria d\'una bossa amb nom (p. ex. el dia 1 de cada mes).',
-  STREAM: 'Un stream de la biblioteca (p. ex. de «Radio Streams»), amb la durada (sonarà a partir del pas 7).',
 };
 
 const ACTION_NAMES = {

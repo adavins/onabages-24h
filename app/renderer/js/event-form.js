@@ -240,3 +240,40 @@ export function optionsSummary(ev) {
   if (ev.toleranceSeconds !== 60) parts.push(`tolerància ${ev.toleranceSeconds} s`);
   return parts.join(' · ') || 'per defecte';
 }
+
+const WEEKDAY_NAMES = ['dilluns', 'dimarts', 'dimecres', 'dijous', 'divendres', 'dissabte', 'diumenge'];
+
+/**
+ * Els dies de la setmana triats que no s'executaran mai per les dates d'inici i de fi (D-109): si entre totes dues hi
+ * ha menys d'una setmana, només hi caben uns quants dies. Només per a les recurrències amb dies de la setmana.
+ * @param {any} ev
+ * @returns {number[]}  0 = dilluns; buit si no n'hi ha cap (o no es pot saber)
+ */
+export function unreachableDays(ev) {
+  if (!['SETMANAL', 'CADA_N_SETMANES', 'MENSUAL_ORDINAL'].includes(ev.recurrence)) return [];
+  if (!ev.startDate || !ev.endDate || ev.startDate > ev.endDate) return [];
+  const start = new Date(`${ev.startDate}T12:00:00`);
+  const end = new Date(`${ev.endDate}T12:00:00`);
+  let inRange = 0;
+  for (let d = new Date(start); d <= end && inRange !== 127; d.setDate(d.getDate() + 1)) inRange |= 1 << ((d.getDay() + 6) % 7);
+  const result = [];
+  for (let day = 0; day < 7; day++) if ((ev.daysMask & (1 << day)) && !(inRange & (1 << day))) result.push(day);
+  return result;
+}
+
+/** L'avís dels dies que no s'executaran, en una frase, o null. @param {any} ev */
+export function unreachableDaysText(ev) {
+  const days = unreachableDays(ev);
+  if (days.length === 0) return null;
+  const names = days.map((d) => WEEKDAY_NAMES[d]);
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} i ${names[names.length - 1]}`;
+  const all = days.length === [...Array(7).keys()].filter((d) => ev.daysMask & (1 << d)).length;
+  return all
+    ? `No s'executarà mai: entre les dates d'inici i de fi no hi ha cap ${list}.`
+    : `${list[0].toUpperCase()}${list.slice(1)} no s'executar${days.length === 1 ? 'à' : 'an'} mai: entre les dates d'inici i de fi no n'hi ha cap.`;
+}
+
+/** Avui, com a «AAAA-MM-DD» (hora local). @param {Date} [now] */
+export function todayIso(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
