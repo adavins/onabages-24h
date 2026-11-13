@@ -50,8 +50,8 @@ export class EventEditor {
   #ducking = null;
   /** @type {string | null} */
   #error = null;
-  /** Quin cercador de pistes és obert: per afegir una PISTA o un AUXILIAR. @type {'PISTA' | 'AUXILIAR' | null} */
-  #searchFor = null;
+  /** El tipus d'acció triat al desplegable «Afegeix» (es recorda). */
+  #addType = 'PISTA';
   #previewTimer = 0;
   #previewToken = 0;
   #saving = false;
@@ -119,7 +119,6 @@ export class EventEditor {
     this.#original = ev ? cloneEvent(ev) : null;
     this.#draft = ev ? cloneEvent(ev) : null;
     this.#error = null;
-    this.#searchFor = null;
     this.#render();
   }
 
@@ -129,7 +128,6 @@ export class EventEditor {
     this.#draft = { ...newEvent(), ...values };
     this.#openSections = initialSections(this.#draft, true);
     this.#error = null;
-    this.#searchFor = null;
     this.#render();
   }
 
@@ -252,13 +250,16 @@ export class EventEditor {
       this.#callbacks.onClosed();
     });
     head.append(badge, close);
-    panel.append(head);
 
     // Avisos (pas 8c): els calcula el motor amb l'esborrany, alhora que les pròximes emissions
     const warnings = el('div', 'ee-warnings d-none');
     warnings.id = 'ee-warnings';
     warnings.setAttribute('role', 'status');
-    panel.append(warnings);
+
+    // La capçalera i els avisos queden sempre visibles a dalt (com els botons a baix)
+    const top = el('div', 'ee-top');
+    top.append(head, warnings);
+    panel.append(top);
 
     // General: nom i mode
     /** @type {HTMLElement[]} */
@@ -359,14 +360,6 @@ export class EventEditor {
     save.append(icon('bi-check-lg'), ' ', el('span', '', 'Desa'));
     save.addEventListener('click', () => this.#save());
     buttons.append(save);
-
-    // Quants avisos hi ha: els avisos són a dalt i, si s'ha baixat fins aquí, no es veuen
-    const warningCount = el('button', 'btn btn-sm btn-link ee-warn-count d-none');
-    warningCount.id = 'ee-warn-count';
-    warningCount.type = 'button';
-    warningCount.title = 'Mostra els avisos';
-    warningCount.addEventListener('click', () => this.#panel.querySelector('#ee-warnings')?.scrollIntoView({ block: 'start' }));
-    buttons.append(warningCount);
 
     const discard = el('button', 'btn btn-outline-secondary');
     discard.id = 'ee-discard';
@@ -582,57 +575,95 @@ export class EventEditor {
     }
   }
 
-  /** Botons per afegir accions i, si cal, el cercador de pistes. @param {any} ev */
+  /** Per afegir una acció: un desplegable amb el tipus i el botó «Afegeix». @param {any} ev */
   #addActions(ev) {
     const box = el('div', 'ee-add');
-    const buttons = el('div', 'ee-add-buttons');
-    const add = (/** @type {string} */ iconName, /** @type {string} */ label, /** @type {string} */ title, /** @type {() => void} */ run, on = false) => {
-      const b = el('button', `btn btn-sm ${on ? 'btn-secondary' : 'btn-outline-secondary'}`);
-      b.type = 'button';
-      b.title = title;
-      b.append(icon(iconName), ' ', el('span', '', label));
-      b.addEventListener('click', run);
-      buttons.append(b);
-    };
-    const toggleSearch = (/** @type {'PISTA' | 'AUXILIAR'} */ kind) => () => {
-      this.#searchFor = this.#searchFor === kind ? null : kind;
-      this.#restructured();
-    };
-    add('bi-music-note-beamed', 'Pista', 'Una pista de la biblioteca, a la cua', toggleSearch('PISTA'), this.#searchFor === 'PISTA');
-    add('bi-layers', 'Auxiliar', 'Una pista que sona per sobre del que soni (senyals horaris)', toggleSearch('AUXILIAR'), this.#searchFor === 'AUXILIAR');
-    add('bi-arrow-repeat', 'Rotació', 'Canvia la rotació de l\'AutoDJ', () => {
-      const first = this.#rotations[0];
-      ev.actions = [...ev.actions, { type: 'ROTACIO', params: { rotacioId: first?.id ?? null }, daysMask: null, label: first ? `Rotació ${first.name}` : 'Rotació' }];
-      this.#restructured();
+    const select = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
+    select.id = uid();
+    select.setAttribute('aria-label', 'Tipus d\'acció per afegir');
+    for (const [type, text] of ADD_TYPES) select.append(option(type, text));
+    select.value = this.#addType;
+    const help = el('div', 'form-text', ADD_HELP[/** @type {keyof typeof ADD_HELP} */ (select.value)] ?? '');
+    select.addEventListener('change', () => {
+      this.#addType = select.value;
+      help.textContent = ADD_HELP[/** @type {keyof typeof ADD_HELP} */ (select.value)] ?? '';
     });
-    add('bi-shuffle', 'AutoDJ', 'Activa o atura l\'AutoDJ', () => {
-      ev.actions = [...ev.actions, { type: 'AUTODJ', params: { actiu: true }, daysMask: null, label: 'Activa l\'AutoDJ' }];
-      this.#restructured();
-    });
-    add('bi-soundwave', 'Sweepers', 'Canvia la categoria de sweepers del trepitjador (sonen a sobre de l\'inici de les cançons)', () => {
-      const first = this.#sweeperOptions[0];
-      ev.actions = [...ev.actions, { type: 'SWEEPERS', params: { subcategoriaId: first?.id ?? null }, daysMask: null, label: first?.label ?? 'Sweepers' }];
-      this.#restructured();
-    });
-    add('bi-bag', 'Bossa', 'Canvia la subcategoria d\'una bossa amb nom (p. ex. el dia 1 de cada mes)', () => {
-      const first = this.#bags[0];
-      ev.actions = [...ev.actions, { type: 'BOSSA', params: { bossaId: first?.id ?? null, subcategoriaId: null }, daysMask: null, label: first ? `Bossa «${first.name}»` : 'Bossa' }];
-      this.#restructured();
-    });
-    add('bi-broadcast', 'Stream', 'Un stream d\'internet (sonarà a partir del pas 7)', () => {
-      ev.actions = [...ev.actions, { type: 'STREAM', params: { url: '' }, daysMask: null, label: 'Stream' }];
-      this.#restructured();
-    });
-    box.append(el('div', 'ee-add-title', 'Afegeix:'), buttons);
-
-    if (this.#searchFor) box.append(this.#trackSearch(ev, this.#searchFor));
+    const button = el('button', 'btn btn-sm btn-outline-secondary');
+    button.type = 'button';
+    button.append(icon('bi-plus-lg'), ' ', el('span', '', 'Afegeix'));
+    button.addEventListener('click', () => this.#addAction(ev, select.value));
+    const row = el('div', 'ee-add-row');
+    row.append(select, button);
+    box.append(row, help);
     return box;
   }
 
-  /** Cercador de pistes (library.search): en clicar-ne una, s'afegeix com a acció. @param {any} ev @param {'PISTA' | 'AUXILIAR'} kind */
-  #trackSearch(ev, kind) {
-    const box = el('div', 'ee-search');
-    const input = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
+  /** Afegeix una acció del tipus triat; les que demanen triar una pista o una categoria obren una finestra. @param {any} ev @param {string} type */
+  #addAction(ev, type) {
+    const push = (/** @type {any} */ action) => {
+      ev.actions = [...ev.actions, { daysMask: null, ...action }];
+      this.#restructured();
+    };
+    switch (type) {
+      case 'PISTA':
+      case 'AUXILIAR':
+        this.#pickTrack(type, (track, label, detail) => push({
+          type, params: type === 'AUXILIAR' ? { songId: track.id, player: 1 } : { songId: track.id }, label, detail, missing: track.fileState === 'missing',
+        }));
+        break;
+      case 'SWEEPERS':
+        this.#pickSweepers((sub) => push({ type, params: { subcategoriaId: sub.id }, label: sub.label }));
+        break;
+      case 'ROTACIO': {
+        const first = this.#rotations[0];
+        push({ type, params: { rotacioId: first?.id ?? null }, label: first ? `Rotació ${first.name}` : 'Rotació' });
+        break;
+      }
+      case 'AUTODJ':
+        push({ type, params: { actiu: true }, label: 'Activa l\'AutoDJ' });
+        break;
+      case 'BOSSA': {
+        const first = this.#bags[0];
+        push({ type, params: { bossaId: first?.id ?? null, subcategoriaId: null }, label: first ? `Bossa «${first.name}»` : 'Bossa' });
+        break;
+      }
+      case 'STREAM':
+        push({ type, params: { url: '' }, label: 'Stream' });
+        break;
+    }
+  }
+
+  /**
+   * Una finestra modal (element <dialog>) amb títol, el contingut i «Cancel·la». Es treu de la pàgina en tancar-se.
+   * @param {string} iconName  @param {string} title  @param {HTMLElement[]} content
+   * @returns {HTMLDialogElement}
+   */
+  #modal(iconName, title, content) {
+    const dialog = /** @type {HTMLDialogElement} */ (el('dialog', 'ob-dialog ob-dialog-wide ee-pick'));
+    const form = el('form', '');
+    form.setAttribute('method', 'dialog');
+    const h = el('h2', 'h5');
+    h.append(icon(iconName), ' ', el('span', '', title));
+    const buttons = el('div', 'd-flex justify-content-end mt-3');
+    const cancel = el('button', 'btn btn-outline-secondary');
+    cancel.setAttribute('value', 'cancel');
+    cancel.append(el('span', '', 'Cancel·la'));
+    buttons.append(cancel);
+    form.append(h, ...content, buttons);
+    dialog.append(form);
+    dialog.addEventListener('close', () => dialog.remove());
+    document.body.append(dialog);
+    dialog.showModal();
+    return dialog;
+  }
+
+  /**
+   * Finestra per triar una pista (library.search), amb filtres de categoria i subcategoria. En clicar-ne una, es tria.
+   * @param {'PISTA' | 'AUXILIAR'} kind
+   * @param {(track: any, label: string, detail: string) => void} onPick
+   */
+  #pickTrack(kind, onPick) {
+    const input = /** @type {HTMLInputElement} */ (el('input', 'form-control'));
     input.type = 'search';
     input.placeholder = kind === 'AUXILIAR' ? 'Cerca la pista que sonarà per sobre…' : 'Cerca una pista per títol, artista o carpeta…';
     input.setAttribute('aria-label', 'Cerca una pista');
@@ -658,22 +689,16 @@ export class EventEditor {
       this.#searchSubcategory = subcategory.value; // si ja no hi és, «Subcategoria»
     };
     fillSubcategories();
-    category.addEventListener('change', () => {
-      this.#searchCategory = category.value;
-      fillSubcategories();
-      search();
-    });
-    subcategory.addEventListener('change', () => {
-      this.#searchSubcategory = subcategory.value;
-      search();
-    });
     const filters = el('div', 'ee-search-filters');
     filters.append(category, subcategory);
+
+    const dialog = this.#modal(kind === 'AUXILIAR' ? 'bi-layers' : 'bi-music-note-beamed',
+      kind === 'AUXILIAR' ? 'Afegeix un auxiliar' : 'Afegeix una pista', [input, filters, results]);
 
     const search = async () => {
       const mine = ++token;
       /** @type {Record<string, any>} */
-      const params = { text: input.value, limit: 30 };
+      const params = { text: input.value, limit: 50 };
       if (subcategory.value) params.subcategoryId = Number(subcategory.value);
       else if (category.value) params.categoryId = Number(category.value);
       try {
@@ -690,25 +715,51 @@ export class EventEditor {
           row.append(el('span', 'ee-result-label', label), el('span', 'ee-result-detail', detail));
           row.title = track.path;
           row.addEventListener('click', () => {
-            const params = kind === 'AUXILIAR' ? { songId: track.id, player: 1 } : { songId: track.id };
-            ev.actions = [...ev.actions, { type: kind, params, daysMask: null, label, detail, missing: track.fileState === 'missing' }];
-            this.#restructured();
+            dialog.close();
+            onPick(track, label, detail);
           });
           results.append(row);
         }
-        if (result.more) results.append(el('div', 'text-body-secondary', 'N\'hi ha més: escriu més text per afinar la cerca.'));
+        if (result.more) results.append(el('div', 'text-body-secondary', 'N\'hi ha més: escriu més text o filtra per categoria.'));
       } catch (err) {
         if (mine === token) results.replaceChildren(el('div', 'text-danger', `No s'ha pogut cercar: ${/** @type {Error} */ (err).message}`));
       }
     };
+    category.addEventListener('change', () => {
+      this.#searchCategory = category.value;
+      fillSubcategories();
+      search();
+    });
+    subcategory.addEventListener('change', () => {
+      this.#searchSubcategory = subcategory.value;
+      search();
+    });
     input.addEventListener('input', () => {
       clearTimeout(timer);
       timer = window.setTimeout(search, 250);
     });
-    box.append(input, filters, results);
+    // Enter al cercador no ha de tancar la finestra (el formulari és de diàleg)
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
     search();
-    setTimeout(() => input.focus(), 0);
-    return box;
+    input.focus();
+  }
+
+  /** Finestra per triar la categoria de sweepers. @param {(sub: { id: number, label: string }) => void} onPick */
+  #pickSweepers(onPick) {
+    const list = el('div', 'ee-results');
+    if (this.#sweeperOptions.length === 0) list.append(el('div', 'text-body-secondary', 'No hi ha cap subcategoria amb pistes.'));
+    const dialog = this.#modal('bi-soundwave', 'Afegeix un canvi de sweepers', [
+      el('p', 'ob-dialog-message', 'Tria la categoria de sweepers del trepitjador (sonen a sobre de l\'inici de les cançons).'), list]);
+    for (const sub of this.#sweeperOptions) {
+      const row = el('button', 'ee-result');
+      row.type = 'button';
+      row.append(el('span', 'ee-result-label', sub.label));
+      row.addEventListener('click', () => {
+        dialog.close();
+        onPick(sub);
+      });
+      list.append(row);
+    }
   }
 
   // --- Peces del formulari ---
@@ -915,12 +966,6 @@ export class EventEditor {
     if (!box) return;
     box.replaceChildren();
     box.classList.toggle('d-none', warnings.length === 0);
-    const count = /** @type {HTMLElement | null} */ (this.#panel.querySelector('#ee-warn-count'));
-    if (count) {
-      count.classList.toggle('d-none', warnings.length === 0);
-      count.replaceChildren(icon('bi-exclamation-triangle-fill'), ' ',
-        el('span', '', warnings.length === 1 ? '1 avís' : `${warnings.length} avisos`));
-    }
     if (warnings.length === 0) return;
     const title = el('div', 'ee-warnings-title');
     title.append(icon('bi-exclamation-triangle-fill'), ' ',
@@ -1013,6 +1058,23 @@ function actionsSummary(actions) {
   const first = actions[0].label ?? ACTION_NAMES[/** @type {keyof typeof ACTION_NAMES} */ (actions[0].type)] ?? actions[0].type;
   return actions.length === 1 ? first : `${actions.length} accions: ${first}…`;
 }
+
+/** El desplegable «Afegeix» de les accions. */
+const ADD_TYPES = [
+  ['PISTA', 'Pista'], ['AUXILIAR', 'Auxiliar'], ['ROTACIO', 'Rotació'], ['AUTODJ', 'AutoDJ'],
+  ['SWEEPERS', 'Sweepers'], ['BOSSA', 'Bossa'], ['STREAM', 'Stream'],
+];
+
+/** Què fa cada tipus d'acció, en una frase (a sota del desplegable). */
+const ADD_HELP = {
+  PISTA: 'Una pista de la biblioteca, a la cua.',
+  AUXILIAR: 'Una pista que sona per sobre del que soni (senyals horaris).',
+  ROTACIO: 'Canvia la rotació de l\'AutoDJ.',
+  AUTODJ: 'Activa o atura l\'AutoDJ.',
+  SWEEPERS: 'Canvia la categoria de sweepers del trepitjador (sonen a sobre de l\'inici de les cançons).',
+  BOSSA: 'Canvia la subcategoria d\'una bossa amb nom (p. ex. el dia 1 de cada mes).',
+  STREAM: 'Un stream d\'internet (sonarà a partir del pas 7).',
+};
 
 const ACTION_NAMES = {
   PISTA: 'Pista', AUXILIAR: 'Auxiliar', ROTACIO: 'Rotació', AUTODJ: 'AutoDJ', STREAM: 'Stream', SWEEPERS: 'Sweepers', BOSSA: 'Bossa',
