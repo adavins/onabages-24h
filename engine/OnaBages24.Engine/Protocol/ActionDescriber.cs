@@ -8,7 +8,9 @@ namespace OnaBages24.Engine.Protocol;
 /// <param name="Detail">Una línia més petita: tipus de pista i durada, reproductor auxiliar…</param>
 /// <param name="Missing">La pista no existeix a la biblioteca o el fitxer falta: sonarà la següent (o res, si és un auxiliar).</param>
 /// <param name="DurationMs">Quant sona (de l'inici al final de la pista), si se sap.</param>
-public sealed record ActionInfo(string Label, string? Detail, bool Missing, long? DurationMs);
+/// <param name="ValidFrom">Data d'inici de la pista, si en té (abans no sona; D-110).</param>
+/// <param name="ValidUntil">Data de fi de la pista, si en té (després no sona; D-110).</param>
+public sealed record ActionInfo(string Label, string? Detail, bool Missing, long? DurationMs, DateOnly? ValidFrom = null, DateOnly? ValidUntil = null);
 
 /// <summary>
 /// Descriu les accions dels esdeveniments per a la interfície, perquè no hagi de buscar cada pista a la biblioteca
@@ -73,7 +75,7 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations)
         if (extra is not null) parts.Add(extra);
         bool missing = track.FileState == FileState.Missing;
         if (missing) parts.Add("el fitxer falta");
-        return new ActionInfo(label, string.Join(" · ", parts), missing, duration);
+        return new ActionInfo(label, string.Join(" · ", parts), missing, duration, track.ValidFrom, track.ValidUntil);
     }
 
     /// <summary>

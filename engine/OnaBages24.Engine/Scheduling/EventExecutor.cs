@@ -122,6 +122,11 @@ public sealed class EventExecutor
                 warnings.Add($"La pista {id} no existeix a la biblioteca.");
                 continue;
             }
+            if (!track.ValidOn(occurrence.Date))
+            {
+                warnings.Add(OutOfDates(track));
+                continue;
+            }
             items.Add(QueueItem.FromTrack(track, QueueOrigin.Event, ev.Name) with { EventId = ev.Id, EventAt = occurrence.At });
         }
 
@@ -129,6 +134,21 @@ public sealed class EventExecutor
         Guid? reservation = ev.Mode == EventMode.Cut && items.Count > 0 ? queue.Reserve(items[0]) : null;
         var auxItems = PrepareAux(occurrence, actions, warnings);
         return new PreparedEvent(occurrence, actions, items, warnings, reservation) { Aux = auxItems };
+    }
+
+    /// <summary>««Ferreteria» no ha sonat: és fora de les seves dates (del 1/11/2026 al 30/11/2026).» (D-110)</summary>
+    private static string OutOfDates(Track track)
+    {
+        string title = string.IsNullOrWhiteSpace(track.Title) ? Path.GetFileNameWithoutExtension(track.Path) : track.Title;
+        static string Day(DateOnly d) => d.ToString("d/M/yyyy", System.Globalization.CultureInfo.InvariantCulture);
+        string dates = (track.ValidFrom, track.ValidUntil) switch
+        {
+            ({ } f, { } u) => $"del {Day(f)} al {Day(u)}",
+            ({ } f, null) => $"a partir del {Day(f)}",
+            (null, { } u) => $"fins al {Day(u)}",
+            _ => "",
+        };
+        return $"«{title}» no ha sonat: és fora de les seves dates ({dates}).";
     }
 
     /// <summary>
@@ -166,6 +186,11 @@ public sealed class EventExecutor
             if (track is null)
             {
                 warnings.Add($"La pista {id} (AUXILIAR) no existeix a la biblioteca.");
+                continue;
+            }
+            if (!track.ValidOn(occurrence.Date))
+            {
+                warnings.Add(OutOfDates(track));
                 continue;
             }
             // L'atenuació de l'acció té prioritat sobre la de l'esdeveniment (D-064); si cap no en diu, la de la configuració

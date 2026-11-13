@@ -242,6 +242,24 @@ public sealed class SchedulerTests : IDisposable
     }
 
     [Fact]
+    public void Una_pista_fora_de_les_seves_dates_no_sona_i_queda_anotat()
+    {
+        // Avui és el 20/11/2026: la falca va acabar el 19 i la promo comença el 21 (D-110)
+        long ended = _library.AddTrack(new Track { Path = _temp.File("falca.mp3"), Title = "Falca vella", Type = TrackType.Commercial,
+            DurationMs = 20_000, ValidUntil = new DateOnly(2026, 11, 19) });
+        long future = _library.AddTrack(new Track { Path = _temp.File("promo.mp3"), Title = "Promo nova", Type = TrackType.Promo,
+            DurationMs = 20_000, ValidFrom = new DateOnly(2026, 11, 21) });
+        Save("Bloc", 9, 30, actions: [Pista(ended), Pista(future), Pista(Track("Vigent"))]);
+        var scheduler = NewScheduler();
+
+        RunUntil(scheduler, At(9, 30));
+
+        Assert.Equal(["Vigent"], _queue.Upcoming.Select(i => i.Title));
+        Assert.Contains("«Falca vella» no ha sonat: és fora de les seves dates (fins al 19/11/2026)", Log()[0].Detail);
+        Assert.Contains("«Promo nova» no ha sonat: és fora de les seves dates (a partir del 21/11/2026)", Log()[0].Detail);
+    }
+
+    [Fact]
     public void Els_desactivats_i_les_plantilles_no_es_disparen()
     {
         Save("Desactivat", 9, 30, change: e => e with { Enabled = false }, actions: [Pista(Track("A"))]);

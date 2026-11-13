@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   newEvent, cloneEvent, eventToSave, sameEvent, duplicateEvent, normalizeTime, minutesToSeconds, secondsToMinutes,
   intOrNull, numberOrNull, parseHours, formatHours, parseMonthDays, formatMonthDays, setDay, moveItem, withMode, quickCheck,
-  hasCustomOptions, initialSections, optionsSummary, unreachableDays, unreachableDaysText, todayIso,
+  hasCustomOptions, initialSections, optionsSummary, unreachableDays, unreachableDaysText, todayIso, trackDatesState,
 } from '../renderer/js/event-form.js';
 
 test('newEvent: un TALLA cada dia que esborra la cua', () => {
@@ -143,4 +143,13 @@ test('unreachableDays: els dies triats que no caben entre les dates d\'inici i d
   assert.deepEqual(unreachableDays({ ...ev, startDate: '2026-11-16', endDate: '2026-11-30' }), []); // més d'una setmana
   assert.deepEqual(unreachableDays({ ...short, recurrence: 'DATES' }), []);
   assert.equal(todayIso(new Date(2026, 10, 5)), '2026-11-05');
+});
+
+test('trackDatesState: la pista d\'una acció fora de les seves dates', () => {
+  const today = '2026-11-20';
+  assert.equal(trackDatesState({}, today), null);
+  assert.equal(trackDatesState({ validFrom: '2026-11-01' }, today), null);
+  assert.deepEqual(trackDatesState({ validUntil: '2026-11-19' }, today), { kind: 'ended', text: 'No sonarà: la data de fi de la pista era el 19/11/2026' });
+  assert.equal(trackDatesState({ validFrom: '2026-12-01', validUntil: '2026-12-31' }, today)?.text, 'Encara no sonarà: la pista comença el 01/12/2026 (fins al 31/12/2026)');
+  assert.equal(trackDatesState({ validUntil: '2026-11-20' }, today)?.kind, 'until'); // l'últim dia encara sona
 });

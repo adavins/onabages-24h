@@ -2179,6 +2179,12 @@ button.pl-chip.is-off {
   font-size: 0.8rem;
 }
 
+/* La pista sona, però té data de fi (D-110): només informa */
+.pl-action-note {
+  color: var(--ob-muted);
+  font-size: 0.8rem;
+}
+
 .pl-action-empty {
   color: var(--ob-muted);
 }

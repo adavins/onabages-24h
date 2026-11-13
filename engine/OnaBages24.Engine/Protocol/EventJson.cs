@@ -107,6 +107,9 @@ public static class EventJson
             o["detail"] = info.Detail;
             o["missing"] = info.Missing;
             o["durationMs"] = info.DurationMs;
+            // Les dates de la pista (D-110): la interfície marca la que no sonarà
+            o["validFrom"] = info.ValidFrom?.ToString("yyyy-MM-dd");
+            o["validUntil"] = info.ValidUntil?.ToString("yyyy-MM-dd");
         }
         return o;
     }

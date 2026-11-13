@@ -2171,7 +2171,7 @@ public sealed class CommandRouter
             var facts = track is null ? null : new TrackFacts(
                 string.IsNullOrWhiteSpace(track.Title) ? System.IO.Path.GetFileNameWithoutExtension(track.Path) : track.Title,
                 track.EndMs is { } end ? end - (track.StartMs ?? 0) : track.DurationMs,
-                track.FileState == FileState.Missing);
+                track.FileState == FileState.Missing, track.ValidFrom, track.ValidUntil);
             return cache[id] = facts;
         }
         var warnings = EventWarnings.For(ev, EventsOrError().List(), Facts, Zone, DateTimeOffset.Now);

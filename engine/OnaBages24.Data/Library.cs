@@ -106,6 +106,12 @@ public sealed record Track
     public CueSource? CueSource { get; init; }
     public DateOnly? ValidFrom { get; init; }
     public DateOnly? ValidUntil { get; init; }
+
+    /// <summary>
+    /// La pista pot sonar aquest dia segons les seves dates d'inici i de fi (D-110): l'AutoDJ i els esdeveniments no fan
+    /// sonar les que encara no han començat o ja s'han acabat.
+    /// </summary>
+    public bool ValidOn(DateOnly date) => (ValidFrom is not { } from || date >= from) && (ValidUntil is not { } until || date <= until);
     public bool Enabled { get; init; } = true;
     public FileState FileState { get; init; } = FileState.Ok;
     public double Priority { get; init; } = 50;

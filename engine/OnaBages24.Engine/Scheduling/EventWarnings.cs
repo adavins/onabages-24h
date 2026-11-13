@@ -11,7 +11,12 @@ public sealed record EventWarning(string Text, IReadOnlyList<DateOnly> Dates);
 /// <param name="Title">Com es diu (per als textos).</param>
 /// <param name="DurationMs">Quant sona (de l'inici al final), o null si no se sap.</param>
 /// <param name="Missing">La pista no existeix o el fitxer falta.</param>
-public sealed record TrackFacts(string Title, long? DurationMs, bool Missing);
+/// <param name="ValidFrom">Data d'inici de la pista (abans no sona; D-110).</param>
+/// <param name="ValidUntil">Data de fi de la pista (després no sona; D-110).</param>
+public sealed record TrackFacts(string Title, long? DurationMs, bool Missing, DateOnly? ValidFrom = null, DateOnly? ValidUntil = null)
+{
+    public bool ValidOn(DateOnly date) => (ValidFrom is not { } from || date >= from) && (ValidUntil is not { } until || date <= until);
+}
 
 /// <summary>
 /// Avisos de l'editor en desar (fase 2, pas 8c; D-021, D-028; docs/planificador.md, 2.1): qui programa ha de saber què
@@ -25,7 +30,8 @@ public sealed record TrackFacts(string Title, long? DurationMs, bool Missing);
 /// - un ENCUA que començarà però el tallarà un TALLA;
 /// - contingut més llarg que la durada màxima de l'esdeveniment (D-028);
 /// - emissions que no sonaran pel canvi d'hora (D-057);
-/// - pistes que no existeixen o amb el fitxer que falta, i pistes de durada desconeguda.
+/// - pistes que no existeixen o amb el fitxer que falta, i pistes de durada desconeguda;
+/// - pistes que no sonaran alguns dies perquè són fora de les seves dates d'inici i de fi (D-110; fins a un any vista).
 /// Només es diuen els avisos en què hi intervé l'esdeveniment que s'edita (com a afectat o com a causa).
 /// </summary>
 public static class EventWarnings
@@ -140,6 +146,21 @@ public static class EventWarnings
             }
         }
 
+        // Pistes fora de les seves dates els dies que l'esdeveniment sona (fins a un any vista; D-110)
+        if (subject.Actions.Any(a => a.Type is EventActionType.Track or EventActionType.Auxiliary))
+        {
+            foreach (var date in Recurrences.Between(subject, now, now.AddDays(400), zone).Select(o => o.Date).Distinct())
+            {
+                foreach (var action in Recurrences.ActionsFor(subject, date).Where(a => a.Type is EventActionType.Track or EventActionType.Auxiliary))
+                {
+                    if (SongId(action) is not { } id || track(id) is not { } facts || facts.ValidOn(date)) continue;
+                    warnings.Add((facts.ValidUntil is { } until && date > until
+                        ? $"«{facts.Title}» no sonarà: la seva data de fi és el {Day(until)}."
+                        : $"«{facts.Title}» no sonarà: la seva data d'inici és el {Day(facts.ValidFrom)}.", date));
+                }
+            }
+        }
+
         // Emissions que no sonaran pel canvi d'hora (fins a un any vista)
         foreach (var o in Recurrences.Between(subject, now, now.AddDays(400), zone).Where(o => o.SkippedClockChange))
         {
@@ -165,7 +186,8 @@ public static class EventWarnings
         {
             // També les pistes amb el fitxer que falta: és per planificar (a l'ordinador d'emissió hi seran), i el fitxer
             // que falta ja té el seu propi avís
-            if (action.Type == EventActionType.Track && SongId(action) is { } id && track(id) is { DurationMs: { } ms })
+            if (action.Type == EventActionType.Track && SongId(action) is { } id && track(id) is { DurationMs: { } ms } facts
+                && facts.ValidOn(o.Date)) // fora de les seves dates, no sona (D-110)
                 total += ms;
             if (action.Type == EventActionType.Stream && Long(action, "durada_seg") is { } seconds)
                 total += seconds * 1000;
@@ -198,6 +220,9 @@ public static class EventWarnings
         var local = TimeZoneInfo.ConvertTime(at, zone);
         return local.ToString(local.Second == 0 ? "HH:mm" : "HH:mm:ss", CultureInfo.InvariantCulture);
     }
+
+    /// <summary>«30/11/2026».</summary>
+    private static string Day(DateOnly? date) => date?.ToString("d/M/yyyy", CultureInfo.InvariantCulture) ?? "";
 
     /// <summary>«61:20», «1:05:00», «45 s».</summary>
     private static string Duration(long ms)

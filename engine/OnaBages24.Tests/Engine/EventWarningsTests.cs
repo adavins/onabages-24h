@@ -165,4 +165,26 @@ public sealed class EventWarningsTests
 
         Assert.Empty(For(onze, guanya, perd));
     }
+
+    [Fact]
+    public void Una_pista_fora_de_les_seves_dates_avisa_dels_dies_que_no_sonara()
+    {
+        // La falca acaba el 25/11 i la promo comença el 1/12: l'esdeveniment sona els dilluns (16, 23 i 30 de novembre…)
+        TrackFacts? Dated(long id) => id switch
+        {
+            1 => new TrackFacts("Falca de novembre", 20_000, false, ValidUntil: new DateOnly(2026, 11, 25)),
+            2 => new TrackFacts("Promo de desembre", 30_000, false, ValidFrom: new DateOnly(2026, 12, 1)),
+            _ => null,
+        };
+        var ev = Ev(1, "Bloc", EventMode.Queue, 10, 0, 1, 2) with { DaysMask = 1 };
+
+        var warnings = EventWarnings.For(ev, [], Dated, Zone, Now);
+
+        var ended = Assert.Single(warnings, w => w.Text.StartsWith("«Falca de novembre»"));
+        Assert.Equal("«Falca de novembre» no sonarà: la seva data de fi és el 25/11/2026.", ended.Text);
+        Assert.Equal(new DateOnly(2026, 11, 30), ended.Dates[0]); // el primer dilluns després del 25
+        var notYet = Assert.Single(warnings, w => w.Text.StartsWith("«Promo de desembre»"));
+        Assert.Equal("«Promo de desembre» no sonarà: la seva data d'inici és el 1/12/2026.", notYet.Text);
+        Assert.Equal([new DateOnly(2026, 11, 16), new DateOnly(2026, 11, 23), new DateOnly(2026, 11, 30)], notYet.Dates);
+    }
 }

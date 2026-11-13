@@ -277,3 +277,23 @@ export function unreachableDaysText(ev) {
 export function todayIso(now = new Date()) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
+
+/** «2026-11-30» → «30/11/2026». @param {string} iso */
+const dayText = (iso) => iso.split('-').reverse().join('/');
+
+/**
+ * Les dates de la pista d'una acció (D-110) respecte d'avui, per marcar-la a la llista d'accions:
+ * - 'ended': ja s'ha acabat; 'notYet': encara no ha començat (totes dues: avui no sonarà);
+ * - 'until': sona, però té data de fi; null: cap problema (o l'acció no té pista amb dates).
+ * @param {{ validFrom?: string | null, validUntil?: string | null }} action  @param {string} today 'AAAA-MM-DD'
+ * @returns {{ kind: 'ended' | 'notYet' | 'until', text: string } | null}
+ */
+export function trackDatesState(action, today) {
+  const { validFrom, validUntil } = action;
+  if (validUntil && validUntil < today) return { kind: 'ended', text: `No sonarà: la data de fi de la pista era el ${dayText(validUntil)}` };
+  if (validFrom && validFrom > today) {
+    return { kind: 'notYet', text: `Encara no sonarà: la pista comença el ${dayText(validFrom)}${validUntil ? ` (fins al ${dayText(validUntil)})` : ''}` };
+  }
+  if (validUntil) return { kind: 'until', text: `Sona fins al ${dayText(validUntil)} (data de fi de la pista)` };
+  return null;
+}

@@ -175,7 +175,7 @@ public sealed class SchedulerCommandsTests : IDisposable
     public void Les_accions_porten_com_es_mostren_a_la_interficie()
     {
         long track = _library.AddTrack(new Track { Path = _temp.File("no-hi-es.mp3"), Artist = "Ona Bages", Title = "El Magazín",
-            Type = TrackType.Program, DurationMs = 3_540_000, FileState = FileState.Missing });
+            Type = TrackType.Program, DurationMs = 3_540_000, FileState = FileState.Missing, ValidUntil = new DateOnly(2027, 6, 30) });
         string json = $$"""
             { "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "Magazín", "mode": "TALLA", "startTime": "10:00:00",
               "actions": [ { "type": "PISTA", "params": { "songId": {{track}} } }, { "type": "PISTA", "params": { "songId": 999 } },
@@ -187,6 +187,8 @@ public sealed class SchedulerCommandsTests : IDisposable
         Assert.Equal("Programa · 59:00 · el fitxer falta", actions[0]!["detail"]!.GetValue<string>());
         Assert.True(actions[0]!["missing"]!.GetValue<bool>());
         Assert.Equal(3_540_000, actions[0]!["durationMs"]!.GetValue<long>());
+        Assert.Equal("2027-06-30", actions[0]!["validUntil"]!.GetValue<string>()); // les dates de la pista (D-110)
+        Assert.Null(actions[0]!["validFrom"]);
         Assert.Equal("Pista 999 (no existeix)", actions[1]!["label"]!.GetValue<string>());
         Assert.Contains("reproductor auxiliar 2 · música a -12 dB", actions[2]!["detail"]!.GetValue<string>());
     }

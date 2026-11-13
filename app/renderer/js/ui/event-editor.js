@@ -10,7 +10,7 @@ import { MODES, modeInfo, parseDate, shortDate, shortTime, daysText, recurrenceT
 import {
   newEvent, cloneEvent, eventToSave, sameEvent, duplicateEvent, normalizeTime, minutesToSeconds, secondsToMinutes,
   intOrNull, numberOrNull, parseHours, formatHours, parseMonthDays, formatMonthDays, setDay, moveItem, withMode, quickCheck,
-  initialSections, optionsSummary, unreachableDaysText, todayIso,
+  initialSections, optionsSummary, unreachableDaysText, todayIso, trackDatesState,
 } from '../event-form.js';
 import { sweeperOptions, fillSweeperSelect } from '../subcategories.js';
 
@@ -514,8 +514,12 @@ export class EventEditor {
   #actionList(ev) {
     const list = el('ol', 'pl-actions');
     if (ev.actions.length === 0) list.append(el('li', 'pl-action-empty', 'Encara no hi ha cap acció.'));
+    const today = todayIso();
     ev.actions.forEach((/** @type {any} */ action, /** @type {number} */ index) => {
-      const li = el('li', `pl-action${action.missing ? ' is-missing' : ''}`);
+      // Una pista fora de les seves dates avui no sona (D-110): es marca com la que no té fitxer
+      const dates = action.type === 'PISTA' || action.type === 'AUXILIAR' ? trackDatesState(action, today) : null;
+      const silent = dates?.kind === 'ended' || dates?.kind === 'notYet';
+      const li = el('li', `pl-action${action.missing || silent ? ' is-missing' : ''}`);
       const top = el('div', 'ee-action-top');
       const text = el('div', 'ee-action-text');
       text.append(el('div', 'pl-action-label', action.label ?? ACTION_NAMES[action.type] ?? action.type),
@@ -541,6 +545,11 @@ export class EventEditor {
         const warning = el('div', 'pl-action-warning');
         warning.append(icon('bi-exclamation-triangle-fill'), ' ', el('span', '', 'No sonarà: la pista o el fitxer falta'));
         li.append(warning);
+      }
+      if (dates) {
+        const note = el('div', silent ? 'pl-action-warning' : 'pl-action-note');
+        note.append(icon(silent ? 'bi-calendar-x' : 'bi-calendar-event'), ' ', el('span', '', dates.text));
+        li.append(note);
       }
       this.#actionFields(li, ev, action);
       list.append(li);
@@ -693,6 +702,7 @@ export class EventEditor {
           }
           push({
             type, params: type === 'AUXILIAR' ? { songId: track.id, player: 1 } : { songId: track.id }, label, detail, missing: track.fileState === 'missing',
+            validFrom: track.validFrom ?? null, validUntil: track.validUntil ?? null,
           });
         });
         break;
