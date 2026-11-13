@@ -73,7 +73,11 @@ export class TrackManagerView {
     this.#openCalendar = openCalendar;
     this.#showFile = showFile;
     this.#cueEditor = new CueEditor(send);
-    folders.onChange(() => this.#renderBox());
+    // Una carpeta vigilada nova o canviada: el requadre i els desplegables de subcategories (la marca, D-119)
+    folders.onChange(() => {
+      this.#renderBox();
+      this.#syncFilterControls();
+    });
 
     // Barra de filtres
     $('tm-search').addEventListener('input', () => {
@@ -205,7 +209,7 @@ export class TrackManagerView {
     const category = this.#category(this.#boxCategory);
     const sub = /** @type {HTMLSelectElement} */ ($('tm-box-subcategory'));
     sub.replaceChildren(option('', category ? '(tria una subcategoria)' : '(tria abans la categoria)'),
-      ...(category?.subcategories ?? []).map((/** @type {any} */ s) => option(String(s.id), `${s.name} (${s.count})`)));
+      ...(category?.subcategories ?? []).map((/** @type {any} */ s) => option(String(s.id), this.#subOptionText(s, s.name))));
     sub.value = this.#boxSubcategory == null ? '' : String(this.#boxSubcategory);
     sub.disabled = !category;
 
@@ -225,6 +229,21 @@ export class TrackManagerView {
     const text = `Carpeta vigilada${folder.renewable ? ' (bossa renovable)' : ''}: ${folder.folder}` +
       (folder.problem ? ` · ${folder.problem}` : folder.missing > 0 ? ` · ${folder.missing} amb el fitxer que falta` : '');
     status.replaceChildren(statusLabel(warn ? 'text-warning' : 'text-info', warn ? 'bi-exclamation-triangle-fill' : folder.renewable ? 'bi-arrow-repeat' : 'bi-folder-check', text));
+  }
+
+  /**
+   * El text d'una subcategoria en un desplegable (D-119): el nom, quantes pistes té i, si té carpeta vigilada, una marca
+   * al davant amb la icona (el caràcter de la font d'icones: els desplegables no poden portar HTML) i, al final, el text
+   * (mai només la icona): «carpeta vigilada», «bossa renovable» o «carpeta amb avís».
+   * @param {any} sub @param {string} name
+   */
+  #subOptionText(sub, name) {
+    const folder = this.#folders.statusOf(sub.id);
+    const base = `${name} (${sub.count})`;
+    if (!folder) return base;
+    const warn = folder.problem || folder.missing > 0;
+    const glyph = warn ? '' : folder.renewable ? '' : ''; // bi-exclamation-triangle-fill, bi-arrow-repeat, bi-folder-check
+    return `${glyph} ${base} · ${warn ? 'carpeta amb avís' : folder.renewable ? 'bossa renovable' : 'carpeta vigilada'}`;
   }
 
   /** «Categoria / Subcategoria» de la subcategoria triada al requadre. */
@@ -730,7 +749,7 @@ export class TrackManagerView {
     const chosen = f?.categories.find((/** @type {any} */ c) => c.id === this.#f.categoryId);
     const subs = chosen ? chosen.subcategories : (f?.categories ?? []).flatMap((/** @type {any} */ c) => c.subcategories.map((/** @type {any} */ s) => ({ ...s, name: `${c.name} / ${s.name}` })));
     const sub = /** @type {HTMLSelectElement} */ ($('tm-subcategory'));
-    sub.replaceChildren(option('', 'Totes les subcategories'), ...subs.map((/** @type {any} */ s) => option(String(s.id), `${s.name} (${s.count})`)));
+    sub.replaceChildren(option('', 'Totes les subcategories'), ...subs.map((/** @type {any} */ s) => option(String(s.id), this.#subOptionText(s, s.name))));
     sub.value = this.#f.subcategoryId == null ? '' : String(this.#f.subcategoryId);
     if (!$('tm-filters-panel').classList.contains('d-none')) this.#renderFiltersPanel();
   }
@@ -919,9 +938,11 @@ export class TrackManagerView {
   #renderDetail() {
     const box = $('tm-detail');
     const t = this.#track;
+    // Sense cap pista oberta, la columna de la fitxa s'amaga i la llista ocupa l'espai (D-119)
+    box.classList.toggle('is-empty', !t);
     if (!t) {
       this.#readForm = null;
-      box.replaceChildren(el('p', 'tm-empty', 'Tria una pista de la llista per veure\'n i editar-ne la fitxa.'));
+      box.replaceChildren();
       return;
     }
 
@@ -956,7 +977,12 @@ export class TrackManagerView {
     explorer.disabled = t.type === 'stream' || String(t.path ?? '').includes('://'); // un stream és una adreça, no un fitxer
     explorer.title = explorer.disabled ? "És una adreça d'internet, no un fitxer" : "Obre a l'Explorador de Windows la carpeta del fitxer, amb el fitxer seleccionat";
     explorer.addEventListener('click', () => this.#openFolder(t.path));
-    headTools.append(cues, calendar, explorer);
+    const close = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary ms-auto'));
+    close.type = 'button';
+    close.title = 'Tanca la fitxa';
+    close.append(icon('bi-x-lg'), ' Tanca');
+    close.addEventListener('click', () => this.#closeDetail());
+    headTools.append(cues, calendar, explorer, close);
     head.append(headTools);
     form.append(head);
 
@@ -1194,6 +1220,21 @@ export class TrackManagerView {
       row('Esdeveniments', list);
     }
     return box;
+  }
+
+  /** Tanca la fitxa (D-119): si té canvis sense desar, ho pregunta. La fila deixa d'estar marcada. */
+  async #closeDetail() {
+    if (this.dirty && !(await confirmAction({
+      title: 'Canvis sense desar',
+      message: 'La fitxa té canvis que no s\'han desat. Si la tanques, es perdran.',
+      confirm: 'Descarta els canvis',
+    }))) return;
+    this.#track = null;
+    for (const row of $('tm-list').querySelectorAll('.tm-row.active')) {
+      row.classList.remove('active');
+      row.removeAttribute('aria-selected');
+    }
+    this.#renderDetail();
   }
 
   /** Obre a l'Explorador la carpeta del fitxer; si no hi és, ho diu (D-112). @param {string} path */

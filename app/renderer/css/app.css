@@ -708,7 +708,7 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: 17rem minmax(0, 1fr) 26rem;
+  grid-template-columns: 21rem minmax(0, 1fr) 26rem;
   gap: 1rem;
   padding: 0.75rem 1rem;
 }
@@ -759,12 +759,12 @@ body {
 .tm-box-body {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.6rem 0.75rem 0.75rem;
+  gap: 0.6rem;
+  padding: 0.75rem;
 }
 
 .tm-box-body .form-label {
-  margin: 0.2rem 0 0;
+  margin: 0.35rem 0 -0.35rem;
   color: var(--ob-muted);
   font-size: 0.8rem;
 }
@@ -776,7 +776,7 @@ body {
 }
 
 .tm-box-sep {
-  margin: 0.3rem 0;
+  margin: 0.4rem 0;
   border-top: 1px solid var(--ob-border);
 }
 
@@ -3221,3 +3221,25 @@ button.pl-chip.is-off {
 .type-stream           { background: #5e1c46; border-color: #882b66; color: #ffd0ec; }
 .type-other            { background: #343a41; border-color: #4b525b; color: #e1e5ea; }
 .type-unknown          { background: transparent; border-color: var(--ob-border); color: var(--ob-muted); }
+
+/* Pestanya Pistes (D-119): sense cap pista oberta, la fitxa no hi és i la llista ocupa l'espai */
+.tm-detail.is-empty {
+  display: none;
+}
+
+.tm-main:has(> .tm-detail.is-empty) {
+  grid-template-columns: 21rem minmax(0, 1fr);
+}
+
+@media (max-width: 1200px) {
+  .tm-main:has(> .tm-detail.is-empty) {
+    grid-template-columns: 14rem minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
+/* Desplegables amb la marca de la carpeta vigilada (D-119): el caràcter de la icona surt de la font d'icones */
+.icon-select,
+.icon-select option {
+  font-family: var(--bs-body-font-family), "bootstrap-icons";
+}
