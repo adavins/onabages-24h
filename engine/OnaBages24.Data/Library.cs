@@ -33,6 +33,8 @@ public sealed record TrackQuery
     public long? CategoryId { get; init; }
     public long? SubcategoryId { get; init; }
     public long? TagId { get; init; }
+    /// <summary>Només les pistes d'aquest tipus (p. ex. els streams, per a l'acció STREAM).</summary>
+    public TrackType? Type { get; init; }
     /// <summary>Només les pistes en aquest estat (gestor de pistes, fase 3, pas 7a).</summary>
     public TrackStateFilter State { get; init; } = TrackStateFilter.All;
     public int Offset { get; init; }
@@ -579,6 +581,11 @@ public sealed class Library(Database database)
         {
             conditions.Add("EXISTS (SELECT 1 FROM pista_etiqueta pe WHERE pe.pista_id = pista.id AND pe.etiqueta_id = $tag)");
             parameters.Add(("$tag", tag));
+        }
+        if (query.Type is { } type)
+        {
+            conditions.Add("tipus = $type");
+            parameters.Add(("$type", ToText(type)));
         }
         switch (query.State)
         {

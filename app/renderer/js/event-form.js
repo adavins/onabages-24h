@@ -198,6 +198,9 @@ export function quickCheck(ev) {
   if (ev.startDate && ev.endDate && ev.startDate > ev.endDate) return "La data d'inici ha de ser anterior a la de fi.";
   if (ev.mode === 'SUPERPOSA' && !(ev.actions ?? []).some((/** @type {any} */ a) => a.type === 'AUXILIAR'))
     return 'Un esdeveniment Superposa necessita alguna acció «Auxiliar» (el que sona per sobre).';
+  if ((ev.actions ?? []).length === 0) return "Cal afegir alguna acció (què ha de fer l'esdeveniment).";
+  const stream = (ev.actions ?? []).find((/** @type {any} */ a) => a.type === 'STREAM' && !(a.params?.durada_seg > 0));
+  if (stream) return `Cal posar la durada del stream «${stream.label ?? 'Stream'}» (si no, no s'acabaria mai).`;
   return null;
 }
 

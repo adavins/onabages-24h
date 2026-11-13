@@ -258,7 +258,12 @@ export class EventEditor {
 
     // La capçalera i els avisos queden sempre visibles a dalt (com els botons a baix)
     const top = el('div', 'ee-top');
-    top.append(head, warnings);
+    // L'error de validació en desar («Cal posar-li un nom»…): al mateix lloc que els avisos, sempre visible
+    const error = el('div', 'alert alert-danger d-flex gap-2 m-0 d-none');
+    error.id = 'ee-error';
+    error.setAttribute('role', 'alert');
+    error.append(icon('bi-exclamation-octagon-fill'), el('span', ''));
+    top.append(head, error, warnings);
     panel.append(top);
 
     // General: nom i mode
@@ -346,13 +351,7 @@ export class EventEditor {
     preview.id = 'ee-preview';
     panel.append(this.#section('next', 'Pròximes emissions', () => this.#nextSummary, null, [preview]));
 
-    // Error i botons
-    const error = el('div', 'alert alert-danger d-flex gap-2 mt-3 mb-0 d-none');
-    error.id = 'ee-error';
-    error.setAttribute('role', 'alert');
-    error.append(icon('bi-exclamation-octagon-fill'), el('span', ''));
-    panel.append(error);
-
+    // Botons (l'error de validació és a dalt, amb els avisos)
     const buttons = el('div', 'ee-buttons');
     const save = el('button', 'btn btn-primary');
     save.id = 'ee-save';
@@ -554,8 +553,11 @@ export class EventEditor {
       }));
     }
     if (action.type === 'STREAM') {
+      if (p.songId == null) {
+        // Esdeveniments d'abans (D-108): l'adreça escrita a mà. Els nous trien el stream de la biblioteca
+        li.append(this.#textField('Adreça del stream', p.url ?? '', (v) => { p.url = v.trim(); action.label = p.url; }, { placeholder: 'http://…' }));
+      }
       li.append(
-        this.#textField('Adreça del stream', p.url ?? '', (v) => { p.url = v.trim(); action.label = p.url; }, { placeholder: 'http://…' }),
         this.#textField('Durada (min)', secondsToMinutes(p.durada_seg), (v) => {
           const seconds = minutesToSeconds(v);
           if (seconds == null) delete p.durada_seg;
@@ -607,9 +609,17 @@ export class EventEditor {
     switch (type) {
       case 'PISTA':
       case 'AUXILIAR':
-        this.#pickTrack(type, (track, label, detail) => push({
-          type, params: type === 'AUXILIAR' ? { songId: track.id, player: 1 } : { songId: track.id }, label, detail, missing: track.fileState === 'missing',
-        }));
+      case 'STREAM':
+        this.#pickTrack(type, (track, label, detail) => {
+          // Un stream triat com a pista es converteix en acció STREAM, que porta la durada (D-108)
+          if (track.type === 'stream' && type !== 'AUXILIAR') {
+            push({ type: 'STREAM', params: { songId: track.id }, label, detail: 'Stream · cal posar-hi la durada' });
+            return;
+          }
+          push({
+            type, params: type === 'AUXILIAR' ? { songId: track.id, player: 1 } : { songId: track.id }, label, detail, missing: track.fileState === 'missing',
+          });
+        });
         break;
       case 'SWEEPERS':
         this.#pickSweepers((sub) => push({ type, params: { subcategoriaId: sub.id }, label: sub.label }));
@@ -627,9 +637,6 @@ export class EventEditor {
         push({ type, params: { bossaId: first?.id ?? null, subcategoriaId: null }, label: first ? `Bossa «${first.name}»` : 'Bossa' });
         break;
       }
-      case 'STREAM':
-        push({ type, params: { url: '' }, label: 'Stream' });
-        break;
     }
   }
 
@@ -659,13 +666,15 @@ export class EventEditor {
 
   /**
    * Finestra per triar una pista (library.search), amb filtres de categoria i subcategoria. En clicar-ne una, es tria.
-   * @param {'PISTA' | 'AUXILIAR'} kind
+   * Per a un STREAM, només els streams de la biblioteca (tipus Stream, p. ex. la categoria «Radio Streams»; D-108).
+   * @param {'PISTA' | 'AUXILIAR' | 'STREAM'} kind
    * @param {(track: any, label: string, detail: string) => void} onPick
    */
   #pickTrack(kind, onPick) {
     const input = /** @type {HTMLInputElement} */ (el('input', 'form-control'));
     input.type = 'search';
-    input.placeholder = kind === 'AUXILIAR' ? 'Cerca la pista que sonarà per sobre…' : 'Cerca una pista per títol, artista o carpeta…';
+    input.placeholder = kind === 'AUXILIAR' ? 'Cerca la pista que sonarà per sobre…'
+      : kind === 'STREAM' ? 'Cerca un stream per nom o adreça…' : 'Cerca una pista per títol, artista o carpeta…';
     input.setAttribute('aria-label', 'Cerca una pista');
     const results = el('div', 'ee-results');
     let timer = 0;
@@ -691,15 +700,18 @@ export class EventEditor {
     fillSubcategories();
     const filters = el('div', 'ee-search-filters');
     filters.append(category, subcategory);
-
-    const dialog = this.#modal(kind === 'AUXILIAR' ? 'bi-layers' : 'bi-music-note-beamed',
-      kind === 'AUXILIAR' ? 'Afegeix un auxiliar' : 'Afegeix una pista', [input, filters, results]);
+    const content = kind === 'STREAM'
+      ? [el('p', 'ob-dialog-message', 'Els streams de la biblioteca (pistes de tipus Stream). Després hi hauràs de posar la durada.'), input, results]
+      : [input, filters, results];
+    const dialog = this.#modal(kind === 'AUXILIAR' ? 'bi-layers' : kind === 'STREAM' ? 'bi-broadcast' : 'bi-music-note-beamed',
+      kind === 'AUXILIAR' ? 'Afegeix un auxiliar' : kind === 'STREAM' ? 'Afegeix un stream' : 'Afegeix una pista', content);
 
     const search = async () => {
       const mine = ++token;
       /** @type {Record<string, any>} */
       const params = { text: input.value, limit: 50 };
-      if (subcategory.value) params.subcategoryId = Number(subcategory.value);
+      if (kind === 'STREAM') params.type = 'stream';
+      else if (subcategory.value) params.subcategoryId = Number(subcategory.value);
       else if (category.value) params.categoryId = Number(category.value);
       try {
         const result = await this.#send('library.search', params);
@@ -1073,7 +1085,7 @@ const ADD_HELP = {
   AUTODJ: 'Activa o atura l\'AutoDJ.',
   SWEEPERS: 'Canvia la categoria de sweepers del trepitjador (sonen a sobre de l\'inici de les cançons).',
   BOSSA: 'Canvia la subcategoria d\'una bossa amb nom (p. ex. el dia 1 de cada mes).',
-  STREAM: 'Un stream d\'internet (sonarà a partir del pas 7).',
+  STREAM: 'Un stream de la biblioteca (p. ex. de «Radio Streams»), amb la durada (sonarà a partir del pas 7).',
 };
 
 const ACTION_NAMES = {

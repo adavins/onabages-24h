@@ -29,9 +29,7 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations)
                 EventActionType.Track => TrackInfo(Long(p, "songId"), null),
                 EventActionType.Auxiliary => TrackInfo(Long(p, "songId"),
                     $"reproductor auxiliar {Long(p, "player") ?? 1}" + (Double(p, "duckingDb") is { } db ? $" · música a {db:0.#} dB" : "")),
-                EventActionType.Stream => new ActionInfo(String(p, "url") ?? "Stream sense adreça",
-                    "Stream" + (Long(p, "durada_seg") is { } s ? $" · {Duration(s * 1000)}" : " · sense durada") + " · sonarà a partir del pas 7",
-                    false, Long(p, "durada_seg") * 1000),
+                EventActionType.Stream => StreamInfo(Long(p, "songId"), String(p, "url"), Long(p, "durada_seg")),
                 EventActionType.Rotation => new ActionInfo(RotationName(Long(p, "rotacioId")), "Rotació de l'AutoDJ", false, null),
                 EventActionType.Sweepers => new ActionInfo(
                     Long(p, "subcategoriaId") is { } sub ? library?.SubcategoryName(sub) ?? $"Subcategoria {sub}" : "Sense subcategoria",
@@ -76,6 +74,24 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations)
         bool missing = track.FileState == FileState.Missing;
         if (missing) parts.Add("el fitxer falta");
         return new ActionInfo(label, string.Join(" · ", parts), missing, duration);
+    }
+
+    /// <summary>
+    /// Un STREAM: el de la biblioteca (`songId`, D-108; l'adreça és la ruta de la pista) o, als esdeveniments d'abans,
+    /// l'adreça escrita (`url`). La durada és la de l'acció (un stream no en té).
+    /// </summary>
+    private ActionInfo StreamInfo(long? songId, string? url, long? seconds)
+    {
+        string length = seconds is { } s ? Duration(s * 1000) : "sense durada";
+        if (songId is { } id)
+        {
+            var track = library?.GetTrack(id);
+            if (track is null) return new ActionInfo($"Stream {id} (no existeix)", $"Stream · {length}", true, seconds * 1000);
+            string title = string.IsNullOrWhiteSpace(track.Title) ? track.Path : track.Title;
+            string label = string.IsNullOrWhiteSpace(track.Artist) ? title : $"{track.Artist} - {title}";
+            return new ActionInfo(label, $"Stream · {length} · {track.Path} · sonarà a partir del pas 7", false, seconds * 1000);
+        }
+        return new ActionInfo(url ?? "Stream sense adreça", $"Stream · {length} · sonarà a partir del pas 7", false, seconds * 1000);
     }
 
     private string RotationName(long? id)

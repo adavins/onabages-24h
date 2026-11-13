@@ -435,6 +435,10 @@ public sealed class CommandRouter
             CategoryId = Id("categoryId"),
             SubcategoryId = Id("subcategoryId"),
             TagId = Id("tagId"),
+            Type = ReadString(msg["type"]) is { } type
+                ? Enum.GetValues<TrackType>().FirstOrDefault(t => QueueJson.Type(t) == type) is var found && QueueJson.Type(found) == type
+                    ? found : throw new BadParamsException($"El camp 'type' no és un tipus de pista: «{type}».")
+                : null,
             State = ReadString(msg["state"]) switch
             {
                 null or "all" => TrackStateFilter.All,
@@ -2035,7 +2039,10 @@ public sealed class CommandRouter
         long id;
         try
         {
-            id = events.Save(EventJson.FromJson(json));
+            var ev = EventJson.FromJson(json);
+            Events.Check(ev);
+            CheckContent(ev);
+            id = events.Save(ev);
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException)
         {
@@ -2071,6 +2078,24 @@ public sealed class CommandRouter
             ["occurrences"] = new JsonArray(list.Select(o => (JsonNode)EventJson.Occurrence(o)).ToArray()),
             ["warnings"] = Warnings(ev),
         };
+    }
+
+    /// <summary>
+    /// El que ha de tenir un esdeveniment desat des de l'editor (redisseny del planificador, D-108): alguna acció, i els
+    /// STREAM, quin stream (una pista de la biblioteca o una adreça) i la durada. Els blocs de falques del calendari no hi
+    /// passen (es desen i s'esborren sols, D-105).
+    /// </summary>
+    private static void CheckContent(ScheduledEvent ev)
+    {
+        if (ev.Actions.Count == 0) throw new ArgumentException("Cal afegir alguna acció (què ha de fer l'esdeveniment).");
+        foreach (var action in ev.Actions.Where(a => a.Type == EventActionType.Stream))
+        {
+            var p = JsonNode.Parse(action.Params) as JsonObject;
+            bool hasSource = p?["songId"] is JsonValue || !string.IsNullOrWhiteSpace(p?["url"]?.GetValue<string>());
+            if (!hasSource) throw new ArgumentException("Un stream no diu quin stream és: tria'n un de la biblioteca.");
+            if (p?["durada_seg"] is not JsonValue v || !v.TryGetValue(out long seconds) || seconds <= 0)
+                throw new ArgumentException("Cal posar la durada del stream (si no, no s'acabaria mai).");
+        }
     }
 
     private JsonObject SchedulerDelete(JsonObject msg)

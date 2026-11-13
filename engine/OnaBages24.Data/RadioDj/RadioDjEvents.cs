@@ -348,8 +348,9 @@ public static class RadioDjEvents
             if (track.Type == TrackType.Stream || track.Path.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             {
                 titles.Add(string.IsNullOrWhiteSpace(track.Title) ? "Stream" : track.Title);
-                // La durada s'hi posa després, amb la durada màxima del TALLA (WithStreamDuration)
-                return new EventAction { Type = EventActionType.Stream, Params = Json(new { url = track.Path }) };
+                // El stream de la biblioteca (D-108; l'adreça és la ruta de la pista). La durada s'hi posa després, amb la
+                // durada màxima del TALLA (WithStreamDuration)
+                return new EventAction { Type = EventActionType.Stream, Params = Json(new { songId = track.Id }) };
             }
             if (track.Type != TrackType.TimeAnnouncement) titles.Add(TitleOf(track));
             return new EventAction { Type = EventActionType.Track, Params = Json(new { songId = track.Id }) };
@@ -411,9 +412,9 @@ public static class RadioDjEvents
                 continue;
             }
             using var json = JsonDocument.Parse(action.Params);
-            string url = json.RootElement.GetProperty("url").GetString() ?? "";
+            long songId = json.RootElement.GetProperty("songId").GetInt64();
             if (seconds is { } s)
-                result.Add(action with { Params = Json(new { url, durada_seg = s }) });
+                result.Add(action with { Params = Json(new { songId, durada_seg = s }) });
             else
             {
                 report.Warnings.Add($"Stream de les {slot.Time:HH\\:mm} ({DaysText(slot.DaysMask)}): no se'n sap la durada; cal posar-la a mà.");

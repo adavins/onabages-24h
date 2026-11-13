@@ -123,7 +123,7 @@ public sealed class RadioDjEventsTests : IDisposable
         var action = Assert.Single(ev.Actions); // sense Assisted Enable/Disable
         Assert.Equal(EventActionType.Stream, action.Type);
         using var json = JsonDocument.Parse(action.Params);
-        Assert.Equal("http://centauri.shoutca.st:8259", json.RootElement.GetProperty("url").GetString());
+        Assert.Equal(_ids[6774], json.RootElement.GetProperty("songId").GetInt64()); // el stream de la biblioteca (D-108)
         Assert.Equal(7200, json.RootElement.GetProperty("durada_seg").GetInt32());
         Assert.Equal("Directe", ev.Name);
     }

@@ -145,7 +145,7 @@ CREATE TABLE registre_execucio (
 | `tipus` | `params` | Origen a RadioDJ |
 |---|---|---|
 | `PISTA` | `{songId}` | `Load Track By ID` |
-| `STREAM` | `{url, durada_seg, fade_ms, silenci_seg?, reconnecta?, tornada?, reserva_songId?}` | `Load Track By ID` d'una URL + `Seconds To Wait`. Connexió anticipada i tall automàtic. Si està caigut, se salta a la pista següent (la reserva és opcional); amb `silenci_seg`, s'acaba si arriba en silenci (D-030). Amb `reconnecta`, omple amb música i torna al stream quan es recupera, tantes vegades com calgui dins de la durada (D-031). Vegeu el document de context operatiu, 2.2 |
+| `STREAM` | `{songId, durada_seg, fade_ms, silenci_seg?, reconnecta?, tornada?, reserva_songId?}` | `Load Track By ID` d'una URL + `Seconds To Wait`. Connexió anticipada i tall automàtic. Si està caigut, se salta a la pista següent (la reserva és opcional); amb `silenci_seg`, s'acaba si arriba en silenci (D-030). Amb `reconnecta`, omple amb música i torna al stream quan es recupera, tantes vegades com calgui dins de la durada (D-031). El stream és una pista de la biblioteca de tipus Stream (`songId`; l'adreça és la seva ruta, D-108); els esdeveniments d'abans poden portar l'adreça escrita (`url`). `durada_seg` és obligatòria. Vegeu el document de context operatiu, 2.2 |
 | `CAMPANYA` | `{campanyaId}` | Nou: sona la falca que indica el pla de passis de la campanya (secció 10, D-029) |
 | `PLANTILLA` | `{plantillaId}` | Esdeveniment arxivat (s'insereixen les seves accions) |
 | `AUXILIAR` | `{songId, player, duckingDb?}` | `PluginAction|Auxiliary Players|Play File From Database` |

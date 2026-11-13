@@ -87,12 +87,12 @@ public sealed class SchedulerCommandsTests : IDisposable
         Assert.Single(Result(Send("""{ "v": 1, "id": 2, "cmd": "scheduler.list" }"""))["events"]!.AsArray());
 
         var changed = Result(Send($$"""
-            { "v": 1, "id": 3, "cmd": "scheduler.save", "event": { "id": {{id}}, "name": "Magazín d'estiu", "mode": "ENCUA", "startTime": "10:30" } }
+            { "v": 1, "id": 3, "cmd": "scheduler.save", "event": { "id": {{id}}, "name": "Magazín d'estiu", "mode": "ENCUA", "startTime": "10:30", "actions": [{ "type": "AUTODJ", "params": { "actiu": true } }] } }
             """))["event"]!;
         Assert.Equal("Magazín d'estiu", changed["name"]!.GetValue<string>());
         Assert.Equal("10:30:00", changed["startTime"]!.GetValue<string>());
         Assert.Equal("SETMANAL", changed["recurrence"]!.GetValue<string>()); // el que no s'envia torna al valor per defecte
-        Assert.Empty(changed["actions"]!.AsArray());
+        Assert.Equal("AUTODJ", Assert.Single(changed["actions"]!.AsArray())!["type"]!.GetValue<string>()); // les accions es substitueixen
 
         var got = Result(Send($$"""{ "v": 1, "id": 4, "cmd": "scheduler.get", "eventId": {{id}} }"""))["event"]!;
         Assert.Equal("Magazín d'estiu", got["name"]!.GetValue<string>());
@@ -113,7 +113,10 @@ public sealed class SchedulerCommandsTests : IDisposable
     [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "mode": "TALLA", "startTime": "10:00", "recurrence": "CADA_N_SETMANES" } }""", "setmanes")]
     [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "mode": "TALLA", "startTime": "10:00", "actions": [{ "type": "SALTA" }] } }""", "SALTA")]
     [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "mode": "TALLA", "startTime": "10:00", "actions": [{ "type": "PISTA", "params": 5 }] } }""", "objecte")]
-    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "id": 999, "name": "X", "mode": "TALLA", "startTime": "10:00" } }""", "999")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "id": 999, "name": "X", "mode": "TALLA", "startTime": "10:00", "actions": [{ "type": "AUTODJ", "params": {} }] } }""", "999")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "mode": "TALLA", "startTime": "10:00" } }""", "alguna acció")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "mode": "TALLA", "startTime": "10:00", "actions": [{ "type": "STREAM", "params": { "songId": 5 } }] } }""", "durada")]
+    [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.save", "event": { "name": "X", "mode": "TALLA", "startTime": "10:00", "actions": [{ "type": "STREAM", "params": { "durada_seg": 60 } }] } }""", "quin stream")]
     [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.delete", "eventId": 999 }""", "999")]
     [InlineData("""{ "v": 1, "id": 1, "cmd": "scheduler.get" }""", "eventId")]
     public void Dades_dolentes_donen_bad_params_amb_el_motiu(string json, string expected)
@@ -129,8 +132,8 @@ public sealed class SchedulerCommandsTests : IDisposable
     public void Ocurrencies_entre_dues_dates_i_d_un_esdeveniment()
     {
         long id = Result(Send(Magazin))["event"]!["id"]!.GetValue<long>();
-        Send("""{ "v": 1, "id": 2, "cmd": "scheduler.save", "event": { "name": "Senyal", "mode": "SUPERPOSA", "startTime": "00:00", "repeat": "CADA_HORA", "hoursMask": 128 } }""");
-        Send("""{ "v": 1, "id": 3, "cmd": "scheduler.save", "event": { "name": "Apagat", "mode": "ENCUA", "startTime": "08:00", "enabled": false } }""");
+        Send("""{ "v": 1, "id": 2, "cmd": "scheduler.save", "event": { "name": "Senyal", "mode": "SUPERPOSA", "startTime": "00:00", "repeat": "CADA_HORA", "hoursMask": 128, "actions": [{ "type": "AUXILIAR", "params": { "songId": 1 } }] } }""");
+        Send("""{ "v": 1, "id": 3, "cmd": "scheduler.save", "event": { "name": "Apagat", "mode": "ENCUA", "startTime": "08:00", "enabled": false, "actions": [{ "type": "AUTODJ", "params": {} }] } }""");
 
         var all = Result(Send("""{ "v": 1, "id": 4, "cmd": "scheduler.occurrences", "from": "2026-11-20T00:00:00Z", "to": "2026-11-21T00:00:00Z" }"""));
         Assert.Equal(["Senyal", "El Magazín"], all["occurrences"]!.AsArray().Select(o => o!["name"]!.GetValue<string>()));
@@ -340,5 +343,24 @@ public sealed class SchedulerCommandsTests : IDisposable
         Assert.Equal(["Buida 0", "Ona Bages Català 2"], category["subcategories"]!.AsArray()
             .Select(s => $"{s!["name"]!.GetValue<string>()} {s["count"]!.GetValue<int>()}"));
         Assert.Equal("SW - catala", Assert.Single(result["tags"]!.AsArray())!["name"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Un_stream_es_una_pista_de_la_biblioteca_amb_durada_i_es_pot_cercar_per_tipus()
+    {
+        long stream = _library.AddTrack(new Track { Path = "http://centauri.shoutca.st:8259", Artist = "La Xarxa", Title = "Directe", Type = TrackType.Stream });
+        _library.AddTrack(new Track { Path = _temp.File("canco.mp3"), Title = "Directe", Type = TrackType.Music });
+
+        var found = Result(Send("""{ "v": 1, "id": 1, "cmd": "library.search", "text": "directe", "type": "stream" }"""))["tracks"]!.AsArray();
+        Assert.Equal(stream, Assert.Single(found)!["id"]!.GetValue<long>());
+        Assert.Equal("bad_params", ErrorCode(Send("""{ "v": 1, "id": 2, "cmd": "library.search", "type": "radio" }""")));
+
+        var action = Result(Send($$"""
+            { "v": 1, "id": 3, "cmd": "scheduler.save", "event": { "name": "Connexió", "mode": "TALLA", "startTime": "08:00",
+              "actions": [{ "type": "STREAM", "params": { "songId": {{stream}}, "durada_seg": 3600 } }] } }
+            """))["event"]!["actions"]![0]!;
+        Assert.Equal("La Xarxa - Directe", action["label"]!.GetValue<string>());
+        Assert.StartsWith("Stream · 1 h 00 min · http://centauri", action["detail"]!.GetValue<string>());
+        Assert.Equal(3_600_000, action["durationMs"]!.GetValue<long>());
     }
 }

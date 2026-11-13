@@ -102,8 +102,11 @@ test('withMode: «Esborra la cua» segueix el mode (D-022)', () => {
 });
 
 test('quickCheck: el primer problema, o null', () => {
-  const ok = { ...newEvent(), name: 'Magazín' };
+  const ok = { ...newEvent(), name: 'Magazín', actions: [{ type: 'PISTA', params: { songId: 1 } }] };
   assert.equal(quickCheck(ok), null);
+  assert.match(quickCheck({ ...ok, actions: [] }) ?? '', /alguna acció/);
+  assert.match(quickCheck({ ...ok, actions: [{ type: 'STREAM', params: { songId: 2 }, label: 'Directe' }] }) ?? '', /durada del stream «Directe»/);
+  assert.equal(quickCheck({ ...ok, actions: [{ type: 'STREAM', params: { songId: 2, durada_seg: 3600 } }] }), null);
   assert.equal(quickCheck({ ...ok, name: '  ' }), 'Cal posar-li un nom.');
   assert.equal(quickCheck({ ...ok, recurrence: 'DATES' }), 'Cal afegir alguna data.');
   assert.match(quickCheck({ ...ok, startDate: '2027-01-01', endDate: '2026-01-01' }) ?? '', /anterior/);
