@@ -332,7 +332,7 @@ public static class Program
         var library = new Library(database);
         var inFolder = library.TracksInFolder(folder);
         var candidates = inFolder
-            .Where(t => t.RadioDjId is null && (includePlayed || t.PlayCount == 0) && library.EventsUsingTrack(t.Id).Count == 0)
+            .Where(t => t.RadioDjId is null && (includePlayed || t.PlayCount == 0) && !library.IsTrackInUse(t.Id))
             .ToList();
 
         Console.WriteLine($"Pistes de la carpeta: {inFolder.Count}. Es poden esborrar (no venen de RadioDJ, " +

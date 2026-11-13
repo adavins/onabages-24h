@@ -461,6 +461,24 @@ public sealed partial class Library(Database database)
         }
     }
 
+    /// <summary>Els noms de les campanyes que tenen aquesta pista com a falca (fase 4, pas 3a), per ordre de nom.</summary>
+    public IReadOnlyList<string> CampaignsUsingTrack(long trackId)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT c.nom FROM campanya_falca f JOIN campanya c ON c.id = f.campanya_id WHERE f.pista_id = $id ORDER BY c.nom COLLATE NOCASE, c.id;");
+            command.Parameters.AddWithValue("$id", trackId);
+            using var r = command.ExecuteReader();
+            var list = new List<string>();
+            while (r.Read()) list.Add(r.GetString(0));
+            return list;
+        }
+    }
+
+    /// <summary>Si alguna cosa fa servir la pista (un esdeveniment o una campanya): llavors no es pot esborrar ni treure de la biblioteca.</summary>
+    public bool IsTrackInUse(long trackId) => EventsUsingTrack(trackId).Count > 0 || CampaignsUsingTrack(trackId).Count > 0;
+
     /// <summary>
     /// Esborra una pista de la biblioteca (el fitxer no es toca mai). L'historial la conserva (artista, títol i ruta, sense
     /// l'enllaç) i les etiquetes se'n treuen. No es pot esborrar si la fa servir algun esdeveniment.
@@ -474,6 +492,10 @@ public sealed partial class Library(Database database)
             if (uses.Count > 0)
                 throw new DatabaseException($"No es pot esborrar: la fa servir {(uses.Count == 1 ? "l'esdeveniment" : "els esdeveniments")} " +
                                             string.Join(", ", uses.Select(u => $"«{u.EventName}»")) + ".");
+            var campaigns = CampaignsUsingTrack(id);
+            if (campaigns.Count > 0)
+                throw new DatabaseException($"No es pot esborrar: és una falca de {(campaigns.Count == 1 ? "la campanya" : "les campanyes")} " +
+                                            string.Join(", ", campaigns.Select(c => $"«{c}»")) + ".");
             using var command = database.Command("DELETE FROM pista WHERE id = $id;");
             command.Parameters.AddWithValue("$id", id);
             if (command.ExecuteNonQuery() == 0) throw new DatabaseException($"No existeix la pista {id}.");

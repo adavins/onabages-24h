@@ -229,9 +229,12 @@ public static class EngineServer
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
-            events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher);
+            events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher,
+            campaigns: new Campaigns(database));
         // Editor de rotacions (fase 3, pas 8a): les interfícies tornen a demanar les rotacions
         router.RotationsChanged += () => Broadcast(Messages.Event("rotations.changed"));
+        // Campanyes (fase 4, pas 3a): les interfícies tornen a demanar-les
+        router.CampaignsChanged += () => Broadcast(Messages.Event("campaigns.changed"));
         // Bosses amb nom (fase 3, pas 8c): també quan les canvia l'acció BOSSA d'un esdeveniment
         autoDj.BagsChanged += () =>
         {

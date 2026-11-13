@@ -245,7 +245,7 @@ public sealed class FolderWatcher : IDisposable
                 absentNow.Add(track.Path);
                 continue;
             }
-            bool inEvents = _library.EventsUsingTrack(track.Id).Count > 0;
+            bool inEvents = _library.IsTrackInUse(track.Id); // esdeveniments o campanyes
             if (settings.Renewable && !inEvents)
             {
                 _library.DeleteTrack(track.Id);

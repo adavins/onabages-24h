@@ -131,10 +131,12 @@ public sealed partial class CommandRouter
             foreach (long id in ids)
             {
                 if (library.GetTrack(id) is not { } track) continue;
-                var uses = library.EventsUsingTrack(id);
+                // Les que fan servir esdeveniments o campanyes (falques) es deixen
+                var uses = library.EventsUsingTrack(id).Select(u => u.EventName)
+                    .Concat(library.CampaignsUsingTrack(id).Select(c => $"campanya {c}")).ToList();
                 if (uses.Count > 0)
                 {
-                    kept.Add(new JsonObject { ["id"] = id, ["title"] = track.Title, ["events"] = string.Join(", ", uses.Select(u => u.EventName)) });
+                    kept.Add(new JsonObject { ["id"] = id, ["title"] = track.Title, ["events"] = string.Join(", ", uses) });
                     continue;
                 }
                 if (library.PlaysSince(id, since) > 0) recent++;

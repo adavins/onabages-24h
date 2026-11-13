@@ -231,7 +231,7 @@ public static class FolderImporter
             else enter.Add(file);
         }
         var leaving = tracks.Where(t => !kept.Contains(t.Id)).ToList();
-        var inEvents = leaving.Where(t => library.EventsUsingTrack(t.Id).Count > 0).ToList();
+        var inEvents = leaving.Where(t => library.IsTrackInUse(t.Id)).ToList(); // esdeveniments o campanyes
         return new RenewPlan(keep, enter, leaving.Except(inEvents).ToList(), inEvents, elsewhere);
     }
 
@@ -278,7 +278,7 @@ public static class FolderImporter
         foreach (var track in library.TracksInSubcategory(subcategoryId))
         {
             if (keep.Contains(track.Path)) continue;
-            if (library.EventsUsingTrack(track.Id).Count > 0)
+            if (library.IsTrackInUse(track.Id)) // esdeveniments o campanyes
             {
                 kept++;
                 continue;

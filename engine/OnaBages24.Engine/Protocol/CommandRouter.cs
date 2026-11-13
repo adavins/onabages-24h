@@ -38,6 +38,7 @@ public sealed partial class CommandRouter
     private readonly OutputProcessor? _processor;
     private readonly LibraryTools.LibraryImporter? _importer;
     private readonly LibraryTools.FolderWatcher? _watcher;
+    private readonly Campaigns? _campaigns;
 
     /// <param name="state">Estat del motor.</param>
     /// <param name="requestShutdown">Atura el motor (s'executa després de respondre).</param>
@@ -55,8 +56,9 @@ public sealed partial class CommandRouter
         QueuePlayer? queue = null, OutputManager? outputs = null, AutoDj? autoDj = null, Rotations? rotations = null,
         NowPlaying? nowPlaying = null, Events? events = null, Scheduler? scheduler = null, AuxPlayers? aux = null,
         SweeperOverlay? sweepers = null, OutputProcessor? processor = null, LibraryTools.LibraryImporter? importer = null,
-        LibraryTools.FolderWatcher? watcher = null)
+        LibraryTools.FolderWatcher? watcher = null, Campaigns? campaigns = null)
     {
+        _campaigns = campaigns;
         _importer = importer;
         _watcher = watcher;
         _sweepers = sweepers;
@@ -187,6 +189,10 @@ public sealed partial class CommandRouter
                 "calendar.set" => CalendarSet(msg),
                 "calendar.content" => CalendarContent(msg),
                 "calendar.move" => CalendarMove(msg),
+                "campaigns.list" => CampaignsList(),
+                "campaigns.get" => CampaignsGet(msg),
+                "campaigns.save" => CampaignsSave(msg),
+                "campaigns.delete" => CampaignsDelete(msg),
                 "reserve.get" => ReserveJson(AutoDjOrError().Reserve),
                 "reserve.set" => ReserveSet(msg),
                 "history.list" => HistoryList(msg),
@@ -627,7 +633,7 @@ public sealed partial class CommandRouter
         bool dryRun = msg["dryRun"] is JsonValue v && v.TryGetValue(out bool d) && d;
 
         var tracks = library.TracksInSubcategory(id);
-        int used = tracks.Count(t => library.EventsUsingTrack(t.Id).Count > 0);
+        int used = tracks.Count(t => library.IsTrackInUse(t.Id)); // esdeveniments o campanyes (falques)
         var result = new JsonObject
         {
             ["subcategoryId"] = id,
