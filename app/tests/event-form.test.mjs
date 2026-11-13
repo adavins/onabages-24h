@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   newEvent, cloneEvent, eventToSave, sameEvent, duplicateEvent, normalizeTime, minutesToSeconds, secondsToMinutes,
   intOrNull, numberOrNull, parseHours, formatHours, parseMonthDays, formatMonthDays, setDay, moveItem, withMode, quickCheck,
+  hasCustomOptions, initialSections, optionsSummary,
 } from '../renderer/js/event-form.js';
 
 test('newEvent: un TALLA cada dia que esborra la cua', () => {
@@ -108,4 +109,21 @@ test('quickCheck: el primer problema, o null', () => {
   assert.match(quickCheck({ ...ok, startDate: '2027-01-01', endDate: '2026-01-01' }) ?? '', /anterior/);
   assert.match(quickCheck({ ...ok, mode: 'SUPERPOSA' }) ?? '', /Auxiliar/);
   assert.equal(quickCheck({ ...ok, mode: 'SUPERPOSA', actions: [{ type: 'AUXILIAR', params: { songId: 1 } }] }), null);
+});
+
+test('initialSections: un de nou només obre General; un de desat, les omplertes', () => {
+  const ev = newEvent();
+  assert.deepEqual([...initialSections(ev, true)], ['general']);
+  assert.deepEqual([...initialSections(ev, false)], ['general', 'when']);
+  const full = { ...ev, priority: 80, actions: [{ type: 'PISTA' }] };
+  assert.deepEqual([...initialSections(full, false)], ['general', 'when', 'options', 'actions']);
+  // Un ENCUA que no esborra la cua té les opcions per defecte
+  assert.equal(hasCustomOptions(withMode(ev, 'ENCUA')), false);
+  assert.equal(hasCustomOptions({ ...withMode(ev, 'ENCUA'), clearQueue: true }), true);
+});
+
+test('optionsSummary: el resum de les opcions', () => {
+  assert.equal(optionsSummary(newEvent()), 'esborra la cua');
+  assert.equal(optionsSummary({ ...newEvent(), fadeMs: 0, priority: 70 }), 'esborra la cua · tall sec · prioritat 70');
+  assert.equal(optionsSummary(withMode(newEvent(), 'SISTEMA')), 'per defecte');
 });

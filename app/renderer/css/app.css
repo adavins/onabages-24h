@@ -2060,12 +2060,10 @@ button.pl-chip.is-off {
   border-style: dashed;
 }
 
+/* Sense requadre general: cada secció de l'editor té el seu (redisseny del planificador) */
 .planner-detail {
   overflow: auto;
   padding: 1rem;
-  border: 1px solid var(--ob-border);
-  border-radius: 0.5rem;
-  background: var(--ob-panel);
   user-select: text;
 }
 
@@ -2221,44 +2219,90 @@ button.pl-chip.is-off {
   gap: 0 0.75rem;
 }
 
-.ee-section {
-  margin: 1rem 0 0.5rem;
-  padding-top: 0.6rem;
-  border-top: 1px solid var(--ob-border);
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.ee-modes {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.35rem;
-}
-
-/* Mode sense triar: només la vora; el triat, amb el color del mode i una marca */
-.ee-mode {
+/* Redisseny del planificador: cada secció de l'editor en un requadre amb títol, replegable */
+.ee-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.6rem;
-  border: 1px solid var(--mode-line);
-  border-radius: 0.375rem;
-  background: transparent;
-  color: var(--mode-fg);
-  font-size: 0.85rem;
-  text-align: left;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
 }
 
-.ee-mode.is-on {
-  background: var(--mode-bg);
-  border-color: var(--mode-fg);
+.ee-head .ee-field {
+  margin: 0;
+}
+
+.ee-box {
+  margin-bottom: 0.9rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.5rem;
+  background: var(--ob-panel);
+}
+
+.ee-box-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ee-box-title::-webkit-details-marker {
+  display: none;
+}
+
+/* La fletxa: cap a la dreta, tancada; cap avall, oberta */
+.ee-box-title::before {
+  content: "\F285"; /* bi-chevron-right */
+  font-family: "bootstrap-icons";
+  font-size: 0.75rem;
+  color: var(--ob-muted);
+  transition: transform 0.1s;
+}
+
+.ee-box[open] > .ee-box-title::before {
+  transform: rotate(90deg);
+}
+
+.ee-box-name {
+  font-size: 0.92rem;
   font-weight: 600;
 }
 
-.ee-mode.is-on::after {
-  content: "\F633"; /* bi-check-lg */
-  font-family: "bootstrap-icons";
-  margin-left: auto;
+.ee-box-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ob-muted);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Oberta, el resum sobra: ja es veu tot */
+.ee-box[open] > .ee-box-title .ee-box-summary {
+  display: none;
+}
+
+.ee-box-title:focus-visible {
+  outline: 2px solid var(--bs-info);
+  outline-offset: -2px;
+  border-radius: 0.5rem;
+}
+
+.ee-box-body {
+  padding: 0.2rem 0.8rem 0.8rem;
+}
+
+.ee-search-filters {
+  display: flex;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+
+.ee-search-filters .form-select {
+  min-width: 0;
 }
 
 .ee-checks {

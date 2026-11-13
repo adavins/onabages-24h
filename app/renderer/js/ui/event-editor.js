@@ -6,10 +6,11 @@
 import { el, icon, statusLabel } from './dom.js';
 import { confirmAction } from './confirm.js';
 import { formatDuration, typeName } from '../format.js';
-import { MODES, modeInfo, parseDate, shortDate, shortTime, daysText } from '../schedule.js';
+import { MODES, modeInfo, parseDate, shortDate, shortTime, daysText, recurrenceText } from '../schedule.js';
 import {
   newEvent, cloneEvent, eventToSave, sameEvent, duplicateEvent, normalizeTime, minutesToSeconds, secondsToMinutes,
   intOrNull, numberOrNull, parseHours, formatHours, parseMonthDays, formatMonthDays, setDay, moveItem, withMode, quickCheck,
+  initialSections, optionsSummary,
 } from '../event-form.js';
 import { sweeperOptions, fillSweeperSelect } from '../subcategories.js';
 
@@ -54,6 +55,13 @@ export class EventEditor {
   #previewTimer = 0;
   #previewToken = 0;
   #saving = false;
+  /** Les seccions obertes (redisseny: replegables). @type {Set<string>} */
+  #openSections = new Set();
+  /** El resum de «Pròximes emissions» (la primera), per veure-la amb la secció tancada. */
+  #nextSummary = '';
+  /** Filtres del cercador de pistes de les accions. */
+  #searchCategory = '';
+  #searchSubcategory = '';
 
   /**
    * @param {HTMLElement} panel
@@ -106,6 +114,8 @@ export class EventEditor {
 
   /** Obre un esdeveniment existent (o tanca l'editor amb null). No pregunta res: qui el crida mira abans {@link dirty}. @param {any | null} ev */
   open(ev) {
+    // El mateix esdeveniment (p. ex. després de desar-lo): es mantenen les seccions obertes
+    if (!ev || ev.id !== this.#draft?.id || this.#draft?.id === 0) this.#openSections = ev ? initialSections(ev, false) : new Set();
     this.#original = ev ? cloneEvent(ev) : null;
     this.#draft = ev ? cloneEvent(ev) : null;
     this.#error = null;
@@ -117,6 +127,7 @@ export class EventEditor {
   create(values = {}) {
     this.#original = null;
     this.#draft = { ...newEvent(), ...values };
+    this.#openSections = initialSections(this.#draft, true);
     this.#error = null;
     this.#searchFor = null;
     this.#render();
@@ -157,7 +168,63 @@ export class EventEditor {
     this.#render();
   }
 
+  /** Obre una secció (sense tornar a dibuixar res). @param {string} key */
+  #reveal(key) {
+    this.#openSections.add(key);
+    const box = /** @type {HTMLDetailsElement | null} */ (this.#panel.querySelector(`details[data-section="${key}"]`));
+    if (box) box.open = true;
+  }
+
   // --- Dibuix ---
+
+  /**
+   * Una secció amb requadre i títol, replegable. Tancada, el títol porta un resum d'una línia.
+   * En un esdeveniment nou, omplir-la obre la següent (next), seguint el flux normal.
+   * @param {string} key  @param {string} title  @param {() => string} summary
+   * @param {string | null} next  @param {HTMLElement[]} content
+   */
+  #section(key, title, summary, next, content) {
+    const box = /** @type {HTMLDetailsElement} */ (el('details', 'ee-box'));
+    box.dataset.section = key;
+    box.open = this.#openSections.has(key);
+    const head = el('summary', 'ee-box-title');
+    const resum = el('span', 'ee-box-summary', summary());
+    resum.dataset.summary = key;
+    head.append(el('span', 'ee-box-name', title), resum);
+    box.addEventListener('toggle', () => {
+      if (box.open) this.#openSections.add(key);
+      else {
+        this.#openSections.delete(key);
+        resum.textContent = summary(); // pot haver canviat mentre era oberta
+      }
+    });
+    if (next) {
+      const advance = () => { if (this.#original === null && this.#draft) this.#reveal(next); };
+      box.addEventListener('input', advance);
+      box.addEventListener('change', advance);
+    }
+    const body = el('div', 'ee-box-body');
+    body.append(...content);
+    box.append(head, body);
+    return box;
+  }
+
+  /** El mode, en un desplegable, amb el que fa a sota. @param {any} ev */
+  #modeSelect(ev) {
+    const select = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
+    select.id = uid();
+    for (const [mode, m] of Object.entries(MODES)) {
+      const option = /** @type {HTMLOptionElement} */ (el('option', '', m.label));
+      option.value = mode;
+      select.append(option);
+    }
+    select.value = ev.mode;
+    select.addEventListener('change', () => {
+      this.#draft = withMode(ev, select.value);
+      this.#restructured();
+    });
+    return this.#labelled('Mode', select, MODE_HELP[/** @type {keyof typeof MODE_HELP} */ (ev.mode)]);
+  }
 
   #render() {
     const panel = this.#panel;
@@ -170,11 +237,11 @@ export class EventEditor {
     }
     const info = modeInfo(ev.mode);
 
-    // Capçalera: què és i en quin estat
-    const head = el('div', 'd-flex flex-wrap align-items-center gap-2 mb-2');
+    // A dalt de tot: activat, el mode (color + icona + text) i el botó per tancar
+    const head = el('div', 'ee-head');
+    head.append(this.#switch('Activat', ev.enabled, (on) => { ev.enabled = on; }));
     const badge = el('span', `pl-chip ${info.css}`);
     badge.append(icon(info.icon), ' ', el('span', '', info.label));
-    head.append(badge, el('strong', '', ev.id === 0 ? 'Esdeveniment nou' : `Esdeveniment ${ev.id}`));
     const close = el('button', 'btn btn-sm btn-outline-secondary ms-auto');
     close.type = 'button';
     close.title = 'Tanca l\'editor';
@@ -184,30 +251,8 @@ export class EventEditor {
       this.open(null);
       this.#callbacks.onClosed();
     });
-    head.append(close);
+    head.append(badge, close);
     panel.append(head);
-
-    panel.append(this.#textField('Nom', ev.name, (v) => { ev.name = v; }, { placeholder: 'p. ex. El Magazín de la Comarca' }));
-
-    // Mode: quatre botons amb color, icona i text
-    const modes = el('div', 'ee-modes');
-    modes.setAttribute('role', 'group');
-    modes.setAttribute('aria-label', 'Mode');
-    for (const [mode, m] of Object.entries(MODES)) {
-      const button = el('button', `ee-mode ${m.css}${ev.mode === mode ? ' is-on' : ''}`);
-      button.type = 'button';
-      button.setAttribute('aria-pressed', String(ev.mode === mode));
-      button.append(icon(m.icon), ' ', el('span', '', m.label));
-      button.addEventListener('click', () => {
-        if (ev.mode === mode) return;
-        this.#draft = withMode(ev, mode);
-        this.#restructured();
-      });
-      modes.append(button);
-    }
-    panel.append(this.#labelled('Mode', modes, MODE_HELP[ev.mode]));
-
-    panel.append(this.#switch('Activat (si no, no es dispara)', ev.enabled, (on) => { ev.enabled = on; }));
 
     // Avisos (pas 8c): els calcula el motor amb l'esborrany, alhora que les pròximes emissions
     const warnings = el('div', 'ee-warnings d-none');
@@ -215,69 +260,71 @@ export class EventEditor {
     warnings.setAttribute('role', 'status');
     panel.append(warnings);
 
+    // General: nom i mode
+    /** @type {HTMLElement[]} */
+    const general = [
+      this.#textField('Nom', ev.name, (v) => { ev.name = v; }, { placeholder: 'p. ex. El Magazín de la Comarca' }),
+      this.#modeSelect(ev),
+    ];
+    if (ev.notes) general.push(el('p', 'pl-notes', ev.notes));
+    panel.append(this.#section('general', 'General', () => [ev.name || 'sense nom', modeInfo(ev.mode).label].join(' · '), 'when', general));
+
     // Quan
-    panel.append(el('h3', 'ee-section', 'Quan'));
+    /** @type {HTMLElement[]} */
+    const when = [];
     const whenRow = el('div', 'ee-row');
     whenRow.append(
       this.#field('Hora d\'inici', 'time', ev.startTime, (v) => { ev.startTime = normalizeTime(v) || ev.startTime; }, { step: '1', required: 'true' }),
       this.#textField('Durada màxima (min)', secondsToMinutes(ev.maxDurationSeconds), (v) => { ev.maxDurationSeconds = minutesToSeconds(v); },
         { inputmode: 'decimal', placeholder: 'sense' }),
     );
-    panel.append(whenRow);
-
-    panel.append(this.#select('Recurrència', RECURRENCES, ev.recurrence, (v) => {
+    when.push(whenRow);
+    when.push(this.#select('Recurrència', RECURRENCES, ev.recurrence, (v) => {
       ev.recurrence = v;
       if (v === 'CADA_N_SETMANES') ev.intervalWeeks ??= 2;
       if (v === 'MENSUAL_ORDINAL' && ev.ordinals.length === 0) ev.ordinals = [1];
       this.#restructured();
     }));
-    this.#recurrenceFields(panel, ev);
-
-    const datesRow = el('div', 'ee-row');
-    datesRow.append(
-      this.#field('Des del dia (opcional)', 'date', ev.startDate ?? '', (v) => { ev.startDate = v || null; }),
-      this.#field('Fins al dia (opcional)', 'date', ev.endDate ?? '', (v) => { ev.endDate = v || null; }),
-    );
+    this.#recurrenceFields(when, ev);
     if (ev.recurrence !== 'DATES') {
-      panel.append(datesRow);
-      panel.append(this.#dateList('Dies que no s\'emet (excepcions)', ev.excludedDates, (dates) => { ev.excludedDates = dates; }));
+      const datesRow = el('div', 'ee-row');
+      datesRow.append(
+        this.#field('Des del dia (opcional)', 'date', ev.startDate ?? '', (v) => { ev.startDate = v || null; }),
+        this.#field('Fins al dia (opcional)', 'date', ev.endDate ?? '', (v) => { ev.endDate = v || null; }),
+      );
+      when.push(datesRow, this.#dateList('Dies que no s\'emet (excepcions)', ev.excludedDates, (dates) => { ev.excludedDates = dates; }));
     }
-
-    panel.append(this.#select('Repetició dins del dia', REPEATS, ev.repeat, (v) => {
+    when.push(this.#select('Repetició dins del dia', REPEATS, ev.repeat, (v) => {
       ev.repeat = v;
       if (v === 'CADA_N_MIN') ev.intervalMinutes ??= 30;
       this.#restructured();
     }));
     if (ev.repeat === 'CADA_HORA') {
-      panel.append(this.#textField('Quines hores (buit = totes)', formatHours(ev.hoursMask), (v) => {
+      when.push(this.#textField('Quines hores (buit = totes)', formatHours(ev.hoursMask), (v) => {
         const mask = parseHours(v);
         if (mask !== undefined) ev.hoursMask = mask;
       }, { placeholder: 'p. ex. 7-23 o 9, 12, 18' }, `Sona cada hora al minut ${ev.startTime.slice(3, 5)} i segon ${ev.startTime.slice(6, 8)} de l'hora d'inici.`));
     }
     if (ev.repeat === 'CADA_N_MIN') {
-      panel.append(this.#textField('Cada quants minuts', String(ev.intervalMinutes ?? ''), (v) => { ev.intervalMinutes = intOrNull(v); },
+      when.push(this.#textField('Cada quants minuts', String(ev.intervalMinutes ?? ''), (v) => { ev.intervalMinutes = intOrNull(v); },
         { inputmode: 'numeric' }, 'A partir de l\'hora d\'inici i fins al final del dia.'));
     }
-
-    // Pròximes emissions (les calcula el motor amb l'esborrany)
-    panel.append(el('h3', 'ee-section', 'Pròximes emissions'));
-    const preview = el('div', 'pl-next');
-    preview.id = 'ee-preview';
-    panel.append(preview);
+    panel.append(this.#section('when', 'Quan', () => `${shortTime(ev.startTime)} · ${recurrenceText(ev)}`, 'actions', when));
 
     // Opcions del mode
-    panel.append(el('h3', 'ee-section', 'Opcions'));
+    /** @type {HTMLElement[]} */
+    const options = [];
     if (ev.mode === 'TALLA' || ev.mode === 'ENCUA') {
-      panel.append(this.#switch('Esborra la cua abans de posar-hi el contingut', ev.clearQueue, (on) => { ev.clearQueue = on; }));
+      options.push(this.#switch('Esborra la cua abans de posar-hi el contingut', ev.clearQueue, (on) => { ev.clearQueue = on; }));
     }
     if (ev.mode === 'TALLA') {
-      panel.append(this.#textField('Fos de la pista que sonava (ms)', ev.fadeMs == null ? '' : String(ev.fadeMs), (v) => { ev.fadeMs = intOrNull(v); },
+      options.push(this.#textField('Fos de la pista que sonava (ms)', ev.fadeMs == null ? '' : String(ev.fadeMs), (v) => { ev.fadeMs = intOrNull(v); },
         { inputmode: 'numeric', placeholder: '1000' }, '0 = tall sec. Buit = 1.000 ms.'));
     }
     if (ev.mode === 'SUPERPOSA' || ev.actions.some((/** @type {any} */ a) => a.type === 'AUXILIAR')) {
       // Buit = la per defecte de la configuració (D-078); 0 = sense atenuació
       const standard = this.#ducking ? dbText(this.#ducking.auxiliary) : null;
-      panel.append(this.#textField('Atenuació de la música mentre sona l\'auxiliar (dB)', ev.duckingDb == null ? '' : String(ev.duckingDb).replace('.', ','),
+      options.push(this.#textField('Atenuació de la música mentre sona l\'auxiliar (dB)', ev.duckingDb == null ? '' : String(ev.duckingDb).replace('.', ','),
         (v) => { ev.duckingDb = numberOrNull(v); }, { inputmode: 'decimal', placeholder: standard ? `per defecte, ${standard}` : 'per defecte' },
         `Negatiu: −12 vol dir 12 dB més fluix. Buit = la per defecte${standard ? ` (${standard})` : ''}. 0 = no s'atenua.`));
     }
@@ -286,15 +333,17 @@ export class EventEditor {
       this.#textField('Prioritat', String(ev.priority), (v) => { ev.priority = intOrNull(v) ?? 50; }, { inputmode: 'numeric' }),
       this.#textField('Tolerància (s)', String(ev.toleranceSeconds), (v) => { ev.toleranceSeconds = intOrNull(v) ?? 60; }, { inputmode: 'numeric' }),
     );
-    panel.append(advanced, el('div', 'form-text mb-2',
+    options.push(advanced, el('div', 'form-text',
       'Si dos Talla o Encua coincideixen, sona el de prioritat més alta. Si s\'hi arriba més tard que la tolerància, s\'omet.'));
+    panel.append(this.#section('options', 'Opcions', () => optionsSummary(ev), null, options));
 
-    // Accions
-    panel.append(el('h3', 'ee-section', 'Accions, en ordre d\'emissió'));
-    panel.append(this.#actionList(ev));
-    panel.append(this.#addActions(ev));
+    // Accions (en ordre d'emissió)
+    panel.append(this.#section('actions', 'Accions', () => actionsSummary(ev.actions), null, [this.#actionList(ev), this.#addActions(ev)]));
 
-    if (ev.notes) panel.append(el('p', 'pl-notes', ev.notes));
+    // Pròximes emissions (les calcula el motor amb l'esborrany): replegada per defecte
+    const preview = el('div', 'pl-next');
+    preview.id = 'ee-preview';
+    panel.append(this.#section('next', 'Pròximes emissions', () => this.#nextSummary, null, [preview]));
 
     // Error i botons
     const error = el('div', 'alert alert-danger d-flex gap-2 mt-3 mb-0 d-none');
@@ -340,6 +389,7 @@ export class EventEditor {
         if (!(await this.confirmDiscard())) return;
         this.#original = null;
         this.#draft = duplicateEvent(ev);
+        this.#openSections = initialSections(this.#draft, false);
         this.#restructured();
       });
       const remove = el('button', 'btn btn-outline-danger');
@@ -356,8 +406,8 @@ export class EventEditor {
     this.#schedulePreview(0);
   }
 
-  /** Els camps que depenen de la recurrència. @param {HTMLElement} panel @param {any} ev */
-  #recurrenceFields(panel, ev) {
+  /** Els camps que depenen de la recurrència. @param {HTMLElement[]} into  on s'afegeixen @param {any} ev */
+  #recurrenceFields(into, ev) {
     const days = () => this.#days('Dies de la setmana', ev.daysMask, (mask) => { ev.daysMask = mask; });
     switch (ev.recurrence) {
       case 'CADA_N_SETMANES': {
@@ -366,7 +416,7 @@ export class EventEditor {
           this.#textField('Cada quantes setmanes', String(ev.intervalWeeks ?? ''), (v) => { ev.intervalWeeks = intOrNull(v); }, { inputmode: 'numeric' }),
           this.#field('Un dia en què segur que toca', 'date', ev.anchorDate ?? '', (v) => { ev.anchorDate = v || null; }),
         );
-        panel.append(days(), row);
+        into.push(days(), row);
         break;
       }
       case 'MENSUAL_ORDINAL': {
@@ -376,20 +426,20 @@ export class EventEditor {
             ev.ordinals = on ? [...new Set([...ev.ordinals, value])] : ev.ordinals.filter((/** @type {number} */ o) => o !== value);
           }));
         }
-        panel.append(this.#labelled('Quin del mes', group), days());
+        into.push(this.#labelled('Quin del mes', group), days());
         break;
       }
       case 'DIES_MES':
-        panel.append(this.#textField('Dies del mes', formatMonthDays(ev.monthDays), (v) => {
+        into.push(this.#textField('Dies del mes', formatMonthDays(ev.monthDays), (v) => {
           const list = parseMonthDays(v);
           if (list !== undefined) ev.monthDays = list;
         }, { placeholder: 'p. ex. 1, 15, últim' }));
         break;
       case 'DATES':
-        panel.append(this.#dateList('Dates en què sona', ev.includedDates, (dates) => { ev.includedDates = dates; }));
+        into.push(this.#dateList('Dates en què sona', ev.includedDates, (dates) => { ev.includedDates = dates; }));
         break;
       default:
-        panel.append(days());
+        into.push(days());
     }
   }
 
@@ -589,13 +639,48 @@ export class EventEditor {
     const results = el('div', 'ee-results');
     let timer = 0;
     let token = 0;
+
+    // Filtres per categoria i subcategoria (com a la Biblioteca); es recorden mentre l'editor és obert
+    const category = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
+    category.setAttribute('aria-label', 'Categoria');
+    category.title = 'Categoria (sense triar: totes)';
+    const subcategory = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
+    subcategory.setAttribute('aria-label', 'Subcategoria');
+    subcategory.title = 'Subcategoria (sense triar: totes)';
+    const withTracks = (/** @type {any[]} */ list) => list.filter((x) => x.count > 0);
+    category.replaceChildren(option('', 'Categoria'), ...withTracks(this.#categories).map((c) => option(String(c.id), `${c.name} (${c.count})`)));
+    category.value = this.#searchCategory;
+    const fillSubcategories = () => {
+      const chosen = this.#categories.find((c) => String(c.id) === category.value);
+      const subs = chosen ? chosen.subcategories : this.#categories.flatMap((c) => c.subcategories);
+      subcategory.replaceChildren(option('', 'Subcategoria'), ...withTracks(subs).map((s) => option(String(s.id), `${s.name} (${s.count})`)));
+      subcategory.value = this.#searchSubcategory;
+      this.#searchSubcategory = subcategory.value; // si ja no hi és, «Subcategoria»
+    };
+    fillSubcategories();
+    category.addEventListener('change', () => {
+      this.#searchCategory = category.value;
+      fillSubcategories();
+      search();
+    });
+    subcategory.addEventListener('change', () => {
+      this.#searchSubcategory = subcategory.value;
+      search();
+    });
+    const filters = el('div', 'ee-search-filters');
+    filters.append(category, subcategory);
+
     const search = async () => {
       const mine = ++token;
+      /** @type {Record<string, any>} */
+      const params = { text: input.value, limit: 30 };
+      if (subcategory.value) params.subcategoryId = Number(subcategory.value);
+      else if (category.value) params.categoryId = Number(category.value);
       try {
-        const result = await this.#send('library.search', { text: input.value, limit: 30 });
+        const result = await this.#send('library.search', params);
         if (mine !== token) return;
         results.replaceChildren();
-        if (result.tracks.length === 0) results.append(el('div', 'text-body-secondary', 'Cap pista amb aquest text.'));
+        if (result.tracks.length === 0) results.append(el('div', 'text-body-secondary', 'Cap pista amb aquests criteris.'));
         for (const track of result.tracks) {
           const row = el('button', `ee-result${track.fileState === 'missing' ? ' is-missing' : ''}`);
           row.type = 'button';
@@ -620,7 +705,7 @@ export class EventEditor {
       clearTimeout(timer);
       timer = window.setTimeout(search, 250);
     });
-    box.append(input, results);
+    box.append(input, filters, results);
     search();
     setTimeout(() => input.focus(), 0);
     return box;
@@ -796,10 +881,10 @@ export class EventEditor {
       box.replaceChildren();
       if (!this.#draft.enabled) box.append(statusLabel('text-warning', 'bi-pause-circle-fill', 'Desactivat: si s\'activés, sonaria'));
       if (result.occurrences.length === 0) box.append(el('span', 'text-body-secondary', 'Cap en els pròxims 400 dies.'));
+      const first = result.occurrences.find((/** @type {any} */ o) => !o.skippedClockChange);
+      this.#setNextSummary(first ? `la pròxima, ${occurrenceText(first)}` : 'cap en els pròxims 400 dies');
       for (const o of result.occurrences) {
-        const date = parseDate(o.date);
-        const chip = el('span', `pl-next-chip${o.skippedClockChange ? ' is-skipped' : ''}`,
-          `${DAY_NAMES[(date.getDay() + 6) % 7]} ${date.getDate()}/${date.getMonth() + 1} ${shortTime(o.time)}`);
+        const chip = el('span', `pl-next-chip${o.skippedClockChange ? ' is-skipped' : ''}`, occurrenceText(o));
         if (o.skippedClockChange) {
           chip.prepend(icon('bi-clock-history'), ' ');
           chip.title = 'Aquesta hora no existeix pel canvi d\'hora: no sonarà';
@@ -812,6 +897,13 @@ export class EventEditor {
       warning.append(icon('bi-exclamation-triangle-fill'), ' ', el('span', '', /** @type {Error} */ (err).message));
       box.replaceChildren(warning);
     }
+  }
+
+  /** @param {string} text */
+  #setNextSummary(text) {
+    this.#nextSummary = text;
+    const span = this.#panel.querySelector('[data-summary="next"]');
+    if (span) span.textContent = text;
   }
 
   /**
@@ -909,7 +1001,28 @@ function dbText(db) {
   return db === 0 ? '0 dB (sense atenuació)' : `${String(db).replace('.', ',').replace('-', '−')} dB`;
 }
 
+/** «dl 16/11 09:00». @param {{ date: string, time: string }} o */
+function occurrenceText(o) {
+  const date = parseDate(o.date);
+  return `${DAY_NAMES[(date.getDay() + 6) % 7]} ${date.getDate()}/${date.getMonth() + 1} ${shortTime(o.time)}`;
+}
+
+/** Resum de la secció «Accions»: quantes n'hi ha i la primera. @param {any[]} actions */
+function actionsSummary(actions) {
+  if (actions.length === 0) return 'cap';
+  const first = actions[0].label ?? ACTION_NAMES[/** @type {keyof typeof ACTION_NAMES} */ (actions[0].type)] ?? actions[0].type;
+  return actions.length === 1 ? first : `${actions.length} accions: ${first}…`;
+}
+
 const ACTION_NAMES = {
   PISTA: 'Pista', AUXILIAR: 'Auxiliar', ROTACIO: 'Rotació', AUTODJ: 'AutoDJ', STREAM: 'Stream', SWEEPERS: 'Sweepers', BOSSA: 'Bossa',
   CAMPANYA: 'Campanya', PLANTILLA: 'Plantilla', ESPERA: 'Espera', ATURA: 'Atura', ENTRADA: 'Entrada', EXECUTA: 'Executa', REPRODUEIX: 'Reprodueix',
 };
+
+/** @param {string} value @param {string} text */
+function option(value, text) {
+  const o = document.createElement('option');
+  o.value = value;
+  o.textContent = text;
+  return o;
+}

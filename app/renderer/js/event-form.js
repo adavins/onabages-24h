@@ -200,3 +200,40 @@ export function quickCheck(ev) {
     return 'Un esdeveniment Superposa necessita alguna acció «Auxiliar» (el que sona per sobre).';
   return null;
 }
+
+/**
+ * Les opcions de l'esdeveniment que no són les per defecte del seu mode (per saber si la secció «Opcions» està omplerta).
+ * @param {any} ev
+ */
+export function hasCustomOptions(ev) {
+  return ev.clearQueue !== (ev.mode === 'TALLA') || ev.fadeMs != null || ev.duckingDb != null
+    || ev.priority !== 50 || ev.toleranceSeconds !== 60;
+}
+
+/**
+ * Les seccions de l'editor que s'obren en obrir un esdeveniment (redisseny del planificador): d'un de nou, només
+ * «General» (la resta s'obre a mesura que s'omple); d'un de desat, les que estan omplertes. «Pròximes» sempre tancada.
+ * @param {any} ev  @param {boolean} isNew
+ * @returns {Set<string>}  'general', 'when', 'options', 'actions'
+ */
+export function initialSections(ev, isNew) {
+  if (isNew) return new Set(['general']);
+  const open = new Set(['general', 'when']);
+  if (hasCustomOptions(ev)) open.add('options');
+  if ((ev.actions ?? []).length > 0) open.add('actions');
+  return open;
+}
+
+/**
+ * Resum d'una línia de la secció «Opcions» (per veure-ho amb la secció tancada).
+ * @param {any} ev
+ */
+export function optionsSummary(ev) {
+  const parts = [];
+  if (ev.mode === 'TALLA' || ev.mode === 'ENCUA') parts.push(ev.clearQueue ? 'esborra la cua' : 'no esborra la cua');
+  if (ev.mode === 'TALLA' && ev.fadeMs != null) parts.push(ev.fadeMs === 0 ? 'tall sec' : `fos ${ev.fadeMs} ms`);
+  if (ev.duckingDb != null) parts.push(`atenuació ${String(ev.duckingDb).replace('.', ',')} dB`);
+  if (ev.priority !== 50) parts.push(`prioritat ${ev.priority}`);
+  if (ev.toleranceSeconds !== 60) parts.push(`tolerància ${ev.toleranceSeconds} s`);
+  return parts.join(' · ') || 'per defecte';
+}
