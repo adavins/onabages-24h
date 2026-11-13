@@ -157,9 +157,22 @@ public static class EngineServer
         // Planificador (fase 2, pas 3; D-008): al fil de control, amb el rellotge del motor. Si un esdeveniment canvia la
         // rotació, es desa com amb autodj.set, perquè es mantingui si el motor es reinicia (D-053).
         var events = new Events(database);
+        // Campanyes (fase 4, pas 3b): el pla de passis es calcula ara i cada vegada que canvien les campanyes, els esdeveniments
+        // o la biblioteca; l'acció CAMPANYA fa sonar la falca del pla
+        var campaigns = new Campaigns(database);
+        var campaignPlans = new Scheduling.CampaignPlans(campaigns, events, library);
+        void RecalculatePlans()
+        {
+            try { campaignPlans.RecalculateAll(); }
+            catch (Exception ex) when (ex is DatabaseException or Microsoft.Data.Sqlite.SqliteException)
+            {
+                log.LogWarning("No s'ha pogut calcular el pla de les campanyes: {Message}", ex.Message);
+            }
+        }
+        RecalculatePlans();
         // TALLA a la mostra exacta (fase 2, pas 4): l'hora es converteix en el fotograma que sonarà, amb el rellotge de mostres
         var executor = new Scheduling.EventExecutor(library, queue, autoDj, rotationId =>
-            library.SetSetting(CommandRouter.AutoDjSettingKey, System.Text.Json.JsonSerializer.Serialize(new { rotationId })), sampleClock, aux);
+            library.SetSetting(CommandRouter.AutoDjSettingKey, System.Text.Json.JsonSerializer.Serialize(new { rotationId })), sampleClock, aux, campaignPlans);
         var scheduler = new Scheduling.Scheduler(events, executor, log);
         scheduler.Fired += record =>
         {
@@ -167,7 +180,11 @@ public static class EngineServer
             ev["entry"] = EventJson.Execution(record);
             Broadcast(ev);
         };
-        scheduler.EventsChanged += () => Broadcast(Messages.Event("scheduler.changed"));
+        scheduler.EventsChanged += () =>
+        {
+            RecalculatePlans();
+            Broadcast(Messages.Event("scheduler.changed"));
+        };
 
         // «Atura els esdeveniments» (fase 3, pas 2c; D-073): es desa, perquè si el motor es reinicia continuïn aturats fins
         // a l'hora prevista (i no més), i s'avisa la interfície
@@ -230,11 +247,15 @@ public static class EngineServer
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
             events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher,
-            campaigns: new Campaigns(database));
+            campaigns: campaigns);
         // Editor de rotacions (fase 3, pas 8a): les interfícies tornen a demanar les rotacions
         router.RotationsChanged += () => Broadcast(Messages.Event("rotations.changed"));
         // Campanyes (fase 4, pas 3a): les interfícies tornen a demanar-les
-        router.CampaignsChanged += () => Broadcast(Messages.Event("campaigns.changed"));
+        router.CampaignsChanged += () =>
+        {
+            RecalculatePlans();
+            Broadcast(Messages.Event("campaigns.changed"));
+        };
         // Bosses amb nom (fase 3, pas 8c): també quan les canvia l'acció BOSSA d'un esdeveniment
         autoDj.BagsChanged += () =>
         {
@@ -244,6 +265,7 @@ public static class EngineServer
         // Gestor de pistes (fase 3, pas 7a): quan es canvia una pista o les categories, les interfícies tornen a demanar el que mostren
         router.LibraryChanged += trackId =>
         {
+            RecalculatePlans(); // les dates o l'estat d'una falca poden haver canviat
             var ev = Messages.Event("library.changed");
             ev["trackId"] = trackId;
             Broadcast(ev);

@@ -57,14 +57,17 @@ public sealed class EventExecutor
     private readonly Action<long?>? rememberRotation;
     private readonly SampleClock? clock;
     private readonly AuxPlayers? aux;
+    private readonly CampaignPlans? campaigns;
     /// <summary>L'esdeveniment que s'aplica ara (per dir a l'AutoDJ qui li ha canviat la rotació).</summary>
     private string currentEventName = "";
 
     /// <param name="clock">Rellotge de mostres per tallar a la mostra exacta. Sense, el TALLA talla en el moment de disparar-lo.</param>
     /// <param name="aux">Reproductors auxiliars (accions AUXILIAR). Sense, aquestes accions no es fan (avís al registre).</param>
+    /// <param name="campaigns">Plans de les campanyes (accions CAMPANYA, fase 4, pas 3b). Sense, aquestes accions no es fan (avís al registre).</param>
     public EventExecutor(Library library, QueuePlayer queue, AutoDj? autoDj, Action<long?>? rememberRotation = null, SampleClock? clock = null,
-        AuxPlayers? aux = null)
+        AuxPlayers? aux = null, CampaignPlans? campaigns = null)
     {
+        this.campaigns = campaigns;
         this.library = library;
         this.queue = queue;
         this.autoDj = autoDj;
@@ -109,8 +112,15 @@ public sealed class EventExecutor
         var actions = Recurrences.ActionsFor(ev, occurrence.Date);
         var items = new List<QueueItem>();
         var warnings = new List<string>();
-        foreach (var action in actions.Where(a => a.Type == EventActionType.Track))
+        var campaignsDone = new HashSet<long>();
+        foreach (var action in actions.Where(a => a.Type is EventActionType.Track or EventActionType.Campaign))
         {
+            if (action.Type == EventActionType.Campaign)
+            {
+                // CAMPANYA (fase 4, pas 3b): la falca del pla, al seu lloc dins del contingut
+                if (PrepareCampaign(occurrence, action, campaignsDone, warnings) is { } spot) items.Add(spot);
+                continue;
+            }
             if (ReadLong(action, "songId") is not { } id)
             {
                 warnings.Add("Una acció PISTA no diu quina pista (songId).");
@@ -134,6 +144,34 @@ public sealed class EventExecutor
         Guid? reservation = ev.Mode == EventMode.Cut && items.Count > 0 ? queue.Reserve(items[0]) : null;
         var auxItems = PrepareAux(occurrence, actions, warnings);
         return new PreparedEvent(occurrence, actions, items, warnings, reservation) { Aux = auxItems };
+    }
+
+    /// <summary>
+    /// Una acció CAMPANYA: la falca que el pla diu per a aquesta emissió (o una altra de vàlida, amb avís), o null si no en sona
+    /// cap (amb el motiu als avisos). Una mateixa campanya dues vegades a la mateixa emissió només sona la primera.
+    /// </summary>
+    private QueueItem? PrepareCampaign(Occurrence occurrence, EventAction action, HashSet<long> done, List<string> warnings)
+    {
+        var ev = occurrence.Event;
+        if (campaigns is null)
+        {
+            warnings.Add("No hi ha campanyes al motor: l'acció CAMPANYA no s'ha fet.");
+            return null;
+        }
+        if (ReadLong(action, "campanyaId") is not { } id)
+        {
+            warnings.Add("Una acció CAMPANYA no diu quina campanya (campanyaId).");
+            return null;
+        }
+        if (!done.Add(id))
+        {
+            warnings.Add($"La campanya {id} hi és dues vegades: només sona la primera.");
+            return null;
+        }
+        var (track, note) = campaigns.Choose(id, occurrence);
+        if (note is not null) warnings.Add(note);
+        return track is null ? null
+            : QueueItem.FromTrack(track, QueueOrigin.Event, ev.Name) with { EventId = ev.Id, EventAt = occurrence.At, CampaignId = id };
     }
 
     /// <summary>««Ferreteria» no ha sonat: és fora de les seves dates (del 1/11/2026 al 30/11/2026).» (D-110)</summary>
@@ -294,6 +332,7 @@ public sealed class EventExecutor
             (bool ok, string note) = action.Type switch
             {
                 EventActionType.Track => (true, ""), // ja fet
+                EventActionType.Campaign => (true, ""), // ja fet (i els avisos, a la preparació)
                 EventActionType.Auxiliary => (true, ""), // ja fet (i els avisos, a la preparació)
                 EventActionType.Rotation => ChangeRotation(action),
                 EventActionType.AutoDj => ChangeAutoDj(action),
@@ -301,7 +340,7 @@ public sealed class EventExecutor
                 EventActionType.Bag => ChangeBag(action),
                 _ => (false, $"L'acció {Events.ActionTypeText(action.Type)} encara no està disponible: no s'ha fet."),
             };
-            if (action.Type is EventActionType.Track or EventActionType.Auxiliary) continue;
+            if (action.Type is EventActionType.Track or EventActionType.Auxiliary or EventActionType.Campaign) continue;
             if (ok) done++;
             else failed++;
             notes.Add(note);

@@ -193,6 +193,7 @@ public sealed partial class CommandRouter
                 "campaigns.get" => CampaignsGet(msg),
                 "campaigns.save" => CampaignsSave(msg),
                 "campaigns.delete" => CampaignsDelete(msg),
+                "campaigns.plan" => CampaignsPlan(msg),
                 "reserve.get" => ReserveJson(AutoDjOrError().Reserve),
                 "reserve.set" => ReserveSet(msg),
                 "history.list" => HistoryList(msg),

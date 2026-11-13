@@ -63,9 +63,82 @@ public sealed record Campaign
         State == CampaignState.Active && EndDate < today ? CampaignState.Finished : State;
 }
 
-/// <summary>Campanyes de falques (taules <c>campanya</c> i <c>campanya_falca</c>, migració 007; fase 4, pas 3a).</summary>
+/// <summary>
+/// Un passi del pla d'una campanya (taula <c>campanya_passi</c>, D-029): quina falca toca en una emissió d'un esdeveniment.
+/// <paramref name="TrackId"/> null = aquell dia no hi ha cap falca vàlida (el passi queda buit).
+/// </summary>
+public sealed record CampaignPass(long EventId, DateTimeOffset At, long? TrackId);
+
+/// <summary>Campanyes de falques (taules <c>campanya</c>, <c>campanya_falca</c> i <c>campanya_passi</c>, migració 007; fase 4, pas 3).</summary>
 public sealed class Campaigns(Database database)
 {
+    /// <summary>El pla d'una campanya, en ordre d'hora (opcionalment, només entre <paramref name="from"/> inclòs i <paramref name="to"/> exclòs).</summary>
+    public IReadOnlyList<CampaignPass> Plan(long campaignId, DateTimeOffset? from = null, DateTimeOffset? to = null)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT esdeveniment_id, programat_per, pista_id FROM campanya_passi WHERE campanya_id = $id " +
+                "AND ($from IS NULL OR programat_per >= $from) AND ($to IS NULL OR programat_per < $to) ORDER BY programat_per, esdeveniment_id;");
+            command.Parameters.AddWithValue("$id", campaignId);
+            command.Parameters.AddWithValue("$from", from is { } f ? DbTime.ToText(f) : DBNull.Value);
+            command.Parameters.AddWithValue("$to", to is { } t ? DbTime.ToText(t) : DBNull.Value);
+            using var r = command.ExecuteReader();
+            var list = new List<CampaignPass>();
+            while (r.Read()) list.Add(new CampaignPass(r.GetInt64(0), DbTime.ParseInstant(r.GetString(1)), r.IsDBNull(2) ? null : r.GetInt64(2)));
+            return list;
+        }
+    }
+
+    /// <summary>El passi previst d'una campanya en una emissió concreta d'un esdeveniment, o null si no és al pla.</summary>
+    public CampaignPass? GetPass(long campaignId, long eventId, DateTimeOffset at)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT pista_id FROM campanya_passi WHERE campanya_id = $c AND esdeveniment_id = $e AND programat_per = $at;");
+            command.Parameters.AddWithValue("$c", campaignId);
+            command.Parameters.AddWithValue("$e", eventId);
+            command.Parameters.AddWithValue("$at", DbTime.ToText(at));
+            using var r = command.ExecuteReader();
+            return r.Read() ? new CampaignPass(eventId, at, r.IsDBNull(0) ? null : r.GetInt64(0)) : null;
+        }
+    }
+
+    /// <summary>
+    /// Substitueix el pla a partir de <paramref name="from"/> (inclòs) per aquests passis; els d'abans no es toquen (D-029). Tot
+    /// sencer o gens.
+    /// </summary>
+    public void ReplacePlanFrom(long campaignId, DateTimeOffset from, IEnumerable<CampaignPass> passes)
+    {
+        lock (database.Sync)
+        {
+            using var transaction = database.BeginTransaction();
+            using (var delete = database.Command("DELETE FROM campanya_passi WHERE campanya_id = $id AND programat_per >= $from;", transaction))
+            {
+                delete.Parameters.AddWithValue("$id", campaignId);
+                delete.Parameters.AddWithValue("$from", DbTime.ToText(from));
+                delete.ExecuteNonQuery();
+            }
+            using var insert = database.Command(
+                "INSERT OR REPLACE INTO campanya_passi (campanya_id, esdeveniment_id, programat_per, pista_id) VALUES ($c, $e, $at, $p);", transaction);
+            var c = insert.Parameters.Add("$c", SqliteType.Integer);
+            var e = insert.Parameters.Add("$e", SqliteType.Integer);
+            var at = insert.Parameters.Add("$at", SqliteType.Text);
+            var p = insert.Parameters.Add("$p", SqliteType.Integer);
+            foreach (var pass in passes)
+            {
+                if (pass.At < from) continue;
+                c.Value = campaignId;
+                e.Value = pass.EventId;
+                at.Value = DbTime.ToText(pass.At);
+                p.Value = pass.TrackId is { } id ? id : DBNull.Value;
+                insert.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
+    }
+
     /// <summary>Pes màxim d'una falca.</summary>
     public const int MaxWeight = 10;
 

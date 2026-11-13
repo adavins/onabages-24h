@@ -73,6 +73,42 @@ public sealed partial class CommandRouter
         return new JsonObject { ["deleted"] = id };
     }
 
+    /// <summary>
+    /// El pla de passis d'una campanya (fase 4, pas 3b): `campaignId` i, opcionals, `from` i `to` ('AAAA-MM-DD', dies locals;
+    /// `to` inclòs). Cada passi amb l'esdeveniment, l'hora i la falca (o null si queda buit), i quants en té cada falca.
+    /// </summary>
+    private JsonObject CampaignsPlan(JsonObject msg)
+    {
+        var campaigns = CampaignsOrError();
+        long id = RequiredId(msg, "campaignId");
+        var campaign = campaigns.Get(id) ?? throw new BadParamsException($"No existeix la campanya {id}.");
+        DateTimeOffset? Instant(DateOnly? day) => day is { } d ? new DateTimeOffset(d.ToDateTime(TimeOnly.MinValue), TimeZoneInfo.Local.GetUtcOffset(d.ToDateTime(TimeOnly.MinValue))) : null;
+        var plan = campaigns.Plan(id, Instant(OptionalDate(msg, "from")), Instant(OptionalDate(msg, "to")?.AddDays(1)));
+
+        var names = new Dictionary<long, string?>();
+        string? EventName(long eventId) => names.TryGetValue(eventId, out var n) ? n : names[eventId] = _events?.Get(eventId)?.Name;
+        var titles = campaign.Spots.ToDictionary(s => s.TrackId, s => _library?.GetTrack(s.TrackId)?.Title);
+        return new JsonObject
+        {
+            ["campaignId"] = id,
+            ["passes"] = new JsonArray(plan.Select(p => (JsonNode)new JsonObject
+            {
+                ["eventId"] = p.EventId,
+                ["eventName"] = EventName(p.EventId),
+                ["at"] = TimeZoneInfo.ConvertTime(p.At, TimeZoneInfo.Local).ToString("O"),
+                ["trackId"] = p.TrackId,
+                ["title"] = p.TrackId is { } t ? titles.GetValueOrDefault(t) ?? _library?.GetTrack(t)?.Title : null,
+            }).ToArray()),
+            ["bySpot"] = new JsonArray(campaign.Spots.Select(s => (JsonNode)new JsonObject
+            {
+                ["trackId"] = s.TrackId,
+                ["title"] = titles[s.TrackId],
+                ["count"] = plan.Count(p => p.TrackId == s.TrackId),
+            }).ToArray()),
+            ["empty"] = plan.Count(p => p.TrackId is null),
+        };
+    }
+
     /// <summary>Llegeix els camps d'una campanya de l'ordre. Els que falten prenen el valor per defecte.</summary>
     private static Campaign ReadCampaign(JsonObject msg)
     {

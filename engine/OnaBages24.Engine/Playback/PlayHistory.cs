@@ -36,7 +36,7 @@ public sealed class PlayHistory
             var track = (item.TrackId is { } id ? _library.GetTrack(id) : null)
                         ?? new Track { Path = item.Path, Artist = item.Artist, Title = item.Title };
             var started = DateTimeOffset.UtcNow;
-            long entry = _library.AddHistory(track, started, item.Origin);
+            long entry = _library.AddHistory(track, started, item.Origin, item.CampaignId);
             lock (_open) _open[item.Id] = (entry, started);
         }
         catch (Exception ex) when (ex is DatabaseException or Microsoft.Data.Sqlite.SqliteException)

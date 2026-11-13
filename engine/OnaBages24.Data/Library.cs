@@ -795,12 +795,13 @@ public sealed partial class Library(Database database)
     /// Anota que una pista ha començat a sonar i n'actualitza la darrera reproducció. Retorna l'id de l'entrada (per tancar-la
     /// quan s'acabi). Una pista amb <c>Id</c> 0 (un fitxer que no és a la biblioteca) s'anota sense <c>pista_id</c>.
     /// </summary>
-    public long AddHistory(Track track, DateTimeOffset started, QueueOrigin origin)
+    /// <param name="campaignId">La campanya que l'ha fet sonar (acció CAMPANYA; fase 4, pas 3b), per al certificat d'emissió.</param>
+    public long AddHistory(Track track, DateTimeOffset started, QueueOrigin origin, long? campaignId = null)
     {
         lock (database.Sync)
         {
             using var command = database.Command(
-                "INSERT INTO historial (pista_id, inici, origen, artista, titol, ruta) VALUES ($p, $inici, $origen, $artista, $titol, $ruta); " +
+                "INSERT INTO historial (pista_id, inici, origen, artista, titol, ruta, campanya_id) VALUES ($p, $inici, $origen, $artista, $titol, $ruta, $campanya); " +
                 "UPDATE pista SET reproduccions = reproduccions + 1, darrera_reproduccio = $inici WHERE id = $p; " +
                 "SELECT last_insert_rowid();");
             command.Parameters.AddWithValue("$p", track.Id > 0 ? track.Id : DBNull.Value);
@@ -809,6 +810,7 @@ public sealed partial class Library(Database database)
             command.Parameters.AddWithValue("$artista", track.Artist);
             command.Parameters.AddWithValue("$titol", track.Title);
             command.Parameters.AddWithValue("$ruta", track.Path);
+            command.Parameters.AddWithValue("$campanya", campaignId is { } c ? c : DBNull.Value);
             return (long)command.ExecuteScalar()!;
         }
     }

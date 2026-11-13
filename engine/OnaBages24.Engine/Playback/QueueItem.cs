@@ -29,6 +29,9 @@ public sealed record QueueItem
     public long? EventId { get; init; }
     public DateTimeOffset? EventAt { get; init; }
 
+    /// <summary>La campanya que l'ha posat a la cua (acció CAMPANYA; fase 4, pas 3b): es desa a l'historial per al certificat.</summary>
+    public long? CampaignId { get; init; }
+
     /// <summary>
     /// Trepitjador (fase 3, pas 5): el sweeper que sona a sobre de l'inici d'aquesta pista, si el pas de la rotació en
     /// demana. El tria l'AutoDJ en posar-la a la cua; el fa sonar <see cref="SweeperOverlay"/>.
