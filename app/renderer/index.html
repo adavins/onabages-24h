@@ -16,7 +16,7 @@
     <nav class="sections" aria-label="Pantalles">
       <button id="nav-emissio" class="section active" type="button" aria-current="page"><i class="bi bi-broadcast" aria-hidden="true"></i> Emissió</button>
       <button id="nav-planificador" class="section" type="button"><i class="bi bi-calendar-week" aria-hidden="true"></i> Planificador</button>
-      <button id="nav-biblioteca" class="section" type="button"><i class="bi bi-collection-play" aria-hidden="true"></i> Biblioteca</button>
+      <button id="nav-biblioteca" class="section" type="button"><i class="bi bi-collection-play" aria-hidden="true"></i> Pistes</button>
       <button id="nav-rotacions" class="section" type="button"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Rotacions</button>
       <button id="nav-calendari" class="section" type="button"><i class="bi bi-calendar-check" aria-hidden="true"></i> Calendari</button>
     </nav>
@@ -263,12 +263,23 @@
       <section class="tm-tracks" aria-label="Pistes">
         <!-- Importació en curs o l'última (fase 3, pas 7b) -->
         <div id="tm-import-panel" class="tm-import-panel d-none" role="status" aria-live="polite"></div>
-        <div class="tm-search">
-          <input id="tm-search" class="form-control form-control-sm" type="search" placeholder="Cerca artista, títol, àlbum o ruta" aria-label="Cerca a la biblioteca">
-          <span id="tm-scope" class="tm-scope"></span>
+        <!-- Pestanya Pistes (D-111): la cerca, la categoria i la subcategoria sempre a la vista; la resta, dins de «Filtres» -->
+        <div class="tm-filterbar">
+          <input id="tm-search" class="form-control form-control-sm tm-search-input" type="search" placeholder="Cerca artista, títol, àlbum o ruta" aria-label="Cerca pistes">
+          <select id="tm-category" class="form-select form-select-sm" aria-label="Categoria" title="Categoria (sense triar: totes)"></select>
+          <select id="tm-subcategory" class="form-select form-select-sm" aria-label="Subcategoria" title="Subcategoria (sense triar: totes)"></select>
+          <button id="tm-filters-toggle" class="btn btn-sm btn-outline-secondary" type="button" aria-expanded="false" aria-controls="tm-filters-panel">
+            <i class="bi bi-funnel" aria-hidden="true"></i> Filtres <span id="tm-filters-count" class="badge text-bg-primary d-none"></span>
+          </button>
+          <button id="tm-reset" class="btn btn-sm btn-outline-secondary" type="button" title="Treu tots els filtres i la cerca"><i class="bi bi-x-circle" aria-hidden="true"></i> Restableix</button>
         </div>
+        <div id="tm-filters-panel" class="tm-filters-panel d-none" role="region" aria-label="Més filtres"></div>
+        <div id="tm-chips" class="tm-chips" aria-label="Filtres actius"></div>
         <div id="tm-results" class="tm-results">
-          <ul id="tm-list" class="tm-list"></ul>
+          <table class="tm-table">
+            <thead id="tm-head"></thead>
+            <tbody id="tm-list"></tbody>
+          </table>
         </div>
         <div id="tm-count" class="tm-count" aria-live="polite"></div>
       </section>

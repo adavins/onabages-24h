@@ -1,6 +1,7 @@
 // @ts-check
-// Pantalla «Biblioteca»: el gestor de pistes (fase 3, pas 7a; D-087). A l'esquerra, les categories i els estats (amb
-// quantes pistes tenen); al mig, les pistes, amb cerca i carregant-ne 100 cada vegada; a la dreta, la fitxa editable.
+// Pestanya «Pistes» (abans «Biblioteca»): el gestor de pistes (fase 3, pas 7a; D-087; redisseny, D-111). A l'esquerra,
+// les categories i els estats; al mig, la barra de filtres i la taula de pistes (carregant-ne 100 cada vegada, ordenable
+// per columnes, amb el total); a la dreta, la fitxa editable.
 // Tot es desa al motor (library.update…); la interfície no toca mai la base de dades ni els fitxers.
 
 import { $, el, icon, statusLabel } from './dom.js';
@@ -9,6 +10,11 @@ import { askText } from './ask-text.js';
 import { formatDuration, typeName, playedAgo } from '../format.js';
 import { TRACK_TYPES, parseTags, trackChanges, trackProblems } from '../track-form.js';
 import { CueEditor } from './cue-editor.js';
+import {
+  defaultFilters, filtersToParams, filterChips, withoutFilter, isFiltered, sortBy, trackStates, dateCell, totalText,
+  STATE_OPTIONS, VALIDITY_OPTIONS,
+} from '../tracks-filter.js';
+import { todayIso } from '../event-form.js';
 
 const PAGE = 100;
 const SEARCH_DELAY_MS = 250;
@@ -29,8 +35,16 @@ export class TrackManagerView {
   #chooseFile;
   /** @type {any} */
   #filters = null;
-  /** @type {Scope} */
-  #scope = { kind: 'all' };
+  /** Els filtres de la llista (D-111): la font de veritat; l'arbre de l'esquerra els canvia. @type {import('../tracks-filter.js').TrackFilters} */
+  #f = defaultFilters();
+
+  /** El que hi ha triat a l'arbre, a partir dels filtres (per marcar-lo i per a les accions de categoria). @returns {Scope} */
+  get #scope() {
+    if (this.#f.subcategoryId != null) return { kind: 'subcategory', id: this.#f.subcategoryId };
+    if (this.#f.categoryId != null) return { kind: 'category', id: this.#f.categoryId };
+    if (this.#f.state) return { kind: 'state', id: this.#f.state };
+    return { kind: 'all' };
+  }
   #offset = 0;
   #more = false;
   #loading = false;
@@ -62,8 +76,24 @@ export class TrackManagerView {
     $('tm-folder').addEventListener('click', () => this.#folder());
     $('tm-search').addEventListener('input', () => {
       clearTimeout(this.#timer);
-      this.#timer = window.setTimeout(() => this.#search(), SEARCH_DELAY_MS);
+      this.#timer = window.setTimeout(() => {
+        this.#f = { ...this.#f, text: /** @type {HTMLInputElement} */ ($('tm-search')).value };
+        this.#search();
+      }, SEARCH_DELAY_MS);
     });
+    $('tm-category').addEventListener('change', () => {
+      const v = /** @type {HTMLSelectElement} */ ($('tm-category')).value;
+      this.#setFilters({ ...this.#f, categoryId: v === '' ? null : Number(v), subcategoryId: null });
+    });
+    $('tm-subcategory').addEventListener('change', () => {
+      const v = /** @type {HTMLSelectElement} */ ($('tm-subcategory')).value;
+      const id = v === '' ? null : Number(v);
+      // La subcategoria porta la seva categoria (perquè el desplegable de categoria ho digui)
+      const parent = this.#filters?.categories.find((/** @type {any} */ c) => c.subcategories.some((/** @type {any} */ s) => s.id === id));
+      this.#setFilters({ ...this.#f, subcategoryId: id, categoryId: id == null ? this.#f.categoryId : parent?.id ?? this.#f.categoryId });
+    });
+    $('tm-filters-toggle').addEventListener('click', () => this.#toggleFiltersPanel());
+    $('tm-reset').addEventListener('click', () => this.#setFilters({ ...defaultFilters(), sort: this.#f.sort, desc: this.#f.desc }));
     $('tm-results').addEventListener('scroll', () => {
       const box = $('tm-results');
       if (this.#more && !this.#loading && box.scrollTop + box.clientHeight > box.scrollHeight - 200) this.#load(false);
@@ -129,6 +159,7 @@ export class TrackManagerView {
     } catch {
       return; // sense connexió: ja ho diu la capçalera
     }
+    this.#fillSelects();
     this.#renderTree();
   }
 
@@ -203,11 +234,24 @@ export class TrackManagerView {
     return a.kind === b.kind && (/** @type {any} */ (a).id ?? null) === (/** @type {any} */ (b).id ?? null);
   }
 
-  /** @param {Scope} scope */
+  /** Clicar l'arbre: canvia la categoria, la subcategoria o l'estat dels filtres (la resta es manté) i cerca. @param {Scope} scope */
   #setScope(scope) {
-    this.#scope = scope;
+    this.#applyScope(scope);
+    this.#syncFilterControls();
     this.#renderTree();
     this.#search();
+  }
+
+  /** Posa als filtres el que s'ha triat a l'arbre, sense cercar. @param {Scope} scope */
+  #applyScope(scope) {
+    const f = { ...this.#f, categoryId: /** @type {number | null} */ (null), subcategoryId: /** @type {number | null} */ (null), state: '' };
+    if (scope.kind === 'state') f.state = scope.id;
+    if (scope.kind === 'category') f.categoryId = scope.id;
+    if (scope.kind === 'subcategory') {
+      f.subcategoryId = scope.id;
+      f.categoryId = this.#filters?.categories.find((/** @type {any} */ c) => c.subcategories.some((/** @type {any} */ s) => s.id === scope.id))?.id ?? null;
+    }
+    this.#f = f;
   }
 
   /** La categoria triada a l'arbre (o la de la subcategoria triada), o null. */
@@ -229,7 +273,7 @@ export class TrackManagerView {
     const name = await askText({ title: 'Nova categoria', label: 'Nom de la categoria', confirm: 'Crea-la' });
     if (!name) return;
     const result = await this.#try('No s\'ha pogut crear la categoria', () => this.#send('category.save', { name }));
-    if (result) this.#scope = { kind: 'category', id: result.id };
+    if (result) this.#applyScope({ kind: 'category', id: result.id });
     await this.#loadFilters();
     if (result) await this.#search();
   }
@@ -243,7 +287,7 @@ export class TrackManagerView {
     const name = await askText({ title: `Nova subcategoria a «${category.name}»`, label: 'Nom de la subcategoria', confirm: 'Crea-la' });
     if (!name) return;
     const result = await this.#try('No s\'ha pogut crear la subcategoria', () => this.#send('subcategory.save', { categoryId: category.id, name }));
-    if (result) this.#scope = { kind: 'subcategory', id: result.id };
+    if (result) this.#applyScope({ kind: 'subcategory', id: result.id });
     await this.#loadFilters();
     if (result) await this.#search();
   }
@@ -320,12 +364,174 @@ export class TrackManagerView {
     });
   }
 
-  // --- Llista de pistes ---
+  // --- Llista de pistes (D-111): filtres, capçaleres per ordenar, taula i recompte ---
 
+  /** Les columnes de la taula: clau d'ordre (null = no s'hi pot ordenar), títol i classe. */
+  static COLUMNS = [
+    { sort: 'title', label: 'Títol', css: 'tm-c-title' },
+    { sort: 'artist', label: 'Artista', css: 'tm-c-artist' },
+    { sort: 'type', label: 'Tipus', css: 'tm-c-type' },
+    { sort: 'duration', label: 'Durada', css: 'tm-c-num' },
+    { sort: null, label: 'Estat', css: 'tm-c-state' },
+    { sort: 'validUntil', label: 'Data de fi', css: 'tm-c-date' },
+    { sort: 'plays', label: 'Reprod.', css: 'tm-c-num', title: 'Quantes vegades ha sonat' },
+    { sort: 'lastPlayed', label: 'Última vegada', css: 'tm-c-played' },
+  ];
+
+  /** Torna a cercar des del principi amb els filtres d'ara. */
   async #search() {
     $('tm-results').scrollTop = 0;
-    $('tm-scope').textContent = this.#scopeText();
+    this.#renderHead();
+    this.#renderChips();
     await this.#load(true);
+  }
+
+  /** Canvia els filtres (des d'un control), torna a dibuixar el que en depèn i cerca. @param {import('../tracks-filter.js').TrackFilters} f */
+  #setFilters(f) {
+    this.#f = f;
+    this.#syncFilterControls();
+    this.#renderTree();
+    this.#search();
+  }
+
+  /** Les capçaleres: un botó per ordenar (amb la fletxa del sentit) a les columnes que es poden ordenar. */
+  #renderHead() {
+    const tr = el('tr', '');
+    for (const c of TrackManagerView.COLUMNS) {
+      const th = el('th', c.css);
+      th.scope = 'col';
+      if (!c.sort) {
+        th.textContent = c.label;
+      } else {
+        const sorted = this.#f.sort === c.sort;
+        th.setAttribute('aria-sort', sorted ? (this.#f.desc ? 'descending' : 'ascending') : 'none');
+        const b = el('button', `tm-sort${sorted ? ' is-sorted' : ''}`);
+        b.type = 'button';
+        b.title = c.title ?? `Ordena per ${c.label.toLowerCase()}`;
+        b.append(el('span', '', c.label));
+        if (sorted) b.append(' ', icon(this.#f.desc ? 'bi-sort-down' : 'bi-sort-up'));
+        b.addEventListener('click', () => this.#setFilters(sortBy(this.#f, /** @type {string} */ (c.sort))));
+        th.append(b);
+      }
+      tr.append(th);
+    }
+    $('tm-head').replaceChildren(tr);
+  }
+
+  /** Les pastilles dels filtres actius de dins de «Filtres», amb la creu per treure'n cada un, i el comptador del botó. */
+  #renderChips() {
+    const tags = this.#filters?.tags ?? [];
+    const chips = filterChips(this.#f, {
+      tagName: (id) => tags.find((/** @type {any} */ t) => t.id === id)?.name ?? `etiqueta ${id}`,
+      typeName,
+    });
+    $('tm-chips').replaceChildren(...chips.map((c) => {
+      const chip = el('span', 'tm-chip');
+      const x = el('button', 'tm-chip-remove');
+      x.type = 'button';
+      x.title = `Treu el filtre «${c.text}»`;
+      x.setAttribute('aria-label', x.title);
+      x.append(icon('bi-x'));
+      x.addEventListener('click', () => this.#setFilters(withoutFilter(this.#f, c.key)));
+      chip.append(el('span', '', c.text), x);
+      return chip;
+    }));
+    const count = $('tm-filters-count');
+    count.textContent = String(chips.length);
+    count.classList.toggle('d-none', chips.length === 0);
+    /** @type {HTMLButtonElement} */ ($('tm-reset')).disabled = !isFiltered(this.#f);
+  }
+
+  /** Omple els desplegables de categoria i subcategoria amb el que diu el motor, i el panell de filtres. */
+  #fillSelects() {
+    const f = this.#filters;
+    if (!f) return;
+    const category = /** @type {HTMLSelectElement} */ ($('tm-category'));
+    category.replaceChildren(option('', 'Totes les categories'),
+      ...f.categories.map((/** @type {any} */ c) => option(String(c.id), `${c.name} (${c.count})`)));
+    this.#syncFilterControls();
+    this.#renderFiltersPanel();
+  }
+
+  /** Posa als controls de dalt el que diuen els filtres (p. ex. després de clicar l'arbre o «Restableix»). */
+  #syncFilterControls() {
+    const f = this.#filters;
+    // La cerca no es toca mentre s'hi escriu (el text passa als filtres un moment després)
+    const search = /** @type {HTMLInputElement} */ ($('tm-search'));
+    if (document.activeElement !== search) search.value = this.#f.text;
+    const category = /** @type {HTMLSelectElement} */ ($('tm-category'));
+    category.value = this.#f.categoryId == null ? '' : String(this.#f.categoryId);
+    const chosen = f?.categories.find((/** @type {any} */ c) => c.id === this.#f.categoryId);
+    const subs = chosen ? chosen.subcategories : (f?.categories ?? []).flatMap((/** @type {any} */ c) => c.subcategories.map((/** @type {any} */ s) => ({ ...s, name: `${c.name} / ${s.name}` })));
+    const sub = /** @type {HTMLSelectElement} */ ($('tm-subcategory'));
+    sub.replaceChildren(option('', 'Totes les subcategories'), ...subs.map((/** @type {any} */ s) => option(String(s.id), `${s.name} (${s.count})`)));
+    sub.value = this.#f.subcategoryId == null ? '' : String(this.#f.subcategoryId);
+    if (!$('tm-filters-panel').classList.contains('d-none')) this.#renderFiltersPanel();
+  }
+
+  /** El panell «Filtres»: estat, esdeveniments, vigència, última reproducció, etiqueta i tipus. */
+  #renderFiltersPanel() {
+    const panel = $('tm-filters-panel');
+    const f = this.#f;
+    const field = (/** @type {string} */ label, /** @type {HTMLElement[]} */ controls) => {
+      const box = el('div', 'tm-filter');
+      const id = `tm-flt-${label.replace(/\W+/g, '-').toLowerCase()}`;
+      controls[0].id = id;
+      const l = /** @type {HTMLLabelElement} */ (el('label', 'form-label', label));
+      l.htmlFor = id;
+      const row = el('div', 'tm-filter-controls');
+      row.append(...controls);
+      box.append(l, row);
+      return box;
+    };
+    const select = (/** @type {string[][]} */ options, /** @type {string} */ value, /** @type {(v: string) => void} */ change) => {
+      const s = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
+      s.append(...options.map(([v, t]) => option(v, t)));
+      s.value = value;
+      s.addEventListener('change', () => change(s.value));
+      return s;
+    };
+    const date = (/** @type {string} */ value, /** @type {string} */ label, /** @type {(v: string) => void} */ change) => {
+      const i = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
+      i.type = 'date';
+      i.value = value;
+      i.setAttribute('aria-label', label);
+      i.addEventListener('change', () => change(i.value));
+      return i;
+    };
+
+    const validity = [select(VALIDITY_OPTIONS, f.validity, (v) => this.#setFilters({ ...this.#f, validity: v }))];
+    if (f.validity === 'overlaps') {
+      validity.push(date(f.validFrom, 'Vigents des del dia', (v) => this.#setFilters({ ...this.#f, validFrom: v })),
+        date(f.validTo, 'Vigents fins al dia', (v) => this.#setFilters({ ...this.#f, validTo: v })));
+    }
+    const played = [select([['', 'Qualsevol'], ['never', 'No han sonat mai'], ['range', 'Entre dues dates…']], f.played,
+      (v) => this.#setFilters({ ...this.#f, played: /** @type {any} */ (v) }))];
+    if (f.played === 'range') {
+      played.push(date(f.playedFrom, 'Última vegada des del dia', (v) => this.#setFilters({ ...this.#f, playedFrom: v })),
+        date(f.playedTo, 'Última vegada fins al dia', (v) => this.#setFilters({ ...this.#f, playedTo: v })));
+    }
+    const tags = (this.#filters?.tags ?? []).map((/** @type {any} */ t) => [String(t.id), `${t.name} (${t.count})`]);
+    panel.replaceChildren(
+      field('Estat', [select(STATE_OPTIONS, f.state, (v) => this.#setFilters({ ...this.#f, state: v }))]),
+      field('Esdeveniments', [select([['', 'Totes'], ['yes', 'Dins d\'algun esdeveniment'], ['no', 'Fora dels esdeveniments']], f.inEvents,
+        (v) => this.#setFilters({ ...this.#f, inEvents: /** @type {any} */ (v) }))]),
+      field('Vigència', validity),
+      field('Última reproducció', played),
+      field('Etiqueta', [select([['', 'Totes les etiquetes'], ...tags], f.tagId == null ? '' : String(f.tagId),
+        (v) => this.#setFilters({ ...this.#f, tagId: v === '' ? null : Number(v) }))]),
+      field('Tipus', [select([['', 'Tots els tipus'], ...TRACK_TYPES.map((t) => [t, typeName(t)])], f.type,
+        (v) => this.#setFilters({ ...this.#f, type: v }))]),
+    );
+  }
+
+  /** Obre o tanca el panell «Filtres». */
+  #toggleFiltersPanel() {
+    const panel = $('tm-filters-panel');
+    const open = panel.classList.contains('d-none');
+    if (open) this.#renderFiltersPanel();
+    panel.classList.toggle('d-none', !open);
+    $('tm-filters-toggle').setAttribute('aria-expanded', String(open));
   }
 
   #scopeText() {
@@ -345,25 +551,19 @@ export class TrackManagerView {
     const token = ++this.#token;
     this.#loading = true;
     const offset = fromStart ? 0 : this.#offset;
-    /** @type {Record<string, any>} */
-    const params = { text: /** @type {HTMLInputElement} */ ($('tm-search')).value, offset, limit: PAGE };
-    const scope = this.#scope;
-    if (scope.kind === 'state') params.state = scope.id;
-    else if (scope.kind === 'category') params.categoryId = scope.id;
-    else if (scope.kind === 'subcategory') params.subcategoryId = scope.id;
+    const params = { ...filtersToParams(this.#f), offset, limit: PAGE };
     try {
       const result = await this.#send('library.search', params);
       if (token !== this.#token) return; // n'hi ha una de més nova
       const list = $('tm-list');
       if (fromStart) list.replaceChildren();
+      const today = todayIso();
       const now = new Date();
-      list.append(...result.tracks.map((/** @type {any} */ t) => this.#row(t, now)));
+      list.append(...result.tracks.map((/** @type {any} */ t) => this.#row(t, today, now)));
       this.#offset = offset + result.tracks.length;
       this.#more = result.more;
-      const shown = this.#offset;
-      $('tm-count').textContent = shown === 0
-        ? 'Cap pista amb aquests criteris.'
-        : `${shown}${result.more ? '+' : ''} ${shown === 1 ? 'pista' : 'pistes'}${result.more ? ' · baixa per veure\'n més' : ''}`;
+      const total = result.total ?? this.#offset;
+      $('tm-count').textContent = totalText(total) + (this.#offset < total ? ` · se'n veuen ${this.#offset.toLocaleString('ca-ES')}: baixa per veure'n més` : '');
     } catch (err) {
       if (token === this.#token) $('tm-count').textContent = `No s'ha pogut cercar: ${/** @type {Error} */ (err).message}`;
     } finally {
@@ -371,30 +571,48 @@ export class TrackManagerView {
     }
   }
 
-  /** @param {any} track @param {Date} now */
-  #row(track, now) {
-    const row = el('li', 'tm-row');
-    row.dataset.trackId = String(track.id);
-    const b = el('button', 'tm-row-button');
-    b.type = 'button';
-    b.title = track.path;
-    if (this.#track?.id === track.id) b.classList.add('active');
-    const text = el('span', 'tm-row-text');
-    text.append(el('span', 'tm-row-title', track.title || '(sense títol)'), el('span', 'tm-row-artist', track.artist || ''));
-    const badges = el('span', 'tm-row-badges');
-    for (const badge of stateBadges(track)) badges.append(badge);
-    const played = el('span', 'tm-row-played', playedAgo(track.lastPlayed, now));
-    played.title = track.playCount ? `Ha sonat ${track.playCount} ${track.playCount === 1 ? 'vegada' : 'vegades'}` : 'No ha sonat mai';
-    b.append(text, badges, played, el('span', 'tm-row-duration', formatDuration(track.durationMs)));
-    b.addEventListener('click', () => this.#select(track.id));
-    row.append(b);
-    return row;
+  /** Una fila de la taula: fent-hi clic (o Enter) s'obre la fitxa. @param {any} track @param {string} today @param {Date} now */
+  #row(track, today, now) {
+    const tr = el('tr', `tm-row${this.#track?.id === track.id ? ' active' : ''}`);
+    tr.dataset.trackId = String(track.id);
+    tr.tabIndex = 0;
+    tr.title = track.path;
+    if (this.#track?.id === track.id) tr.setAttribute('aria-selected', 'true');
+    const cell = (/** @type {string} */ css, /** @type {string | Node} */ content) => {
+      const td = el('td', css);
+      td.append(content);
+      tr.append(td);
+      return td;
+    };
+    cell('tm-c-title', track.title || '(sense títol)');
+    cell('tm-c-artist', track.artist || '');
+    cell('tm-c-type', typeName(track.type));
+    cell('tm-c-num', formatDuration(track.durationMs));
+    const states = el('span', 'tm-states');
+    for (const s of trackStates(track, today)) {
+      const label = statusLabel(s.css, s.icon, s.text);
+      if (s.title) label.title = s.title;
+      states.append(label);
+    }
+    cell('tm-c-state', states);
+    cell('tm-c-date', dateCell(track.validUntil));
+    cell('tm-c-num', String(track.playCount ?? 0));
+    const played = cell('tm-c-played', track.lastPlayed ? playedAgo(track.lastPlayed, now) : 'mai');
+    if (track.lastPlayed) played.title = new Date(track.lastPlayed).toLocaleString('ca-ES');
+    tr.addEventListener('click', () => this.#select(track.id));
+    tr.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        this.#select(track.id);
+      }
+    });
+    return tr;
   }
 
   /** Torna a dibuixar la fila d'una pista (després de desar-la), sense tornar a cercar. @param {any} track */
   #updateRow(track) {
     const old = $('tm-list').querySelector(`[data-track-id="${track.id}"]`);
-    if (old) old.replaceWith(this.#row(track, new Date()));
+    if (old) old.replaceWith(this.#row(track, todayIso(), new Date()));
   }
 
   /** Obre la fitxa d'una pista (p. ex. la que s'acaba d'importar, D-100). Si l'oberta té canvis, ho pregunta. @param {number} id */
@@ -422,8 +640,11 @@ export class TrackManagerView {
       if (reportErrors) await confirmAction({ title: 'No s\'ha pogut obrir la fitxa', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
       return;
     }
-    for (const b of $('tm-list').querySelectorAll('.tm-row-button')) {
-      b.classList.toggle('active', /** @type {HTMLElement} */ (b.parentElement).dataset.trackId === String(id));
+    for (const row of $('tm-list').querySelectorAll('.tm-row')) {
+      const on = /** @type {HTMLElement} */ (row).dataset.trackId === String(id);
+      row.classList.toggle('active', on);
+      if (on) row.setAttribute('aria-selected', 'true');
+      else row.removeAttribute('aria-selected');
     }
     this.#renderDetail();
   }

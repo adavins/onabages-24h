@@ -93,7 +93,7 @@ export class CalendarView {
     }
   }
 
-  // --- Cercador de pistes (text, categoria i subcategoria, com a la Biblioteca) ---
+  // --- Cercador de pistes (text, categoria i subcategoria, com a la pestanya Pistes) ---
 
   /** Les categories i subcategories amb pistes (library.filters); es manté el que hi havia triat. */
   async #loadFilters() {
@@ -192,7 +192,7 @@ export class CalendarView {
       el('span', 'text-body-secondary', formatDuration(t.durationMs)));
     const dates = t.validFrom || t.validUntil
       ? `Vigent ${t.validFrom ? `del ${dateText(t.validFrom)}` : ''}${t.validUntil ? ` al ${dateText(t.validUntil)}` : ' sense data de fi'}`
-      : 'Sense dates d\'inici ni de fi (es canvien a la fitxa de la Biblioteca)';
+      : 'Sense dates d\'inici ni de fi (es canvien a la fitxa, a la pestanya Pistes)';
     head.append(title, el('div', 'form-text m-0', dates));
     if (t.fileState === 'missing') head.append(statusLabel('text-danger small', 'bi-exclamation-octagon-fill', 'El fitxer d\'aquesta pista falta: no sonarà'));
     head.append(this.#modeSwitch());

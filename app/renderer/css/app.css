@@ -792,101 +792,188 @@ body {
   font-size: 0.9rem;
 }
 
-.tm-search {
+/* Pestanya Pistes (D-111): barra de filtres, panell «Filtres», pastilles i taula amb capçaleres fixes */
+.tm-filterbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.4rem;
   padding: 0.5rem;
   border-bottom: 1px solid var(--ob-border);
 }
 
-.tm-search input {
-  max-width: 26rem;
+.tm-filterbar .tm-search-input {
+  flex: 1 1 14rem;
+  max-width: 24rem;
 }
 
-.tm-scope {
+.tm-filterbar .form-select {
+  width: auto;
+  max-width: 14rem;
+}
+
+.tm-filters-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.5rem 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--ob-border);
+  background: #1c2025;
+}
+
+.tm-filter .form-label {
+  margin-bottom: 0.15rem;
   color: var(--ob-muted);
-  font-size: 0.85rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
+.tm-filter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.tm-filter-controls .form-control {
+  flex: 1 1 8rem;
+}
+
+.tm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0 0.5rem;
+}
+
+.tm-chips:not(:empty) {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.tm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.05rem 0.15rem 0.05rem 0.5rem;
+  border: 1px solid var(--bs-info);
+  border-radius: 1rem;
+  font-size: 0.8rem;
+}
+
+.tm-chip-remove {
+  border: 0;
+  background: none;
+  color: var(--ob-muted);
+  padding: 0 0.2rem;
+}
+
+.tm-chip-remove:hover {
+  color: var(--bs-body-color);
 }
 
 .tm-results {
   flex: 1 1 auto;
-  overflow-y: auto;
+  overflow: auto;
 }
 
-.tm-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.tm-row-button {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+.tm-table {
   width: 100%;
-  padding: 0.3rem 0.75rem;
-  border: 0;
-  border-bottom: 1px solid #22262c;
-  background: none;
-  color: var(--bs-body-color);
+  table-layout: fixed; /* les amplades de les columnes són les de les capçaleres */
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.88rem;
+}
+
+/* Les capçaleres no es mouen en baixar */
+.tm-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0;
+  border-bottom: 1px solid var(--ob-border);
+  background: var(--ob-panel);
+  color: var(--ob-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
   text-align: left;
+  white-space: nowrap;
 }
 
-.tm-row-button:hover {
-  background: #1f2328;
+.tm-table thead th:not(:has(button)) {
+  padding: 0.35rem 0.5rem;
 }
 
-.tm-row-button.active {
-  background: #2c3440;
+.tm-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-weight: inherit;
+  text-align: inherit;
 }
 
-.tm-row-text {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
+.tm-sort:hover,
+.tm-sort.is-sorted {
+  color: var(--bs-body-color);
 }
 
-.tm-row-title,
-.tm-row-artist {
+.tm-table td {
+  max-width: 0; /* amb les amplades de sota, el text llarg es retalla amb «…» */
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid #22262c;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.tm-row-artist,
-.tm-row-played,
-.tm-count {
-  color: var(--ob-muted);
-  font-size: 0.85rem;
+.tm-row {
+  cursor: pointer;
 }
 
-.tm-row-badges {
-  display: flex;
-  gap: 0.5rem;
-  font-size: 0.8rem;
-  white-space: nowrap;
+.tm-row:hover td {
+  background: #1f2328;
 }
 
-.tm-row-played {
-  width: 6rem;
-  text-align: right;
-  white-space: nowrap;
+.tm-row.active td {
+  background: #2c3440;
 }
 
-.tm-row-duration {
-  width: 3.5rem;
+.tm-row:focus-visible {
+  outline: 2px solid var(--bs-info);
+  outline-offset: -2px;
+}
+
+.tm-c-title { width: 26%; }
+.tm-c-artist { width: 18%; color: var(--ob-muted); }
+.tm-c-type { width: 9%; }
+.tm-c-state { width: 15%; }
+.tm-c-date { width: 8%; font-variant-numeric: tabular-nums; }
+.tm-c-played { width: 10%; color: var(--ob-muted); }
+
+.tm-c-num {
+  width: 6%;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.tm-table thead .tm-c-num .tm-sort {
+  justify-content: flex-end;
+}
+
+.tm-states {
+  display: inline-flex;
+  gap: 0.5rem;
+  font-size: 0.8rem;
 }
 
 .tm-count {
   padding: 0.35rem 0.75rem;
   border-top: 1px solid var(--ob-border);
+  color: var(--ob-muted);
+  font-size: 0.85rem;
 }
 
 .tm-detail {
