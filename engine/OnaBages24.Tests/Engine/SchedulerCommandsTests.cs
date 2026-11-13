@@ -362,5 +362,10 @@ public sealed class SchedulerCommandsTests : IDisposable
         Assert.Equal("La Xarxa - Directe", action["label"]!.GetValue<string>());
         Assert.StartsWith("Stream · 1 h 00 min · http://centauri", action["detail"]!.GetValue<string>());
         Assert.Equal(3_600_000, action["durationMs"]!.GetValue<long>());
+
+        // El stream el fa servir l'esdeveniment: no es pot esborrar de la biblioteca (ni en buidar la subcategoria)
+        var refused = Send($$"""{ "v": 1, "id": 4, "cmd": "library.delete", "trackId": {{stream}} }""");
+        Assert.Equal("database_error", ErrorCode(refused)); // com amb les altres pistes que fa servir un esdeveniment
+        Assert.Contains("«Connexió»", refused["error"]!["message"]!.GetValue<string>());
     }
 }

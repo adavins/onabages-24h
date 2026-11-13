@@ -418,7 +418,7 @@ public sealed class Library(Database database)
     }
 
     /// <summary>
-    /// Els esdeveniments que fan servir una pista (accions PISTA o AUXILIAR), per ordre de nom. Per avisar abans d'esborrar-la
+    /// Els esdeveniments que fan servir una pista (accions PISTA, AUXILIAR o STREAM, D-108), per ordre de nom. Per avisar abans d'esborrar-la
     /// o de canviar-la (gestor de pistes, fase 3, pas 7a).
     /// </summary>
     public IReadOnlyList<TrackUse> EventsUsingTrack(long trackId)
@@ -427,7 +427,7 @@ public sealed class Library(Database database)
         {
             using var command = database.Command(
                 "SELECT DISTINCT e.id, e.nom FROM accio a JOIN esdeveniment e ON e.id = a.esdeveniment_id " +
-                "WHERE a.tipus IN ('PISTA', 'AUXILIAR') AND json_valid(a.params) AND json_extract(a.params, '$.songId') = $id " +
+                "WHERE a.tipus IN ('PISTA', 'AUXILIAR', 'STREAM') AND json_valid(a.params) AND json_extract(a.params, '$.songId') = $id " +
                 "ORDER BY e.nom COLLATE NOCASE, e.id;");
             command.Parameters.AddWithValue("$id", trackId);
             using var r = command.ExecuteReader();
