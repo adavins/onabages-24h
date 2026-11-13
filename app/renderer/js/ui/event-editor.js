@@ -282,10 +282,9 @@ export class EventEditor {
     const scroll = panel.scrollTop;
     panel.replaceChildren();
     const ev = this.#draft;
-    if (!ev) {
-      panel.append(el('p', 'pl-detail-empty', 'Tria un esdeveniment de la graella per veure\'l i editar-lo, o crea\'n un de nou.'));
-      return;
-    }
+    // Sense cap esdeveniment obert, la columna s'amaga i la graella ocupa tot l'ample (D-115)
+    panel.classList.toggle('is-empty', !ev);
+    if (!ev) return;
     const info = modeInfo(ev.mode);
 
     // A dalt de tot: activat, el mode (color + icona + text) i el botó per tancar

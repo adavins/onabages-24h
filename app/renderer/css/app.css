@@ -2350,6 +2350,16 @@ button.pl-chip.is-off {
   }
 }
 
+/* Sense cap esdeveniment obert (D-115): l'editor no hi és i la graella ocupa tot l'espai */
+.planner-detail.is-empty {
+  display: none;
+}
+
+.planner-main:has(> .planner-detail.is-empty) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
 /* --- Editor d'esdeveniments (fase 2, pas 8b) --- */
 
 .ee-field {
