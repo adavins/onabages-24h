@@ -6,7 +6,7 @@
 import { $, el, icon, statusLabel } from './dom.js';
 import { confirmAction } from './confirm.js';
 import { askText } from './ask-text.js';
-import { SELECTIONS, newStep, stepFromApi, stepToApi, rotationChanged, rotationProblems } from '../rotation-form.js';
+import { SELECTIONS, newStep, stepFromApi, stepToApi, rotationChanged, rotationProblems, moveTo } from '../rotation-form.js';
 
 export class RotationsView {
   #send;
@@ -26,6 +26,8 @@ export class RotationsView {
   #name = '';
   /** @type {import('../rotation-form.js').FormStep[]} */
   #steps = [];
+  /** El pas que s'està arrossegant (D-117), o null. @type {number | null} */
+  #dragFrom = null;
 
   /** @param {(cmd: string, params?: object) => Promise<any>} send */
   constructor(send) {
@@ -432,7 +434,7 @@ export class RotationsView {
     const table = el('table', 'table table-sm rt-steps');
     const thead = el('thead', '');
     const hr = el('tr', '');
-    for (const [text, title] of [['#', ''], ['D\'on surt la pista', ''], ['Etiqueta', 'Només les pistes amb aquesta etiqueta'],
+    for (const [text, title] of [['', 'Arrossega per moure el pas'], ['#', ''], ['D\'on surt la pista', ''], ['Etiqueta', 'Només les pistes amb aquesta etiqueta'],
       ['Com es tria', ''], ['No repetir', 'Criteris de repetició: no repetir la pista ni l\'artista (música)'],
       ['Trepitjador', 'Sweeper a sobre de l\'inici de la pista (de la categoria de sweepers activa)'], ['', '']]) {
       const th = el('th', '', text);
@@ -548,6 +550,41 @@ export class RotationsView {
       tr.append(td);
     };
     const changed = () => this.#updateActions();
+
+    // Arrossegar per moure el pas (D-117): només des de la nansa, perquè els desplegables de la fila funcionin normalment.
+    // Amb el teclat, els botons ↑ ↓ de la dreta.
+    const handle = el('span', 'rt-handle');
+    handle.title = 'Arrossega per moure el pas';
+    handle.append(icon('bi-grip-vertical'));
+    handle.addEventListener('mousedown', () => { tr.draggable = true; });
+    tr.addEventListener('dragstart', (e) => {
+      this.#dragFrom = index;
+      tr.classList.add('is-dragging');
+      e.dataTransfer?.setData('text/plain', String(index));
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    });
+    tr.addEventListener('dragend', () => {
+      tr.draggable = false;
+      this.#dragFrom = null;
+      for (const row of tr.parentElement?.querySelectorAll('tr') ?? []) row.classList.remove('is-dragging', 'drop-before', 'drop-after');
+    });
+    tr.addEventListener('dragover', (e) => {
+      if (this.#dragFrom == null) return;
+      e.preventDefault();
+      const after = this.#dragFrom < index;
+      tr.classList.toggle('drop-after', after && this.#dragFrom !== index);
+      tr.classList.toggle('drop-before', !after && this.#dragFrom !== index);
+    });
+    tr.addEventListener('dragleave', () => tr.classList.remove('drop-before', 'drop-after'));
+    tr.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const from = this.#dragFrom;
+      this.#dragFrom = null;
+      if (from == null || from === index) return;
+      this.#steps = moveTo(this.#steps, from, index);
+      this.#renderEditor();
+    });
+    cell(handle);
     cell(el('span', 'rt-index', String(index + 1)));
 
     const source = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));

@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newStep, stepFromApi, stepToApi, rotationChanged, rotationProblems } from '../renderer/js/rotation-form.js';
+import { newStep, stepFromApi, stepToApi, rotationChanged, rotationProblems, moveTo } from '../renderer/js/rotation-form.js';
 
 const rotation = {
   id: 1, name: 'OnaBages',
@@ -40,4 +40,13 @@ test('problemes: sense nom, sense passos o passos sense font', () => {
   assert.equal(rotationProblems(' ', rotation.steps.map(stepFromApi)).length, 1);
   assert.equal(rotationProblems('X', []).length, 1);
   assert.match(rotationProblems('X', [newStep(), stepFromApi(rotation.steps[0]), newStep()])[0], /passos 1, 3/);
+});
+
+test('moveTo: arrossegar un pas amunt o avall', () => {
+  const list = ['a', 'b', 'c', 'd'];
+  assert.deepEqual(moveTo(list, 0, 2), ['b', 'c', 'a', 'd']);
+  assert.deepEqual(moveTo(list, 3, 1), ['a', 'd', 'b', 'c']);
+  assert.equal(moveTo(list, 1, 1), list);
+  assert.equal(moveTo(list, 1, 9), list);
+  assert.deepEqual(list, ['a', 'b', 'c', 'd']); // no toca l'original
 });

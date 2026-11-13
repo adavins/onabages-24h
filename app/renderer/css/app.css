@@ -1343,32 +1343,114 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: 17rem minmax(0, 1fr);
+  grid-template-columns: 21rem minmax(0, 1fr);
   gap: 1rem;
   padding: 0.75rem 1rem;
 }
 
-.rt-side,
-.rt-editor {
+/* Columna de l'esquerra (D-117): requadres amb títol que es despleguen, un sota l'altre */
+.rt-side {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+}
+
+.rt-box {
+  flex: none;
   border: 1px solid var(--ob-border);
   border-radius: 0.5rem;
   background: var(--ob-panel);
 }
 
-.rt-editor {
-  overflow-y: auto;
+.rt-box-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.rt-box-title::-webkit-details-marker {
+  display: none;
+}
+
+/* La fletxa: cap a la dreta, replegat; cap avall, desplegat */
+.rt-box-title::after {
+  content: "\F285"; /* bi-chevron-right */
+  font-family: "bootstrap-icons";
+  font-size: 0.75rem;
+  margin-left: auto;
+  color: var(--ob-muted);
+  transition: transform 0.1s;
+}
+
+.rt-box[open] > .rt-box-title::after {
+  transform: rotate(90deg);
+}
+
+.rt-box[open] > .rt-box-title {
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.rt-box-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   padding: 0.75rem;
 }
 
-.rt-list {
+.rt-box-body .form-label {
+  margin-bottom: 0.2rem;
+  color: var(--ob-muted);
+  font-size: 0.82rem;
+}
+
+.rt-box-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.rt-editor {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.5rem;
+  background: var(--ob-panel);
+}
+
+/* Els passos es veuen sempre sencers; la previsualització agafa l'espai que queda, amb el seu desplaçament (D-117) */
+.rt-editor > * {
+  flex: none;
+}
+
+.rt-editor > .rt-preview {
   flex: 1 1 auto;
+  min-height: 14rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.rt-preview-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.rt-list {
+  max-height: 40vh;
   overflow-y: auto;
   list-style: none;
-  margin: 0;
-  padding: 0.35rem 0;
+  margin: 0 -0.75rem;
+  padding: 0;
 }
 
 .rt-item {
@@ -1421,24 +1503,45 @@ body {
 
 .rt-steps td {
   vertical-align: middle;
+  border-bottom: 0;
 }
 
-.rt-steps td:nth-child(2) { min-width: 16rem; }
-.rt-steps td:nth-child(3) { min-width: 8rem; }
-.rt-steps td:nth-child(4) { min-width: 13rem; }
-.rt-steps td:nth-child(5),
-.rt-steps td:nth-child(6) { text-align: center; }
+.rt-steps thead th {
+  border-bottom: 1px solid #2a2e34;
+}
+
+.rt-steps td:nth-child(1) { width: 1.5rem; padding-right: 0; }
+.rt-steps td:nth-child(3) { min-width: 16rem; }
+.rt-steps td:nth-child(4) { min-width: 8rem; }
+.rt-steps td:nth-child(5) { min-width: 13rem; }
+.rt-steps td:nth-child(6),
+.rt-steps td:nth-child(7) { text-align: center; }
+
+/* Arrossegar un pas (D-117): la nansa, el pas que es mou i on quedarà */
+.rt-handle {
+  color: var(--ob-muted);
+  cursor: grab;
+}
+
+.rt-handle:hover {
+  color: var(--bs-body-color);
+}
+
+.rt-steps tr.is-dragging {
+  opacity: 0.45;
+}
+
+.rt-steps tr.drop-before td {
+  box-shadow: inset 0 2px 0 var(--bs-info);
+}
+
+.rt-steps tr.drop-after td {
+  box-shadow: inset 0 -2px 0 var(--bs-info);
+}
 
 .rt-index {
   color: var(--ob-muted);
   font-variant-numeric: tabular-nums;
-}
-
-.rt-bags {
-  padding: 0.6rem 0.75rem;
-  border-top: 1px solid var(--ob-border);
-  max-height: 40%;
-  overflow-y: auto;
 }
 
 .rt-bag-list {
@@ -1463,11 +1566,6 @@ body {
   cursor: default;
 }
 
-.rt-separation {
-  padding: 0.6rem 0.75rem;
-  border-top: 1px solid var(--ob-border);
-}
-
 /* Reserva (D-099): les subcategories «no de reserva», com a etiquetes amb una creu per treure-les */
 .rt-reserve-excluded {
   list-style: none;
@@ -1486,12 +1584,6 @@ body {
   padding: 0.05rem 0.4rem;
   border: 1px solid var(--ob-border);
   border-radius: 0.25rem;
-}
-
-.rt-separation-title {
-  font-size: 0.8rem;
-  color: var(--ob-muted);
-  margin-bottom: 0.3rem;
 }
 
 .rt-preview-table {

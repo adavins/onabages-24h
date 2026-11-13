@@ -321,44 +321,69 @@
   <!-- Rotacions (fase 3, pas 8a; D-094): la llista a l'esquerra i l'editor a la dreta -->
   <div id="view-rotacions" class="view d-none">
     <div class="rt-main">
-      <aside class="rt-side" aria-label="Rotacions">
-        <div class="tm-tree-tools">
-          <button id="rt-new" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
-          <button id="rt-duplicate" class="btn btn-sm btn-outline-secondary" type="button" title="Fes-ne una còpia per provar canvis sense tocar l'original"><i class="bi bi-copy" aria-hidden="true"></i> Duplica</button>
-          <button id="rt-delete" class="btn btn-sm btn-outline-danger" type="button" title="Esborra la rotació triada"><i class="bi bi-trash" aria-hidden="true"></i><span class="visually-hidden">Esborra</span></button>
-        </div>
-        <ul id="rt-list" class="rt-list"></ul>
+      <!-- Columna de l'esquerra (D-117): requadres amb títol que es despleguen -->
+      <aside class="rt-side" aria-label="Rotacions i configuració">
+        <details class="rt-box" open>
+          <summary class="rt-box-title"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Rotacions</summary>
+          <div class="rt-box-body">
+            <div class="rt-box-tools">
+              <button id="rt-new" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
+              <button id="rt-duplicate" class="btn btn-sm btn-outline-secondary" type="button" title="Fes-ne una còpia per provar canvis sense tocar l'original"><i class="bi bi-copy" aria-hidden="true"></i> Duplica</button>
+              <button id="rt-delete" class="btn btn-sm btn-outline-danger" type="button" title="Esborra la rotació triada"><i class="bi bi-trash" aria-hidden="true"></i> Esborra</button>
+            </div>
+            <ul id="rt-list" class="rt-list"></ul>
+          </div>
+        </details>
+
         <!-- Bosses amb nom (fase 3, pas 8c; D-096): per alternar subcategories sense tocar les rotacions -->
-        <div class="rt-bags">
-          <div class="d-flex align-items-center justify-content-between mb-1">
-            <span class="rt-separation-title m-0" title="Els passos que apunten a una bossa trien de la subcategoria que la bossa té ara">Bosses</span>
-            <button id="rt-bag-new" class="btn btn-sm btn-outline-secondary py-0" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Bossa</button>
+        <details class="rt-box" open>
+          <summary class="rt-box-title" title="Els passos que apunten a una bossa trien de la subcategoria que la bossa té ara"><i class="bi bi-bag" aria-hidden="true"></i> Bosses</summary>
+          <div class="rt-box-body">
+            <div class="rt-box-tools">
+              <button id="rt-bag-new" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova bossa</button>
+            </div>
+            <ul id="rt-bags" class="rt-bag-list"></ul>
           </div>
-          <ul id="rt-bags" class="rt-bag-list"></ul>
-        </div>
+        </details>
+
         <!-- Reserva (fase 3, pas 8d; D-099): què sona si cap pas de la rotació no troba res -->
-        <div class="rt-separation rt-reserve">
-          <div class="rt-separation-title" title="Si cap pas de la rotació no té pistes disponibles. Sempre surt un avís">Reserva (si la rotació no troba res)</div>
-          <label for="rt-reserve-rotation" class="form-label small mb-0">Rotació de reserva</label>
-          <select id="rt-reserve-rotation" class="form-select form-select-sm mb-1"></select>
-          <div class="form-label small mb-0">Si tampoc: tota la biblioteca, sense aquestes subcategories («no de reserva»)</div>
-          <ul id="rt-reserve-excluded" class="rt-reserve-excluded"></ul>
-          <select id="rt-reserve-add" class="form-select form-select-sm" aria-label="Afegeix una subcategoria «no de reserva»"></select>
-          <span id="rt-reserve-state" class="form-text"></span>
-        </div>
-        <!-- Separació real (fase 3, pas 8b; D-095): per a tots els passos amb «no repetir» -->
-        <div class="rt-separation">
-          <div class="rt-separation-title">Separació (passos amb «no repetir»)</div>
-          <label for="rt-sep-track" class="form-label small mb-0">La mateixa cançó, com a mínim cada (min)</label>
-          <input id="rt-sep-track" class="form-control form-control-sm mb-1" type="number" min="0" max="10080" step="5">
-          <label for="rt-sep-artist" class="form-label small mb-0">El mateix artista, com a mínim cada (min)</label>
-          <input id="rt-sep-artist" class="form-control form-control-sm mb-1" type="number" min="0" max="10080" step="5">
-          <div class="d-flex align-items-center gap-2">
-            <button id="rt-sep-save" class="btn btn-sm btn-outline-primary" type="button" disabled>Desa</button>
-            <span id="rt-sep-state" class="form-text m-0"></span>
+        <details class="rt-box">
+          <summary class="rt-box-title" title="Si cap pas de la rotació no té pistes disponibles. Sempre surt un avís"><i class="bi bi-life-preserver" aria-hidden="true"></i> Reserva</summary>
+          <div class="rt-box-body rt-reserve">
+            <p class="form-text m-0">Què sona si cap pas de la rotació no troba res (sempre amb un avís).</p>
+            <div>
+              <label for="rt-reserve-rotation" class="form-label">Rotació de reserva</label>
+              <select id="rt-reserve-rotation" class="form-select form-select-sm"></select>
+            </div>
+            <div>
+              <div class="form-label">Si tampoc: tota la biblioteca, sense aquestes subcategories («no de reserva»)</div>
+              <ul id="rt-reserve-excluded" class="rt-reserve-excluded"></ul>
+              <select id="rt-reserve-add" class="form-select form-select-sm" aria-label="Afegeix una subcategoria «no de reserva»"></select>
+            </div>
+            <span id="rt-reserve-state" class="form-text m-0"></span>
           </div>
-          <p class="form-text mb-0">Si una bossa no té prou cançons per complir-ho, s'afluixa (mai silenci). 0 = sense temps mínim.</p>
-        </div>
+        </details>
+
+        <!-- Separació real (fase 3, pas 8b; D-095): per a tots els passos amb «no repetir» -->
+        <details class="rt-box">
+          <summary class="rt-box-title"><i class="bi bi-arrows-expand" aria-hidden="true"></i> Separació</summary>
+          <div class="rt-box-body">
+            <p class="form-text m-0">Per a tots els passos amb «no repetir».</p>
+            <div>
+              <label for="rt-sep-track" class="form-label">La mateixa cançó, com a mínim cada (min)</label>
+              <input id="rt-sep-track" class="form-control form-control-sm" type="number" min="0" max="10080" step="5">
+            </div>
+            <div>
+              <label for="rt-sep-artist" class="form-label">El mateix artista, com a mínim cada (min)</label>
+              <input id="rt-sep-artist" class="form-control form-control-sm" type="number" min="0" max="10080" step="5">
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <button id="rt-sep-save" class="btn btn-sm btn-outline-primary" type="button" disabled>Desa</button>
+              <span id="rt-sep-state" class="form-text m-0"></span>
+            </div>
+            <p class="form-text m-0">Si una bossa no té prou cançons per complir-ho, s'afluixa (mai silenci). 0 = sense temps mínim.</p>
+          </div>
+        </details>
       </aside>
       <section id="rt-editor" class="rt-editor" aria-label="Editor de la rotació"></section>
     </div>

@@ -69,3 +69,16 @@ export function rotationProblems(name, steps) {
   if (empty.length > 0) problems.push(`${empty.length === 1 ? 'Al pas' : 'Als passos'} ${empty.join(', ')} falta d'on surt la pista.`);
   return problems;
 }
+
+/**
+ * Mou un element d'una llista de la posició <from> a la <to> (arrossegant un pas de la rotació, D-117): l'element queda
+ * just a la posició <to> de la llista nova. Retorna una llista nova; si les posicions no són vàlides, la mateixa.
+ * @template T @param {T[]} list @param {number} from @param {number} to
+ */
+export function moveTo(list, from, to) {
+  if (from === to || from < 0 || from >= list.length || to < 0 || to >= list.length) return list;
+  const copy = [...list];
+  const [item] = copy.splice(from, 1);
+  copy.splice(to, 0, item);
+  return copy;
+}
