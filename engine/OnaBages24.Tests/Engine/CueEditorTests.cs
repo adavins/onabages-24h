@@ -77,6 +77,16 @@ public sealed class CueEditorTests : IDisposable
     }
 
     [Fact]
+    public void Si_el_fitxer_ja_no_hi_es_la_forma_d_ona_ho_diu_en_catala()
+    {
+        // L'estat desat diu que hi és, però s'acaba d'esborrar (D-112)
+        long gone = _library.AddTrack(new Track { Path = _temp.File("esborrat.wav"), Title = "Esborrada", DurationMs = 5000 });
+        var error = Send(new() { ["cmd"] = "library.waveform", ["trackId"] = gone })["error"]!;
+        Assert.Equal("bad_params", error["code"]!.GetValue<string>());
+        Assert.StartsWith("El fitxer no hi és", error["message"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void Els_punts_a_ma_queden_manuals_i_s_han_de_poder_fer()
     {
         var track = Result(Send(new() { ["cmd"] = "library.setCues", ["trackId"] = _track, ["startMs"] = 900, ["mixMs"] = 3500, ["endMs"] = 4100 }))["track"]!;

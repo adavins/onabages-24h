@@ -70,11 +70,16 @@ export class CalendarView {
   /** Torna a demanar el calendari de la pista triada (si es mostra): p. ex. si s'ha canviat un esdeveniment. */
   async refresh() {
     if (!this.#visible || this.#trackId == null) return;
+    const trackId = this.#trackId;
+    /** @type {any} */
+    let calendar;
     try {
-      this.#calendar = await this.#send('calendar.get', { trackId: this.#trackId });
+      calendar = await this.#send('calendar.get', { trackId });
     } catch {
-      this.#calendar = null; // la pista s'ha esborrat o no hi ha connexió
+      calendar = null; // la pista s'ha esborrat o no hi ha connexió
     }
+    if (trackId !== this.#trackId) return; // mentrestant se n'ha triat una altra (p. ex. des de la fitxa): no la trepitja
+    this.#calendar = calendar;
     await this.#loadContent();
     this.#renderEditor();
   }
@@ -158,6 +163,16 @@ export class CalendarView {
       li.append(b);
       return li;
     }));
+  }
+
+  /**
+   * Obre el calendari d'una pista des de la seva fitxa (pestanya Pistes, D-111): la cerca es posa al seu títol, perquè
+   * surti marcada a la llista. Qui la crida ja ha mostrat la pestanya.
+   * @param {{ id: number, title: string }} track
+   */
+  async openTrack(track) {
+    /** @type {HTMLInputElement} */ ($('cal-search')).value = track.title ?? '';
+    await this.#select(track.id);
   }
 
   /** @param {number} trackId */

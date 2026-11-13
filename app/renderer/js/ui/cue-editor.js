@@ -4,7 +4,7 @@
 // dibuixa en un <canvas> 2D (sense acceleració gràfica: funciona per escriptori remot). Tres vistes: tota la pista, el
 // principi i el final; els tres punts (inici, mescla, final) s'hi poden arrossegar o escriure.
 
-import { $ } from './dom.js';
+import { $, el, icon } from './dom.js';
 import { confirmAction } from './confirm.js';
 import { parseSeconds, formatSeconds, cueProblems } from '../track-form.js';
 
@@ -76,8 +76,10 @@ export class CueEditor {
     this.#views = [];
     const dialog = /** @type {HTMLDialogElement} */ ($('cue-dialog'));
     dialog.returnValue = '';
+    this.#showFileProblem(null);
     dialog.showModal();
-    await this.#loadWaveforms();
+    if (track.fileState === 'missing') this.#showFileProblem("El fitxer d'aquesta pista falta: no se'n pot veure la forma d'ona.");
+    else await this.#loadWaveforms();
     await new Promise((resolve) => dialog.addEventListener('close', resolve, { once: true }));
     return this.#saved;
   }
@@ -119,8 +121,22 @@ export class CueEditor {
       $('cue-loading').textContent = '';
       this.#draw();
     } catch (err) {
-      $('cue-loading').textContent = `No s'ha pogut carregar la forma d'ona: ${/** @type {Error} */ (err).message}`;
+      if (this.#track === t) this.#showFileProblem(`No es pot mostrar la forma d'ona: ${/** @type {Error} */ (err).message}`);
     }
+  }
+
+  /**
+   * Si el fitxer falta o no es pot llegir (D-112): un avís ben visible i els gràfics amagats (buits, no diuen res i
+   * semblaria que la pista és en silenci). Els punts es poden continuar escrivint a mà. Amb null, tot torna a la normalitat.
+   * @param {string | null} message
+   */
+  #showFileProblem(message) {
+    const box = $('cue-file-problem');
+    box.classList.toggle('d-none', !message);
+    box.replaceChildren(...(message ? [icon('bi-exclamation-triangle-fill'), ' ', el('span', '', message), el('div', 'small mt-1 font-monospace text-break', this.#track?.path ?? '')] : []));
+    $('cue-waves').classList.toggle('d-none', !!message);
+    /** @type {HTMLButtonElement} */ ($('cue-recalculate')).disabled = !!message; // l'analitzador tampoc no el podria llegir
+    if (message) $('cue-loading').textContent = '';
   }
 
   #draw() {

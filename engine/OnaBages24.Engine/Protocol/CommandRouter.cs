@@ -651,6 +651,8 @@ public sealed partial class CommandRouter
         var library = LibraryOrError();
         var track = TrackOrError(library, RequiredId(msg, "trackId"));
         if (track.FileState == FileState.Missing) throw new BadParamsException("El fitxer d'aquesta pista falta: no se'n pot veure la forma d'ona.");
+        // L'estat desat pot ser antic (p. ex. el fitxer s'ha esborrat fa un moment): es mira al disc (D-112)
+        if (!File.Exists(track.Path)) throw new BadParamsException("El fitxer no hi és (s'ha mogut o esborrat, o la unitat de xarxa no es veu): no se'n pot veure la forma d'ona.");
         long duration = track.DurationMs ?? 0;
         long from = Math.Max(0, msg["fromMs"] is JsonValue f && f.TryGetValue(out long fv) ? fv : 0);
         long to = msg["toMs"] is JsonValue t && t.TryGetValue(out long tv) ? tv : duration;

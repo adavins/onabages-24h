@@ -5,7 +5,7 @@
 // el port i el testimoni a la interfície. Aquí NO hi ha àudio ni base de dades: tot és al motor.
 // Tancar la finestra no atura el motor si l'operador no ho tria al diàleg de tancar (D-035, D-054).
 
-const { app, BrowserWindow, ipcMain, screen, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, dialog, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -253,6 +253,23 @@ ipcMain.handle('dialog:choose-folder', async (_event, defaultPath) => {
     properties: ['openDirectory'],
   });
   return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+});
+
+// Pestanya Pistes (D-112): obrir a l'Explorador de Windows la carpeta d'una pista, amb el fitxer seleccionat.
+// Retorna 'file' (s'ha obert amb el fitxer marcat), 'folder' (el fitxer no hi és, però la carpeta sí: s'obre la carpeta)
+// o 'missing' (no hi ha ni la carpeta). Només rutes de fitxer absolutes: mai adreces d'internet (streams).
+ipcMain.handle('shell:show-file', async (_event, filePath) => {
+  if (typeof filePath !== 'string' || !path.isAbsolute(filePath) || filePath.includes('://')) return 'missing';
+  if (fs.existsSync(filePath)) {
+    shell.showItemInFolder(filePath);
+    return 'file';
+  }
+  const folder = path.dirname(filePath);
+  if (fs.existsSync(folder)) {
+    const error = await shell.openPath(folder);
+    return error ? 'missing' : 'folder';
+  }
+  return 'missing';
 });
 
 // ---------------------------------------------------------------------------

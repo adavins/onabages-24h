@@ -32,4 +32,7 @@ contextBridge.exposeInMainWorld('onabages', {
 
   /** Diàleg de Windows per triar una carpeta (importació). Retorna la ruta, o null si es cancel·la. */
   chooseFolder: (defaultPath) => ipcRenderer.invoke('dialog:choose-folder', defaultPath),
+
+  /** Obre a l'Explorador la carpeta d'un fitxer, amb el fitxer seleccionat. Retorna 'file', 'folder' o 'missing'. */
+  showFile: (filePath) => ipcRenderer.invoke('shell:show-file', filePath),
 });

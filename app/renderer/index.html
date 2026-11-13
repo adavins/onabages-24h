@@ -581,6 +581,9 @@
       <h2 class="h5"><i class="bi bi-sliders" aria-hidden="true"></i> Punts: <span id="cue-title"></span></h2>
       <p class="ob-dialog-message">Arrossega els punts damunt de la forma d'ona (en qualsevol de les tres vistes) o escriu-los. Les línies discontínues són els llindars de l'analitzador.</p>
 
+      <!-- Si el fitxer falta o no es pot llegir: l'avís, i els gràfics amagats (D-112) -->
+      <div id="cue-file-problem" class="alert alert-warning d-none" role="alert"></div>
+      <div id="cue-waves">
       <div class="cue-legend">
         <span class="cue-key cue-key-start">I · Inici</span>
         <span class="cue-key cue-key-mix">M · Mescla (entra la següent)</span>
@@ -600,6 +603,7 @@
         </div>
       </div>
       <p id="cue-loading" class="form-text"></p>
+      </div>
 
       <div class="cue-fields">
         <div><label for="cue-start" class="form-label">Inici (s)</label><input id="cue-start" class="form-control form-control-sm font-monospace" type="text" inputmode="decimal"></div>

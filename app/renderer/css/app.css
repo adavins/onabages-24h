@@ -789,6 +789,25 @@ body {
   display: none;
 }
 
+/* Fitxa (D-111): els botons «Punts…» i «Calendari…» a la capçalera, i les etiquetes com a pastilles */
+.tm-head-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.tm-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: -0.25rem 0 0.6rem;
+}
+
+.tm-tag-chips:not(:has(.tm-chip)) {
+  display: none;
+}
+
 /* Accions en bloc (D-111): apareix en seleccionar alguna pista */
 .tm-bulk {
   display: flex;

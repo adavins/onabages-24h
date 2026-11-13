@@ -38,6 +38,7 @@ import { CollapsibleCards } from './ui/collapsible.js';
  *   chooseAudioFile: (defaultPath?: string) => Promise<string | null>,
  *   chooseAudioFiles: (defaultPath?: string) => Promise<string[] | null>,
  *   chooseFolder:(defaultPath?: string) => Promise<string | null>,
+ *   showFile: (filePath: string) => Promise<'file' | 'folder' | 'missing'>,
  * }} Bridge
  */
 const bridge = /** @type {Bridge} */ (/** @type {any} */ (window).onabages);
@@ -123,7 +124,11 @@ const processor = new ProcessorView(send);
 const folders = new FoldersView(send, (path) => bridge.chooseFolder(path));
 const rotationsView = new RotationsView(send);
 const calendarView = new CalendarView(send);
-const trackManager = new TrackManagerView(send, (path) => bridge.chooseAudioFile(path), folders);
+// «Calendari…» a la fitxa d'una pista (D-111): obre la pestanya Calendari amb aquella pista
+const trackManager = new TrackManagerView(send, (path) => bridge.chooseAudioFile(path), folders, (track) => {
+  showView('calendari');
+  calendarView.openTrack(track);
+}, (path) => bridge.showFile(path));
 new RerootView(send, (path) => bridge.chooseFolder(path));
 const importView = new ImportView(send, (path) => bridge.chooseFolder(path), (path) => bridge.chooseAudioFiles(path),
   () => trackManager.importContext(), (id) => trackManager.openTrack(id));

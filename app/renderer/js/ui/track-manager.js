@@ -9,7 +9,7 @@ import { confirmAction } from './confirm.js';
 import { askText } from './ask-text.js';
 import { formDialog, dialogField } from './form-dialog.js';
 import { formatDuration, typeName, playedAgo } from '../format.js';
-import { TRACK_TYPES, parseTags, trackChanges, trackProblems } from '../track-form.js';
+import { TRACK_TYPES, trackChanges, trackProblems } from '../track-form.js';
 import { CueEditor } from './cue-editor.js';
 import {
   defaultFilters, filtersToParams, filterChips, withoutFilter, isFiltered, sortBy, trackStates, dateCell, totalText,
@@ -53,16 +53,24 @@ export class TrackManagerView {
   #folders;
   /** Editor de punts (fase 3, pas 7e). @type {CueEditor} */
   #cueEditor;
+  /** Obre la pestanya Calendari amb una pista (D-111). @type {(track: { id: number, title: string }) => void} */
+  #openCalendar;
+  /** Obre a l'Explorador la carpeta d'un fitxer (D-112). @type {(path: string) => Promise<'file' | 'folder' | 'missing'>} */
+  #showFile;
 
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
    * @param {(defaultPath?: string) => Promise<string | null>} chooseFile  diàleg de Windows per triar un fitxer d'àudio
    * @param {import('./folders.js').FoldersView} folders
+   * @param {(track: { id: number, title: string }) => void} openCalendar  obre el calendari de la pista (pestanya Calendari)
+   * @param {(path: string) => Promise<'file' | 'folder' | 'missing'>} showFile  obre a l'Explorador la carpeta d'un fitxer
    */
-  constructor(send, chooseFile, folders) {
+  constructor(send, chooseFile, folders, openCalendar, showFile) {
     this.#send = send;
     this.#chooseFile = chooseFile;
     this.#folders = folders;
+    this.#openCalendar = openCalendar;
+    this.#showFile = showFile;
     this.#cueEditor = new CueEditor(send);
     folders.onChange(() => this.#renderBox());
 
@@ -929,6 +937,26 @@ export class TrackManagerView {
     const ownBadges = stateBadges(t);
     badges.append(...(ownBadges.length ? ownBadges : [statusLabel('text-success', 'bi-check-circle', 'El fitxer hi és')]));
     head.append(badges, el('div', 'tm-path', t.path));
+    const headTools = el('div', 'tm-head-tools');
+    const cues = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    cues.type = 'button';
+    cues.append(icon('bi-soundwave'), ' Punts…');
+    cues.disabled = t.fileState === 'missing' || t.type === 'stream';
+    cues.title = cues.disabled ? 'Sense fitxer (o un stream) no hi ha forma d\'ona per editar' : 'Editor de punts: forma d\'ona, inici, mescla i final';
+    cues.addEventListener('click', () => this.#editCues());
+    const calendar = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    calendar.type = 'button';
+    calendar.append(icon('bi-calendar-check'), ' Calendari…');
+    calendar.title = 'Obre el calendari d\'aquesta pista: on sona i quants passis fa';
+    calendar.addEventListener('click', () => this.#openCalendar({ id: t.id, title: t.title }));
+    const explorer = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    explorer.type = 'button';
+    explorer.append(icon('bi-folder2-open'), ' Carpeta…');
+    explorer.disabled = t.type === 'stream' || String(t.path ?? '').includes('://'); // un stream és una adreça, no un fitxer
+    explorer.title = explorer.disabled ? "És una adreça d'internet, no un fitxer" : "Obre a l'Explorador de Windows la carpeta del fitxer, amb el fitxer seleccionat";
+    explorer.addEventListener('click', () => this.#openFolder(t.path));
+    headTools.append(cues, calendar, explorer);
+    head.append(headTools);
     form.append(head);
 
     // Camps
@@ -976,7 +1004,7 @@ export class TrackManagerView {
     type.append(...TRACK_TYPES.map((id) => option(id, typeName(id))));
     type.value = t.type;
     const subcategory = this.#subcategorySelect(t.subcategoryId);
-    const tags = text((t.tags ?? []).join(', '), 1000);
+    const tags = this.#tagPicker(t.tags ?? []);
     const validFrom = date(t.validFrom);
     const validUntil = date(t.validUntil);
     const enabled = check('Activada', t.enabled, 'Desactivada, l\'AutoDJ no la tria (es pot posar a la cua a mà).');
@@ -996,7 +1024,8 @@ export class TrackManagerView {
       field('Títol', title),
       pair(field('Àlbum', album), field('Any', year)),
       pair(field('Tipus', type), field('Subcategoria', subcategory)),
-      field('Etiquetes', tags, 'Separades per comes, p. ex. «català, 80s».'),
+      field('Etiquetes', tags.input, 'Escriu-ne una i prem Retorn (o una coma). Les que ja existeixen surten com a suggeriment.'),
+      tags.chips,
       pair(field('Sona des del dia', validFrom), field('Fins al dia', validUntil)),
       el('div', 'form-text mt-n1 mb-2', 'Fora d\'aquestes dates, l\'AutoDJ no la tria. Buit = sense límit.'),
       enabled.wrap, variable.wrap,
@@ -1005,7 +1034,7 @@ export class TrackManagerView {
 
     this.#readForm = () => ({
       artist: artist.value, title: title.value, album: album.value, year: year.value, type: type.value,
-      subcategoryId: subcategory.value === '' ? null : Number(subcategory.value), tags: parseTags(tags.value),
+      subcategoryId: subcategory.value === '' ? null : Number(subcategory.value), tags: tags.values(),
       variableDuration: variable.input.checked, validFrom: validFrom.value, validUntil: validUntil.value,
       enabled: enabled.input.checked, notes: notes.value,
     });
@@ -1063,6 +1092,70 @@ export class TrackManagerView {
     box.replaceChildren(form);
   }
 
+  /**
+   * Selector d'etiquetes (D-111): les de la pista com a pastilles amb una creu, i un camp per afegir-ne amb els noms que
+   * ja existeixen com a suggeriment (si n'hi ha una d'igual sense comptar majúscules, es fa servir aquella). Quan canvia,
+   * avisa el formulari (event «change») perquè s'activi «Desa».
+   * @param {string[]} initial
+   * @returns {{ input: HTMLInputElement, chips: HTMLElement, values: () => string[] }}
+   */
+  #tagPicker(initial) {
+    const known = (this.#filters?.tags ?? []).map((/** @type {any} */ t) => /** @type {string} */ (t.name));
+    let list = [...initial];
+    const input = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
+    input.type = 'text';
+    input.maxLength = 100;
+    input.placeholder = list.length ? 'Afegeix-ne una altra…' : 'p. ex. català';
+    const datalistId = `tm-tags-${Math.random().toString(36).slice(2, 9)}`;
+    input.setAttribute('list', datalistId);
+    const datalist = el('datalist', '');
+    datalist.id = datalistId;
+    datalist.append(...known.map((n) => option(n, '')));
+    const chips = el('div', 'tm-tag-chips');
+    const same = (/** @type {string} */ a, /** @type {string} */ b) => a.toLocaleLowerCase('ca') === b.toLocaleLowerCase('ca');
+    const changed = () => {
+      render();
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const add = () => {
+      for (const part of input.value.split(',')) {
+        const name = part.trim();
+        if (!name || list.some((x) => same(x, name))) continue;
+        list.push(known.find((k) => same(k, name)) ?? name);
+      }
+      input.value = '';
+      changed();
+    };
+    const render = () => {
+      chips.replaceChildren(...list.map((name) => {
+        const chip = el('span', 'tm-chip');
+        const x = el('button', 'tm-chip-remove');
+        x.type = 'button';
+        x.title = `Treu l'etiqueta «${name}»`;
+        x.setAttribute('aria-label', x.title);
+        x.append(icon('bi-x'));
+        x.addEventListener('click', () => {
+          list = list.filter((n) => n !== name);
+          changed();
+        });
+        chip.append(el('span', '', name), x);
+        return chip;
+      }), datalist);
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault(); // Retorn no ha de desar la fitxa
+        add();
+      } else if (e.key === 'Backspace' && input.value === '' && list.length > 0) {
+        list = list.slice(0, -1);
+        changed();
+      }
+    });
+    input.addEventListener('blur', () => { if (input.value.trim()) add(); });
+    render();
+    return { input, chips, values: () => [...list] };
+  }
+
   /** Desplegable de subcategories, agrupades per categoria. @param {number | null} selected */
   #subcategorySelect(selected) {
     const select = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
@@ -1092,14 +1185,6 @@ export class TrackManagerView {
     const source = { radiodj: 'de RadioDJ', analyzer: 'calculats', manual: 'editats a mà' }[/** @type {'radiodj'} */ (t.cueSource)] ?? '';
     const cueBox = el('span', '');
     cueBox.append(`${cues}${source ? ` (${source})` : ''} `);
-    if (t.fileState !== 'missing') {
-      const edit = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-link btn-sm p-0 align-baseline'));
-      edit.type = 'button';
-      edit.textContent = 'Edita…';
-      edit.title = 'Editor de punts: forma d\'ona, inici, mescla i final';
-      edit.addEventListener('click', () => this.#editCues());
-      cueBox.append(edit);
-    }
     row('Punts', cueBox);
     row('Ha sonat', t.playCount ? `${t.playCount} ${t.playCount === 1 ? 'vegada' : 'vegades'}, l'última ${playedAgo(t.lastPlayed, new Date())}` : 'mai');
     if ((t.usedBy ?? []).length > 0) {
@@ -1108,6 +1193,20 @@ export class TrackManagerView {
       row('Esdeveniments', list);
     }
     return box;
+  }
+
+  /** Obre a l'Explorador la carpeta del fitxer; si no hi és, ho diu (D-112). @param {string} path */
+  async #openFolder(path) {
+    const result = await this.#showFile(path);
+    if (result === 'file') return;
+    await confirmAction({
+      title: 'Obrir la carpeta',
+      message: result === 'folder'
+        ? `El fitxer no hi és, però la carpeta sí: s'ha obert la carpeta.\n\n${path}`
+        : `No es troba ni el fitxer ni la carpeta (potser és en una unitat de xarxa que ara no es veu).\n\n${path}`,
+      confirm: "D'acord",
+      info: true,
+    });
   }
 
   /** Obre l'editor de punts de la pista oberta; si s'hi desa alguna cosa, la fitxa es torna a dibuixar. */
