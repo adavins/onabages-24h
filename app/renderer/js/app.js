@@ -123,7 +123,8 @@ const notes = new NotesView(send);
 const processor = new ProcessorView(send);
 const folders = new FoldersView(send, (path) => bridge.chooseFolder(path));
 const rotationsView = new RotationsView(send);
-const calendarView = new CalendarView(send);
+// El calendari d'una pista és part de la pestanya Pistes (D-113): «Torna a les pistes» hi torna, tal com era
+const calendarView = new CalendarView(send, () => showView('biblioteca'));
 // «Calendari…» a la fitxa d'una pista (D-111): obre la pestanya Calendari amb aquella pista
 const trackManager = new TrackManagerView(send, (path) => bridge.chooseAudioFile(path), folders, (track) => {
   showView('calendari');
@@ -246,9 +247,11 @@ function showView(name) {
   for (const view of /** @type {const} */ (['emissio', 'planificador', 'biblioteca', 'rotacions', 'calendari'])) {
     const active = view === name;
     $(`view-${view}`).classList.toggle('d-none', !active);
+    if (view === 'calendari') continue; // no té pestanya: és part de Pistes (D-113)
     const tab = $(`nav-${view}`);
-    tab.classList.toggle('active', active);
-    if (active) tab.setAttribute('aria-current', 'page');
+    const current = active || (view === 'biblioteca' && name === 'calendari'); // dins del calendari, «Pistes» continua marcada
+    tab.classList.toggle('active', current);
+    if (current) tab.setAttribute('aria-current', 'page');
     else tab.removeAttribute('aria-current');
   }
   if (name === 'planificador') planner.show();
@@ -264,7 +267,6 @@ $('nav-emissio').addEventListener('click', () => showView('emissio'));
 $('nav-planificador').addEventListener('click', () => showView('planificador'));
 $('nav-biblioteca').addEventListener('click', () => showView('biblioteca'));
 $('nav-rotacions').addEventListener('click', () => showView('rotacions'));
-$('nav-calendari').addEventListener('click', () => showView('calendari'));
 
 // Saltar a la següent: interromp la cançó, per tant demana confirmació
 // «Regenera la cua» (D-034): només canvia les pistes que ha posat l'AutoDJ i no interromp res, per això no demana confirmació

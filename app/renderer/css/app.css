@@ -1629,53 +1629,20 @@ button.section:hover {
 /* Cada pantalla ocupa l'espai entre la capçalera i la barra d'estat */
 /* --- Calendari d'una pista (fase 4, pas 2b; D-104) --- */
 
-.cal-search {
-  padding: 0.5rem;
-  border-bottom: 1px solid var(--ob-border);
+/* Dins de la pestanya Pistes (D-113): a tota l'amplada, amb el botó per tornar a la llista a dalt */
+.cal-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0.75rem 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.5rem;
+  background: var(--ob-panel);
 }
 
-.cal-filters {
-  display: flex;
-  gap: 0.25rem;
-  margin-top: 0.25rem;
-}
-
-.cal-filters .form-select {
-  min-width: 0;
-}
-
-.cal-result {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.3rem 0.6rem;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  font-size: 0.85rem;
-}
-
-.cal-result:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.cal-result.active {
-  background: rgba(13, 110, 253, 0.25);
-}
-
-.cal-result-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cal-result-type {
-  flex: none;
-  color: var(--ob-muted);
-  font-size: 0.75rem;
+.cal-back {
+  margin-bottom: 0.6rem;
 }
 
 .cal-head {

@@ -1,6 +1,7 @@
 // @ts-check
-// Pantalla «Calendari» (fase 4, pas 2b; D-104): a l'esquerra es tria una pista (de qualsevol tipus: falca, càpsula,
-// promo…); a la dreta, la graella setmanal amb una fila per a cada hora on hi ha esdeveniments que poden portar pistes.
+// Calendari d'una pista (fase 4, pas 2b; D-104; dins de la pestanya Pistes, D-113): s'obre des de la fitxa d'una pista
+// (de qualsevol tipus: falca, càpsula, promo…) amb «Calendari…», i «← Torna a les pistes» hi torna. La graella setmanal
+// té una fila per a cada hora on hi ha esdeveniments que poden portar pistes.
 // Fent clic a una casella, la pista entra o surt d'aquell esdeveniment aquell dia (calendar.set). A sota, els passis.
 // Tot ho calcula el motor; aquí només es mostra.
 
@@ -13,8 +14,6 @@ import {
   withExtraRows, trackOnlyRows, contentTimes,
 } from '../calendar-form.js';
 
-const PAGE = 50;
-
 export class CalendarView {
   #send;
   #visible = false;
@@ -24,12 +23,8 @@ export class CalendarView {
   #calendar = null;
   /** Hi ha un canvi enviant-se: no es deixa fer clic a cap altra casella. */
   #busy = false;
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  #searchTimer;
-  /** Per descartar les respostes d'una cerca vella. */
-  #searchToken = 0;
-  /** Categories i subcategories per als filtres (library.filters). @type {any[]} */
-  #categories = [];
+  /** Torna a la llista de pistes (D-113). @type {() => void} */
+  #back;
   /** Els esdeveniments que es repeteixen dins del dia ja s'han avisat (no cada vegada). @type {Set<number>} */
   #warnedRepeats = new Set();
   /** Hores afegides amb «+ Afegeix una hora» que encara no tenen res (D-105: no es desen). @type {Set<string>} */
@@ -42,24 +37,18 @@ export class CalendarView {
   /** @type {any} */
   #content = null;
 
-  /** @param {(cmd: string, params?: object) => Promise<any>} send */
-  constructor(send) {
+  /**
+   * @param {(cmd: string, params?: object) => Promise<any>} send
+   * @param {() => void} back  torna a la llista de pistes (la pestanya Pistes, tal com era)
+   */
+  constructor(send, back) {
     this.#send = send;
-    $('cal-search').addEventListener('input', () => {
-      clearTimeout(this.#searchTimer);
-      this.#searchTimer = setTimeout(() => this.#search(), 250);
-    });
-    $('cal-category').addEventListener('change', () => {
-      this.#fillSubcategories();
-      this.#search();
-    });
-    $('cal-subcategory').addEventListener('change', () => this.#search());
+    this.#back = back;
     this.#renderEditor();
   }
 
   show() {
     this.#visible = true;
-    this.#loadFilters().then(() => this.#search());
     this.refresh();
   }
 
@@ -76,7 +65,7 @@ export class CalendarView {
     try {
       calendar = await this.#send('calendar.get', { trackId });
     } catch {
-      calendar = null; // la pista s'ha esborrat o no hi ha connexió
+      calendar = false; // la pista s'ha esborrat o no hi ha connexió (null = encara s'està carregant)
     }
     if (trackId !== this.#trackId) return; // mentrestant se n'ha triat una altra (p. ex. des de la fitxa): no la trepitja
     this.#calendar = calendar;
@@ -98,93 +87,19 @@ export class CalendarView {
     }
   }
 
-  // --- Cercador de pistes (text, categoria i subcategoria, com a la pestanya Pistes) ---
-
-  /** Les categories i subcategories amb pistes (library.filters); es manté el que hi havia triat. */
-  async #loadFilters() {
-    try {
-      const filters = await this.#send('library.filters');
-      this.#categories = filters.categories;
-    } catch {
-      return; // sense connexió: ja ho diu la capçalera
-    }
-    const select = /** @type {HTMLSelectElement} */ ($('cal-category'));
-    const previous = select.value;
-    select.replaceChildren(option('', 'Categoria'),
-      ...this.#categories.filter((c) => c.count > 0).map((c) => option(String(c.id), `${c.name} (${c.count})`)));
-    select.value = previous;
-    this.#fillSubcategories();
-  }
-
-  #fillSubcategories() {
-    const select = /** @type {HTMLSelectElement} */ ($('cal-subcategory'));
-    const previous = select.value;
-    const categoryId = Number(/** @type {HTMLSelectElement} */ ($('cal-category')).value);
-    const category = this.#categories.find((c) => c.id === categoryId);
-    const subs = category ? category.subcategories : this.#categories.flatMap((c) => c.subcategories);
-    select.replaceChildren(option('', 'Subcategoria'),
-      ...subs.filter((/** @type {any} */ s) => s.count > 0).map((/** @type {any} */ s) => option(String(s.id), `${s.name} (${s.count})`)));
-    select.value = previous; // si ja no hi és (s'ha canviat de categoria), queda «Subcategoria»
-  }
-
-  async #search() {
-    if (!this.#visible) return;
-    const token = ++this.#searchToken;
-    const text = /** @type {HTMLInputElement} */ ($('cal-search')).value.trim();
-    /** @type {Record<string, any>} */
-    const params = { text, limit: PAGE };
-    const value = (/** @type {string} */ id) => /** @type {HTMLSelectElement} */ ($(id)).value;
-    if (value('cal-subcategory')) params.subcategoryId = Number(value('cal-subcategory'));
-    else if (value('cal-category')) params.categoryId = Number(value('cal-category'));
-    const list = $('cal-results');
-    let result;
-    try {
-      result = await this.#send('library.search', params);
-    } catch {
-      return;
-    }
-    if (token !== this.#searchToken) return; // n'hi ha una de més nova
-    const filtered = text !== '' || params.categoryId != null || params.subcategoryId != null;
-    $('cal-count').textContent = result.tracks.length === 0 ? ''
-      : result.more ? `Les ${result.tracks.length} primeres: afina la cerca per veure'n d'altres.`
-        : `${result.tracks.length} ${result.tracks.length === 1 ? 'pista' : 'pistes'}`;
-    if (result.tracks.length === 0) {
-      list.replaceChildren(el('li', 'form-text px-2', filtered ? 'Cap pista amb aquests criteris.' : 'Escriu per cercar una pista.'));
-      return;
-    }
-    list.replaceChildren(...result.tracks.map((/** @type {any} */ t) => {
-      const li = el('li', '');
-      const b = /** @type {HTMLButtonElement} */ (el('button', `rt-item-button cal-result${t.id === this.#trackId ? ' active' : ''}`));
-      b.type = 'button';
-      b.append(el('span', 'cal-result-title', `${t.artist ? `${t.artist} - ` : ''}${t.title || '(sense títol)'}`),
-        el('span', 'cal-result-type', typeName(t.type)));
-      b.title = t.path;
-      b.addEventListener('click', () => this.#select(t.id));
-      li.append(b);
-      return li;
-    }));
-  }
-
   /**
-   * Obre el calendari d'una pista des de la seva fitxa (pestanya Pistes, D-111): la cerca es posa al seu títol, perquè
-   * surti marcada a la llista. Qui la crida ja ha mostrat la pestanya.
+   * Obre el calendari d'una pista (des de la seva fitxa, a la pestanya Pistes; D-113). Qui la crida ja ha mostrat la vista.
    * @param {{ id: number, title: string }} track
    */
   async openTrack(track) {
-    /** @type {HTMLInputElement} */ ($('cal-search')).value = track.title ?? '';
-    await this.#select(track.id);
-  }
-
-  /** @param {number} trackId */
-  async #select(trackId) {
-    if (trackId !== this.#trackId) {
+    if (track.id !== this.#trackId) {
       this.#extraTimes.clear(); // les hores provisionals eren per a l'altra pista
       this.#contentOf = null;
     }
-    this.#trackId = trackId;
-    for (const b of $('cal-results').querySelectorAll('.cal-result')) b.classList.remove('active');
+    this.#trackId = track.id;
+    this.#calendar = null;
+    this.#renderEditor(); // de seguida: «Torna a les pistes» es veu mentre es carrega
     await this.refresh();
-    this.#search(); // per marcar la triada
   }
 
   // --- Graella ---
@@ -192,9 +107,14 @@ export class CalendarView {
   #renderEditor() {
     const box = $('cal-editor');
     const cal = this.#calendar;
+    const back = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary cal-back'));
+    back.type = 'button';
+    back.append(icon('bi-arrow-left'), ' Torna a les pistes');
+    back.addEventListener('click', () => this.#back());
     if (this.#trackId == null || !cal) {
-      box.replaceChildren(el('p', 'text-body-secondary m-0',
-        this.#trackId == null ? 'Tria una pista a l\'esquerra per veure i marcar on sona.' : 'No s\'ha pogut llegir el calendari d\'aquesta pista.'));
+      box.replaceChildren(back, el('p', 'text-body-secondary mt-3 mb-0',
+        this.#trackId == null ? 'Obre el calendari des de la fitxa d\'una pista (botó «Calendari…»).'
+          : cal === false ? 'No s\'ha pogut llegir el calendari d\'aquesta pista.' : 'Carregant el calendari…'));
       return;
     }
     const t = cal.track;
@@ -208,7 +128,7 @@ export class CalendarView {
     const dates = t.validFrom || t.validUntil
       ? `Vigent ${t.validFrom ? `del ${dateText(t.validFrom)}` : ''}${t.validUntil ? ` al ${dateText(t.validUntil)}` : ' sense data de fi'}`
       : 'Sense dates d\'inici ni de fi (es canvien a la fitxa, a la pestanya Pistes)';
-    head.append(title, el('div', 'form-text m-0', dates));
+    head.append(back, title, el('div', 'form-text m-0', dates));
     if (t.fileState === 'missing') head.append(statusLabel('text-danger small', 'bi-exclamation-octagon-fill', 'El fitxer d\'aquesta pista falta: no sonarà'));
     head.append(this.#modeSwitch());
 
@@ -535,12 +455,4 @@ export class CalendarView {
     }
     return box;
   }
-}
-
-/** @param {string} value @param {string} text */
-function option(value, text) {
-  const o = document.createElement('option');
-  o.value = value;
-  o.textContent = text;
-  return o;
 }
