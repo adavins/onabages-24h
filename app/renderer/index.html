@@ -244,25 +244,54 @@
   <!-- Gestor de pistes (fase 3, pas 7a; D-087): categories a l'esquerra, pistes al mig i la fitxa a la dreta -->
   <div id="view-biblioteca" class="view d-none">
     <div class="tm-main">
-      <aside class="tm-tree" aria-label="Categories">
-        <div class="tm-tree-tools">
-          <button id="tm-new-category" class="btn btn-sm btn-outline-secondary" type="button" title="Crea una categoria"><i class="bi bi-folder-plus" aria-hidden="true"></i> Categoria</button>
-          <button id="tm-new-subcategory" class="btn btn-sm btn-outline-secondary" type="button" title="Crea una subcategoria dins de la categoria triada"><i class="bi bi-plus-lg" aria-hidden="true"></i> Subcategoria</button>
-          <button id="tm-rename" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el nom de la categoria o subcategoria triada"><i class="bi bi-pencil" aria-hidden="true"></i><span class="visually-hidden">Canvia el nom</span></button>
-          <button id="tm-folder" class="btn btn-sm btn-outline-secondary" type="button" title="Carpeta vigilada de la subcategoria triada: les cançons que s'hi copien entren soles"><i class="bi bi-folder-check" aria-hidden="true"></i><span class="visually-hidden">Carpeta vigilada</span></button>
-          <button id="tm-empty" class="btn btn-sm btn-outline-danger" type="button" title="Esborra totes les pistes de la subcategoria triada (per renovar una bossa)"><i class="bi bi-eraser" aria-hidden="true"></i><span class="visually-hidden">Buida la subcategoria</span></button>
-          <button id="tm-reroot" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el principi de les rutes de moltes pistes alhora (p. ex. si les carpetes de música s'han mogut o en aquest ordinador es veuen amb una altra lletra)"><i class="bi bi-signpost-split" aria-hidden="true"></i><span class="visually-hidden">Canvia l'arrel de les rutes</span></button>
-          <div class="d-flex gap-1 w-100">
-            <button id="tm-import" class="btn btn-sm btn-outline-primary flex-fill" type="button" title="Afegeix a la biblioteca els fitxers d'una carpeta (i les subcarpetes)"><i class="bi bi-folder-symlink" aria-hidden="true"></i> Importa una carpeta…</button>
-            <button id="tm-import-files" class="btn btn-sm btn-outline-primary flex-fill" type="button" title="Afegeix a la biblioteca un o diversos fitxers d'àudio"><i class="bi bi-file-earmark-music" aria-hidden="true"></i> Importa fitxers…</button>
+      <!-- Columna d'eines (D-111): requadres amb títol; les accions de categoria actuen sobre el que s'hi tria -->
+      <aside class="tm-side" aria-label="Eines de les pistes">
+        <section class="tm-box" aria-labelledby="tm-box-import">
+          <h2 id="tm-box-import" class="tm-box-title"><i class="bi bi-box-arrow-in-down" aria-hidden="true"></i> Importació</h2>
+          <div class="tm-box-body">
+            <button id="tm-import" class="btn btn-sm btn-outline-primary" type="button" title="Afegeix a la biblioteca els fitxers d'una carpeta (i les subcarpetes)"><i class="bi bi-folder-symlink" aria-hidden="true"></i> Importa una carpeta…</button>
+            <button id="tm-import-files" class="btn btn-sm btn-outline-primary" type="button" title="Afegeix a la biblioteca un o diversos fitxers d'àudio"><i class="bi bi-file-earmark-music" aria-hidden="true"></i> Importa fitxers…</button>
+            <!-- Importació en curs o l'última (fase 3, pas 7b) -->
+            <div id="tm-import-panel" class="tm-import-panel d-none" role="status" aria-live="polite"></div>
           </div>
-        </div>
-        <ul id="tm-tree-list" class="tm-tree-list"></ul>
+        </section>
+
+        <section class="tm-box" aria-labelledby="tm-box-categories">
+          <h2 id="tm-box-categories" class="tm-box-title"><i class="bi bi-folder2" aria-hidden="true"></i> Categories</h2>
+          <div class="tm-box-body">
+            <label for="tm-box-category" class="form-label">Categoria</label>
+            <select id="tm-box-category" class="form-select form-select-sm"></select>
+            <div class="tm-box-tools">
+              <button id="tm-new-category" class="btn btn-sm btn-outline-secondary" type="button" title="Crea una categoria nova"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
+              <button id="tm-rename-category" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el nom de la categoria triada"><i class="bi bi-pencil" aria-hidden="true"></i> Nom</button>
+              <button id="tm-delete-category" class="btn btn-sm btn-outline-danger" type="button" title="Esborra la categoria triada (només si no té subcategories)"><i class="bi bi-trash" aria-hidden="true"></i> Esborra</button>
+            </div>
+            <label for="tm-box-subcategory" class="form-label">Subcategoria</label>
+            <select id="tm-box-subcategory" class="form-select form-select-sm"></select>
+            <div class="tm-box-tools">
+              <button id="tm-new-subcategory" class="btn btn-sm btn-outline-secondary" type="button" title="Crea una subcategoria dins de la categoria triada"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
+              <button id="tm-rename-subcategory" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el nom de la subcategoria triada"><i class="bi bi-pencil" aria-hidden="true"></i> Nom</button>
+              <button id="tm-delete-subcategory" class="btn btn-sm btn-outline-danger" type="button" title="Esborra la subcategoria triada (només si no té pistes ni la fa servir res)"><i class="bi bi-trash" aria-hidden="true"></i> Esborra</button>
+            </div>
+            <div id="tm-folder-status" class="tm-folder-status"></div>
+            <div class="tm-box-tools">
+              <button id="tm-folder" class="btn btn-sm btn-outline-secondary" type="button" title="Carpeta vigilada de la subcategoria triada: les cançons que s'hi copien entren soles"><i class="bi bi-folder-check" aria-hidden="true"></i> Carpeta vigilada…</button>
+              <button id="tm-empty" class="btn btn-sm btn-outline-danger" type="button" title="Esborra totes les pistes de la subcategoria triada (per renovar una bossa)"><i class="bi bi-eraser" aria-hidden="true"></i> Buida…</button>
+            </div>
+            <div class="tm-box-sep"></div>
+            <button id="tm-tags" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el nom de les etiquetes, fusiona-les o esborra les que no fan falta"><i class="bi bi-tags" aria-hidden="true"></i> Gestiona les etiquetes…</button>
+          </div>
+        </section>
+
+        <section class="tm-box" aria-labelledby="tm-box-tools">
+          <h2 id="tm-box-tools" class="tm-box-title"><i class="bi bi-tools" aria-hidden="true"></i> Utilitats</h2>
+          <div class="tm-box-body">
+            <button id="tm-reroot" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el principi de les rutes de moltes pistes alhora (p. ex. si les carpetes de música s'han mogut o en aquest ordinador es veuen amb una altra lletra)"><i class="bi bi-signpost-split" aria-hidden="true"></i> Canvia l'arrel de les rutes…</button>
+          </div>
+        </section>
       </aside>
 
       <section class="tm-tracks" aria-label="Pistes">
-        <!-- Importació en curs o l'última (fase 3, pas 7b) -->
-        <div id="tm-import-panel" class="tm-import-panel d-none" role="status" aria-live="polite"></div>
         <!-- Pestanya Pistes (D-111): la cerca, la categoria i la subcategoria sempre a la vista; la resta, dins de «Filtres» -->
         <div class="tm-filterbar">
           <input id="tm-search" class="form-control form-control-sm tm-search-input" type="search" placeholder="Cerca artista, títol, àlbum o ruta" aria-label="Cerca pistes">
@@ -275,6 +304,8 @@
         </div>
         <div id="tm-filters-panel" class="tm-filters-panel d-none" role="region" aria-label="Més filtres"></div>
         <div id="tm-chips" class="tm-chips" aria-label="Filtres actius"></div>
+        <!-- Accions en bloc sobre les pistes seleccionades (D-111) -->
+        <div id="tm-bulk" class="tm-bulk d-none" role="toolbar" aria-label="Accions amb les pistes seleccionades"></div>
         <div id="tm-results" class="tm-results">
           <table class="tm-table">
             <thead id="tm-head"></thead>

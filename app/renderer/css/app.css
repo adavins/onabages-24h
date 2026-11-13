@@ -713,7 +713,6 @@ body {
   padding: 0.75rem 1rem;
 }
 
-.tm-tree,
 .tm-tracks,
 .tm-detail {
   min-height: 0;
@@ -724,6 +723,7 @@ body {
   background: var(--ob-panel);
 }
 
+/* Barra d'eines a dalt d'una llista lateral (la fan servir les Rotacions) */
 .tm-tree-tools {
   display: flex;
   flex-wrap: wrap;
@@ -732,64 +732,101 @@ body {
   border-bottom: 1px solid var(--ob-border);
 }
 
-.tm-tree-list {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  list-style: none;
-  margin: 0;
-  padding: 0.35rem 0;
-}
-
-.tm-tree-item {
+/* Columna d'eines (D-111): requadres amb títol, un sota l'altre, amb desplaçament propi */
+.tm-side {
+  min-height: 0;
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.2rem 0.75rem;
-  border: 0;
-  background: none;
-  color: var(--bs-body-color);
-  text-align: left;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
 }
 
-.tm-tree-item:hover {
-  background: #22262c;
+.tm-box {
+  flex: 0 0 auto;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.5rem;
+  background: var(--ob-panel);
 }
 
-.tm-tree-item.active {
-  background: #2c3440;
+.tm-box-title {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--ob-border);
+  font-size: 0.92rem;
   font-weight: 600;
 }
 
-.tm-tree-item > :first-child {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.tm-box-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0.75rem 0.75rem;
 }
 
-.tm-tree-count {
+.tm-box-body .form-label {
+  margin: 0.2rem 0 0;
   color: var(--ob-muted);
   font-size: 0.8rem;
-  font-variant-numeric: tabular-nums;
 }
 
-.tm-tree-heading {
-  margin: 0.6rem 0.75rem 0.2rem;
-  color: var(--ob-muted);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.tm-box-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
 }
 
-.tm-tree-category .tm-tree-item {
-  margin-top: 0.15rem;
+.tm-box-sep {
+  margin: 0.3rem 0;
+  border-top: 1px solid var(--ob-border);
 }
 
-.tm-tree-sub .tm-tree-item {
-  padding-left: 2.1rem;
-  font-size: 0.9rem;
+.tm-folder-status {
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.tm-folder-status:empty {
+  display: none;
+}
+
+/* Accions en bloc (D-111): apareix en seleccionar alguna pista */
+.tm-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--ob-border);
+  background: rgba(13, 110, 253, 0.12);
+}
+
+.tm-bulk-count {
+  font-weight: 600;
+  margin-right: 0.35rem;
+}
+
+/* Gestor d'etiquetes */
+.tm-tags-list {
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.tm-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.tm-tag-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tm-tag-tools {
+  display: flex;
+  gap: 0.25rem;
 }
 
 /* Pestanya Pistes (D-111): barra de filtres, panell «Filtres», pastilles i taula amb capçaleres fixes */
@@ -946,7 +983,8 @@ body {
   outline-offset: -2px;
 }
 
-.tm-c-title { width: 26%; }
+.tm-c-check { width: 2.2rem; text-align: center; }
+.tm-c-title { width: 24%; }
 .tm-c-artist { width: 18%; color: var(--ob-muted); }
 .tm-c-type { width: 9%; }
 .tm-c-state { width: 15%; }
@@ -1455,14 +1493,14 @@ body {
   white-space: nowrap;
 }
 
-/* Pantalla estreta: l'arbre a dalt, la fitxa a sota */
+/* Pantalla estreta: les eines a l'esquerra, la llista a dalt i la fitxa a sota */
 @media (max-width: 1200px) {
   .tm-main {
     grid-template-columns: 14rem minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   }
 
-  .tm-tree {
+  .tm-side {
     grid-row: 1 / span 2;
   }
 }

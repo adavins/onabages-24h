@@ -1,12 +1,13 @@
 // @ts-check
 // Pestanya «Pistes» (abans «Biblioteca»): el gestor de pistes (fase 3, pas 7a; D-087; redisseny, D-111). A l'esquerra,
-// les categories i els estats; al mig, la barra de filtres i la taula de pistes (carregant-ne 100 cada vegada, ordenable
-// per columnes, amb el total); a la dreta, la fitxa editable.
+// les eines en requadres (importació, categories i etiquetes, utilitats); al mig, la barra de filtres, les accions en
+// bloc i la taula de pistes (carregant-ne 100 cada vegada, ordenable per columnes, amb el total); a la dreta, la fitxa.
 // Tot es desa al motor (library.update…); la interfície no toca mai la base de dades ni els fitxers.
 
 import { $, el, icon, statusLabel } from './dom.js';
 import { confirmAction } from './confirm.js';
 import { askText } from './ask-text.js';
+import { formDialog, dialogField } from './form-dialog.js';
 import { formatDuration, typeName, playedAgo } from '../format.js';
 import { TRACK_TYPES, parseTags, trackChanges, trackProblems } from '../track-form.js';
 import { CueEditor } from './cue-editor.js';
@@ -19,32 +20,23 @@ import { todayIso } from '../event-form.js';
 const PAGE = 100;
 const SEARCH_DELAY_MS = 250;
 
-/** Els estats que es poden filtrar, amb color + icona + text. */
-const STATES = [
-  { id: 'missing', name: 'El fitxer falta', icon: 'bi-exclamation-triangle-fill', css: 'text-warning' },
-  { id: 'retired', name: 'Retirades', icon: 'bi-archive', css: 'text-body-secondary' },
-  { id: 'disabled', name: 'Desactivades', icon: 'bi-slash-circle', css: 'text-body-secondary' },
-  { id: 'unclassified', name: 'Sense subcategoria', icon: 'bi-question-circle', css: 'text-body-secondary' },
-];
-
-/** @typedef {{ kind: 'all' } | { kind: 'state', id: string } | { kind: 'category', id: number } | { kind: 'subcategory', id: number }} Scope */
-
 export class TrackManagerView {
   #send;
   /** @type {(defaultPath?: string) => Promise<string | null>} */
   #chooseFile;
   /** @type {any} */
   #filters = null;
-  /** Els filtres de la llista (D-111): la font de veritat; l'arbre de l'esquerra els canvia. @type {import('../tracks-filter.js').TrackFilters} */
+  /** Els filtres de la llista (D-111). @type {import('../tracks-filter.js').TrackFilters} */
   #f = defaultFilters();
-
-  /** El que hi ha triat a l'arbre, a partir dels filtres (per marcar-lo i per a les accions de categoria). @returns {Scope} */
-  get #scope() {
-    if (this.#f.subcategoryId != null) return { kind: 'subcategory', id: this.#f.subcategoryId };
-    if (this.#f.categoryId != null) return { kind: 'category', id: this.#f.categoryId };
-    if (this.#f.state) return { kind: 'state', id: this.#f.state };
-    return { kind: 'all' };
-  }
+  /** La categoria i la subcategoria triades al requadre «Categories» (sobre les quals actuen els seus botons). */
+  /** @type {number | null} */
+  #boxCategory = null;
+  /** @type {number | null} */
+  #boxSubcategory = null;
+  /** Les pistes seleccionades amb la casella (ids), per a les accions en bloc. @type {Set<number>} */
+  #selected = new Set();
+  /** Quantes pistes compleixen els filtres (l'última cerca). */
+  #total = 0;
   #offset = 0;
   #more = false;
   #loading = false;
@@ -57,7 +49,7 @@ export class TrackManagerView {
   /** Llegeix el formulari de la fitxa oberta. @type {(() => import('../track-form.js').TrackFormValues) | null} */
   #readForm = null;
 
-  /** Carpetes vigilades (marques a l'arbre i el diàleg de la carpeta). @type {import('./folders.js').FoldersView} */
+  /** Carpetes vigilades (l'estat de la subcategoria triada i el diàleg de la carpeta). @type {import('./folders.js').FoldersView} */
   #folders;
   /** Editor de punts (fase 3, pas 7e). @type {CueEditor} */
   #cueEditor;
@@ -72,14 +64,12 @@ export class TrackManagerView {
     this.#chooseFile = chooseFile;
     this.#folders = folders;
     this.#cueEditor = new CueEditor(send);
-    folders.onChange(() => this.#renderTree());
-    $('tm-folder').addEventListener('click', () => this.#folder());
+    folders.onChange(() => this.#renderBox());
+
+    // Barra de filtres
     $('tm-search').addEventListener('input', () => {
       clearTimeout(this.#timer);
-      this.#timer = window.setTimeout(() => {
-        this.#f = { ...this.#f, text: /** @type {HTMLInputElement} */ ($('tm-search')).value };
-        this.#search();
-      }, SEARCH_DELAY_MS);
+      this.#timer = window.setTimeout(() => this.#setFilters({ ...this.#f, text: /** @type {HTMLInputElement} */ ($('tm-search')).value }), SEARCH_DELAY_MS);
     });
     $('tm-category').addEventListener('change', () => {
       const v = /** @type {HTMLSelectElement} */ ($('tm-category')).value;
@@ -88,9 +78,7 @@ export class TrackManagerView {
     $('tm-subcategory').addEventListener('change', () => {
       const v = /** @type {HTMLSelectElement} */ ($('tm-subcategory')).value;
       const id = v === '' ? null : Number(v);
-      // La subcategoria porta la seva categoria (perquè el desplegable de categoria ho digui)
-      const parent = this.#filters?.categories.find((/** @type {any} */ c) => c.subcategories.some((/** @type {any} */ s) => s.id === id));
-      this.#setFilters({ ...this.#f, subcategoryId: id, categoryId: id == null ? this.#f.categoryId : parent?.id ?? this.#f.categoryId });
+      this.#setFilters({ ...this.#f, subcategoryId: id, categoryId: id == null ? this.#f.categoryId : this.#categoryOf(id) ?? this.#f.categoryId });
     });
     $('tm-filters-toggle').addEventListener('click', () => this.#toggleFiltersPanel());
     $('tm-reset').addEventListener('click', () => this.#setFilters({ ...defaultFilters(), sort: this.#f.sort, desc: this.#f.desc }));
@@ -98,10 +86,28 @@ export class TrackManagerView {
       const box = $('tm-results');
       if (this.#more && !this.#loading && box.scrollTop + box.clientHeight > box.scrollHeight - 200) this.#load(false);
     });
+
+    // Requadre «Categories»
+    $('tm-box-category').addEventListener('change', () => {
+      const v = /** @type {HTMLSelectElement} */ ($('tm-box-category')).value;
+      this.#boxCategory = v === '' ? null : Number(v);
+      this.#boxSubcategory = null;
+      this.#renderBox();
+    });
+    $('tm-box-subcategory').addEventListener('change', () => {
+      const v = /** @type {HTMLSelectElement} */ ($('tm-box-subcategory')).value;
+      this.#boxSubcategory = v === '' ? null : Number(v);
+      this.#renderBox();
+    });
     $('tm-new-category').addEventListener('click', () => this.#newCategory());
+    $('tm-rename-category').addEventListener('click', () => this.#renameCategory());
+    $('tm-delete-category').addEventListener('click', () => this.#deleteCategory());
     $('tm-new-subcategory').addEventListener('click', () => this.#newSubcategory());
-    $('tm-rename').addEventListener('click', () => this.#rename());
+    $('tm-rename-subcategory').addEventListener('click', () => this.#renameSubcategory());
+    $('tm-delete-subcategory').addEventListener('click', () => this.#deleteSubcategory());
+    $('tm-folder').addEventListener('click', () => this.#folder());
     $('tm-empty').addEventListener('click', () => this.#empty());
+    $('tm-tags').addEventListener('click', () => this.#manageTags());
     this.#renderDetail();
   }
 
@@ -115,11 +121,11 @@ export class TrackManagerView {
     this.#visible = false;
   }
 
-  /** Per al diàleg d'importar: les categories i la subcategoria triada a l'arbre (si n'hi ha). */
+  /** Per al diàleg d'importar: les categories i la subcategoria triada (al requadre o, si no, al filtre). */
   importContext() {
     return {
       categories: this.#filters?.categories ?? [],
-      subcategoryId: this.#scope.kind === 'subcategory' ? this.#scope.id : null,
+      subcategoryId: this.#boxSubcategory ?? this.#f.subcategoryId,
     };
   }
 
@@ -140,8 +146,8 @@ export class TrackManagerView {
   }
 
   /**
-   * Algú ha canviat la biblioteca (library.changed): els comptes de l'arbre i, si és la pista oberta i no s'hi està
-   * escrivint, la fitxa. @param {number | null} trackId
+   * Algú ha canviat la biblioteca (library.changed): els comptes i, si és la pista oberta i no s'hi està escrivint, la
+   * fitxa. @param {number | null} trackId
    */
   async libraryChanged(trackId) {
     if (!this.#loaded) return;
@@ -151,7 +157,7 @@ export class TrackManagerView {
     if (trackId != null && this.#track?.id === trackId && !this.dirty) await this.#open(trackId, false);
   }
 
-  // --- Arbre: estats i categories ---
+  // --- Requadre «Categories» (D-111): les accions actuen sobre la categoria i la subcategoria que s'hi trien ---
 
   async #loadFilters() {
     try {
@@ -160,156 +166,134 @@ export class TrackManagerView {
       return; // sense connexió: ja ho diu la capçalera
     }
     this.#fillSelects();
-    this.#renderTree();
+    this.#renderBox();
   }
 
-  #renderTree() {
+  /** La categoria d'una subcategoria (id), o null. @param {number | null} subId */
+  #categoryOf(subId) {
+    return this.#filters?.categories.find((/** @type {any} */ c) => c.subcategories.some((/** @type {any} */ s) => s.id === subId))?.id ?? null;
+  }
+
+  /** @param {number | null} id */
+  #category(id) {
+    return this.#filters?.categories.find((/** @type {any} */ c) => c.id === id) ?? null;
+  }
+
+  /** @param {number | null} id */
+  #subcategory(id) {
+    return this.#filters?.categories.flatMap((/** @type {any} */ c) => c.subcategories).find((/** @type {any} */ s) => s.id === id) ?? null;
+  }
+
+  /** Els desplegables del requadre, l'estat de la carpeta vigilada i quins botons es poden fer servir. */
+  #renderBox() {
     const f = this.#filters;
     if (!f) return;
-    const list = $('tm-tree-list');
-    /** @type {HTMLElement[]} */
-    const items = [];
-    const item = (/** @type {Scope} */ scope, /** @type {Node} */ label, /** @type {number} */ count, /** @type {string} */ css = '') => {
-      const li = el('li', css);
-      const b = el('button', 'tm-tree-item');
-      b.type = 'button';
-      const active = this.#sameScope(scope, this.#scope);
-      b.classList.toggle('active', active);
-      if (active) b.setAttribute('aria-current', 'true');
-      b.append(label, el('span', 'tm-tree-count', String(count)));
-      b.addEventListener('click', () => this.#setScope(scope));
-      li.append(b);
-      items.push(li);
-    };
+    if (this.#boxCategory != null && !this.#category(this.#boxCategory)) this.#boxCategory = null; // s'ha esborrat
+    if (this.#boxSubcategory != null && this.#categoryOf(this.#boxSubcategory) !== this.#boxCategory) this.#boxSubcategory = null;
+    const cat = /** @type {HTMLSelectElement} */ ($('tm-box-category'));
+    cat.replaceChildren(option('', '(tria una categoria)'), ...f.categories.map((/** @type {any} */ c) => option(String(c.id), `${c.name} (${c.count})`)));
+    cat.value = this.#boxCategory == null ? '' : String(this.#boxCategory);
+    const category = this.#category(this.#boxCategory);
+    const sub = /** @type {HTMLSelectElement} */ ($('tm-box-subcategory'));
+    sub.replaceChildren(option('', category ? '(tria una subcategoria)' : '(tria abans la categoria)'),
+      ...(category?.subcategories ?? []).map((/** @type {any} */ s) => option(String(s.id), `${s.name} (${s.count})`)));
+    sub.value = this.#boxSubcategory == null ? '' : String(this.#boxSubcategory);
+    sub.disabled = !category;
 
-    item({ kind: 'all' }, statusLabel('', 'bi-collection', 'Totes les pistes'), f.states?.all ?? 0, 'tm-tree-top');
-    for (const s of STATES) {
-      const count = f.states?.[s.id] ?? 0;
-      if (count > 0 || this.#sameScope({ kind: 'state', id: s.id }, this.#scope))
-        item({ kind: 'state', id: s.id }, statusLabel(s.css, s.icon, s.name), count, 'tm-tree-state');
+    const hasCat = this.#boxCategory != null;
+    const hasSub = this.#boxSubcategory != null;
+    for (const id of ['tm-rename-category', 'tm-delete-category', 'tm-new-subcategory']) /** @type {HTMLButtonElement} */ ($(id)).disabled = !hasCat;
+    for (const id of ['tm-rename-subcategory', 'tm-delete-subcategory', 'tm-folder', 'tm-empty']) /** @type {HTMLButtonElement} */ ($(id)).disabled = !hasSub;
+
+    // La carpeta vigilada de la subcategoria triada, si en té (sempre amb text, no només el color)
+    const status = $('tm-folder-status');
+    const folder = hasSub ? this.#folders.statusOf(/** @type {number} */ (this.#boxSubcategory)) : null;
+    if (!folder) {
+      status.replaceChildren();
+      return;
     }
-    items.push(el('li', 'tm-tree-heading', 'Categories'));
-    for (const c of f.categories) {
-      item({ kind: 'category', id: c.id }, statusLabel('', 'bi-folder2', c.name), c.count, 'tm-tree-category');
-      for (const s of c.subcategories) item({ kind: 'subcategory', id: s.id }, this.#subLabel(s), s.count, 'tm-tree-sub');
-    }
-    list.replaceChildren(...items);
+    const warn = folder.problem || folder.missing > 0;
+    const text = `Carpeta vigilada${folder.renewable ? ' (bossa renovable)' : ''}: ${folder.folder}` +
+      (folder.problem ? ` · ${folder.problem}` : folder.missing > 0 ? ` · ${folder.missing} amb el fitxer que falta` : '');
+    status.replaceChildren(statusLabel(warn ? 'text-warning' : 'text-info', warn ? 'bi-exclamation-triangle-fill' : folder.renewable ? 'bi-arrow-repeat' : 'bi-folder-check', text));
   }
 
-  /**
-   * El nom d'una subcategoria a l'arbre, amb una marca si vigila una carpeta (i si té problemes o fitxers que falten).
-   * Sempre amb text a l'atribut title, no només el color. @param {any} sub
-   */
-  #subLabel(sub) {
-    const label = el('span', 'tm-sub-label');
-    label.append(el('span', '', sub.name));
-    const folder = this.#folders.statusOf(sub.id);
-    if (folder) {
-      const warn = folder.problem || folder.missing > 0;
-      const mark = icon(warn ? 'bi-exclamation-triangle-fill' : folder.renewable ? 'bi-arrow-repeat' : 'bi-folder-check');
-      mark.classList.add('tm-folder-mark', warn ? 'text-warning' : 'text-info');
-      mark.removeAttribute('aria-hidden');
-      mark.setAttribute('role', 'img');
-      const text = `Carpeta vigilada${folder.renewable ? ' (bossa renovable)' : ''}: ${folder.folder}` +
-        (folder.problem ? `\n${folder.problem}` : folder.missing > 0 ? `\n${folder.missing} amb el fitxer que falta` : '');
-      mark.setAttribute('aria-label', text);
-      mark.title = text;
-      label.append(' ', mark);
-    }
-    return label;
+  /** «Categoria / Subcategoria» de la subcategoria triada al requadre. */
+  #boxSubText() {
+    const category = this.#category(this.#boxCategory);
+    const sub = this.#subcategory(this.#boxSubcategory);
+    return category && sub ? `${category.name} / ${sub.name}` : '';
   }
 
   /** Obre la carpeta vigilada de la subcategoria triada. */
   async #folder() {
-    const scope = this.#scope;
-    if (scope.kind !== 'subcategory') {
-      await confirmAction({ title: 'Carpeta vigilada', message: 'Tria primer, a l\'esquerra, la subcategoria.', confirm: 'D\'acord', info: true });
-      return;
-    }
-    await this.#folders.show({ id: scope.id, name: this.#scopeText() });
-  }
-
-  /** @param {Scope} a @param {Scope} b */
-  #sameScope(a, b) {
-    return a.kind === b.kind && (/** @type {any} */ (a).id ?? null) === (/** @type {any} */ (b).id ?? null);
-  }
-
-  /** Clicar l'arbre: canvia la categoria, la subcategoria o l'estat dels filtres (la resta es manté) i cerca. @param {Scope} scope */
-  #setScope(scope) {
-    this.#applyScope(scope);
-    this.#syncFilterControls();
-    this.#renderTree();
-    this.#search();
-  }
-
-  /** Posa als filtres el que s'ha triat a l'arbre, sense cercar. @param {Scope} scope */
-  #applyScope(scope) {
-    const f = { ...this.#f, categoryId: /** @type {number | null} */ (null), subcategoryId: /** @type {number | null} */ (null), state: '' };
-    if (scope.kind === 'state') f.state = scope.id;
-    if (scope.kind === 'category') f.categoryId = scope.id;
-    if (scope.kind === 'subcategory') {
-      f.subcategoryId = scope.id;
-      f.categoryId = this.#filters?.categories.find((/** @type {any} */ c) => c.subcategories.some((/** @type {any} */ s) => s.id === scope.id))?.id ?? null;
-    }
-    this.#f = f;
-  }
-
-  /** La categoria triada a l'arbre (o la de la subcategoria triada), o null. */
-  #selectedCategory() {
-    const f = this.#filters;
-    if (!f) return null;
-    if (this.#scope.kind === 'category') {
-      const id = this.#scope.id;
-      return f.categories.find((/** @type {any} */ c) => c.id === id) ?? null;
-    }
-    if (this.#scope.kind === 'subcategory') {
-      const id = this.#scope.id;
-      return f.categories.find((/** @type {any} */ c) => c.subcategories.some((/** @type {any} */ s) => s.id === id)) ?? null;
-    }
-    return null;
+    if (this.#boxSubcategory == null) return;
+    await this.#folders.show({ id: this.#boxSubcategory, name: this.#boxSubText() });
   }
 
   async #newCategory() {
     const name = await askText({ title: 'Nova categoria', label: 'Nom de la categoria', confirm: 'Crea-la' });
     if (!name) return;
     const result = await this.#try('No s\'ha pogut crear la categoria', () => this.#send('category.save', { name }));
-    if (result) this.#applyScope({ kind: 'category', id: result.id });
+    if (result) {
+      this.#boxCategory = result.id;
+      this.#boxSubcategory = null;
+    }
     await this.#loadFilters();
-    if (result) await this.#search();
   }
 
   async #newSubcategory() {
-    const category = this.#selectedCategory();
-    if (!category) {
-      await confirmAction({ title: 'Nova subcategoria', message: 'Tria primer, a l\'esquerra, la categoria on la vols crear.', confirm: 'D\'acord', info: true });
-      return;
-    }
+    const category = this.#category(this.#boxCategory);
+    if (!category) return;
     const name = await askText({ title: `Nova subcategoria a «${category.name}»`, label: 'Nom de la subcategoria', confirm: 'Crea-la' });
     if (!name) return;
     const result = await this.#try('No s\'ha pogut crear la subcategoria', () => this.#send('subcategory.save', { categoryId: category.id, name }));
-    if (result) this.#applyScope({ kind: 'subcategory', id: result.id });
+    if (result) this.#boxSubcategory = result.id;
     await this.#loadFilters();
-    if (result) await this.#search();
   }
 
-  async #rename() {
-    const f = this.#filters;
-    const scope = this.#scope;
-    if (!f || (scope.kind !== 'category' && scope.kind !== 'subcategory')) {
-      await confirmAction({ title: 'Canviar el nom', message: 'Tria primer, a l\'esquerra, la categoria o la subcategoria.', confirm: 'D\'acord', info: true });
-      return;
-    }
-    if (scope.kind === 'category') {
-      const category = f.categories.find((/** @type {any} */ c) => c.id === scope.id);
-      const name = await askText({ title: 'Canviar el nom de la categoria', label: 'Nom nou', confirm: 'Canvia el nom', value: category?.name });
-      if (name && name !== category?.name) await this.#try('No s\'ha pogut canviar el nom', () => this.#send('category.save', { categoryId: scope.id, name }));
-    } else {
-      const sub = f.categories.flatMap((/** @type {any} */ c) => c.subcategories).find((/** @type {any} */ s) => s.id === scope.id);
-      const name = await askText({ title: 'Canviar el nom de la subcategoria', label: 'Nom nou', confirm: 'Canvia el nom', value: sub?.name });
-      if (name && name !== sub?.name) await this.#try('No s\'ha pogut canviar el nom', () => this.#send('subcategory.save', { subcategoryId: scope.id, name }));
-    }
+  async #renameCategory() {
+    const category = this.#category(this.#boxCategory);
+    if (!category) return;
+    const name = await askText({ title: 'Canviar el nom de la categoria', label: 'Nom nou', confirm: 'Canvia el nom', value: category.name });
+    if (name && name !== category.name) await this.#try('No s\'ha pogut canviar el nom', () => this.#send('category.save', { categoryId: category.id, name }));
+    await this.#loadFilters();
+  }
+
+  async #renameSubcategory() {
+    const sub = this.#subcategory(this.#boxSubcategory);
+    if (!sub) return;
+    const name = await askText({ title: 'Canviar el nom de la subcategoria', label: 'Nom nou', confirm: 'Canvia el nom', value: sub.name });
+    if (name && name !== sub.name) await this.#try('No s\'ha pogut canviar el nom', () => this.#send('subcategory.save', { subcategoryId: sub.id, name }));
     await this.#loadFilters();
     if (this.#track) await this.#open(this.#track.id, false); // la fitxa diu el nom de la subcategoria
+  }
+
+  /** Esborra la categoria triada: el motor només ho fa si no té subcategories ni la fa servir cap rotació. */
+  async #deleteCategory() {
+    const category = this.#category(this.#boxCategory);
+    if (!category) return;
+    const ok = await confirmAction({ title: 'Esborrar la categoria', message: `S'esborrarà la categoria «${category.name}».`, confirm: 'Esborra-la' });
+    if (!ok) return;
+    const done = await this.#try('No s\'ha pogut esborrar la categoria', () => this.#send('category.delete', { categoryId: category.id }));
+    if (!done) return;
+    this.#boxCategory = null;
+    this.#boxSubcategory = null;
+    if (this.#f.categoryId === category.id) this.#f = { ...this.#f, categoryId: null, subcategoryId: null };
+    await this.#loadFilters();
+  }
+
+  /** Esborra la subcategoria triada: el motor només ho fa si és buida i no la fa servir res (diu què, si no). */
+  async #deleteSubcategory() {
+    const sub = this.#subcategory(this.#boxSubcategory);
+    if (!sub) return;
+    const ok = await confirmAction({ title: 'Esborrar la subcategoria', message: `S'esborrarà la subcategoria «${this.#boxSubText()}».`, confirm: 'Esborra-la' });
+    if (!ok) return;
+    const done = await this.#try('No s\'ha pogut esborrar la subcategoria', () => this.#send('subcategory.delete', { subcategoryId: sub.id }));
+    if (!done) return;
+    this.#boxSubcategory = null;
+    if (this.#f.subcategoryId === sub.id) this.#f = { ...this.#f, subcategoryId: null };
+    await this.#loadFilters();
   }
 
   /**
@@ -317,13 +301,10 @@ export class TrackManagerView {
    * abans d'importar-ne la nova. Primer es demana al motor què faria i es confirma.
    */
   async #empty() {
-    const scope = this.#scope;
-    if (scope.kind !== 'subcategory') {
-      await confirmAction({ title: 'Buidar una subcategoria', message: 'Tria primer, a l\'esquerra, la subcategoria que vols buidar.', confirm: 'D\'acord', info: true });
-      return;
-    }
+    const subcategoryId = this.#boxSubcategory;
+    if (subcategoryId == null) return;
     const preview = await this.#try('No s\'ha pogut buidar la subcategoria',
-      () => this.#send('subcategory.empty', { subcategoryId: scope.id, dryRun: true }));
+      () => this.#send('subcategory.empty', { subcategoryId, dryRun: true }));
     if (!preview) return;
     if (preview.tracks === 0) {
       await confirmAction({ title: 'Buidar la subcategoria', message: `«${preview.name}» ja és buida.`, confirm: 'D\'acord', info: true });
@@ -348,9 +329,9 @@ export class TrackManagerView {
         'subcategoria: fins que no s\'hi importi música nova, l\'AutoDJ saltarà aquests passos (amb un avís).');
     const ok = await confirmAction({ title: 'Buidar la subcategoria', message: lines.join('\n\n'), confirm: `Esborra ${toDelete} ${toDelete === 1 ? 'pista' : 'pistes'}` });
     if (!ok) return;
-    const done = await this.#try('No s\'ha pogut buidar la subcategoria', () => this.#send('subcategory.empty', { subcategoryId: scope.id }));
+    const done = await this.#try('No s\'ha pogut buidar la subcategoria', () => this.#send('subcategory.empty', { subcategoryId }));
     if (!done) return;
-    if (this.#track && this.#track.subcategoryId === scope.id) {
+    if (this.#track && this.#track.subcategoryId === subcategoryId) {
       this.#track = null;
       this.#renderDetail();
     }
@@ -364,10 +345,270 @@ export class TrackManagerView {
     });
   }
 
+  // --- Gestor d'etiquetes (D-111) ---
+
+  /** Una finestra amb totes les etiquetes: quantes pistes i quines rotacions; canviar el nom, fusionar i esborrar. */
+  async #manageTags() {
+    const list = el('div', 'tm-tags-list');
+    /** @param {any[]} tags */
+    const render = (tags) => {
+      if (tags.length === 0) {
+        list.replaceChildren(el('p', 'text-body-secondary m-0', 'Encara no hi ha cap etiqueta. Es creen escrivint-les a la fitxa d\'una pista.'));
+        return;
+      }
+      list.replaceChildren(...tags.map((t) => {
+        const row = el('div', 'tm-tag-row');
+        const info = el('div', 'tm-tag-info');
+        info.append(el('strong', '', t.name), el('span', 'text-body-secondary', ` · ${t.tracks} ${t.tracks === 1 ? 'pista' : 'pistes'}`));
+        if (t.rotations.length > 0) info.append(el('div', 'form-text m-0', `La fan servir les rotacions ${t.rotations.map((/** @type {string} */ r) => `«${r}»`).join(', ')}`));
+        const tool = (/** @type {string} */ iconName, /** @type {string} */ title, /** @type {() => Promise<void>} */ run, danger = false) => {
+          const b = el('button', `btn btn-sm ${danger ? 'btn-outline-danger' : 'btn-outline-secondary'}`);
+          b.type = 'button';
+          b.title = title;
+          b.setAttribute('aria-label', `${title}: ${t.name}`);
+          b.append(icon(iconName));
+          b.addEventListener('click', run);
+          return b;
+        };
+        const tools = el('div', 'tm-tag-tools');
+        tools.append(
+          tool('bi-pencil', 'Canvia el nom', async () => {
+            const name = await askText({ title: 'Canviar el nom de l\'etiqueta', label: 'Nom nou', confirm: 'Canvia el nom', value: t.name });
+            if (name && name !== t.name) await update(() => this.#send('tags.rename', { tagId: t.id, name }));
+          }),
+          tool('bi-union', 'Fusiona amb una altra', async () => {
+            const select = /** @type {HTMLSelectElement} */ (el('select', 'form-select'));
+            select.append(...tags.filter((o) => o.id !== t.id).map((o) => option(String(o.id), `${o.name} (${o.tracks})`)));
+            if (select.options.length === 0) return;
+            const ok = await formDialog({
+              title: `Fusionar «${t.name}»`, icon: 'bi-union', confirm: 'Fusiona-les',
+              message: `Les pistes (i les rotacions) que tenen «${t.name}» passaran a tenir l'etiqueta que triïs, i «${t.name}» desapareixerà.`,
+              body: [dialogField('Dins de', select)],
+            });
+            if (ok) await update(() => this.#send('tags.merge', { fromId: t.id, intoId: Number(select.value) }));
+          }),
+          tool('bi-trash', 'Esborra', async () => {
+            const ok = await confirmAction({
+              title: 'Esborrar l\'etiqueta',
+              message: `«${t.name}» s'esborrarà i es traurà de ${t.tracks} ${t.tracks === 1 ? 'pista' : 'pistes'}. Les pistes no s'esborren.`,
+              confirm: 'Esborra-la',
+            });
+            if (ok) await update(() => this.#send('tags.delete', { tagId: t.id }));
+          }, true),
+        );
+        row.append(info, tools);
+        return row;
+      }));
+    };
+    /** @param {() => Promise<any>} run */
+    const update = async (run) => {
+      const result = await this.#try('No s\'ha pogut canviar l\'etiqueta', run);
+      if (result) render(result.tags);
+    };
+    const first = await this.#try('No s\'han pogut llegir les etiquetes', () => this.#send('tags.list'));
+    if (!first) return;
+    render(first.tags);
+    await formDialog({
+      title: 'Etiquetes', icon: 'bi-tags', wide: true,
+      message: 'Dues etiquetes que s\'escriuen diferent (p. ex. «catala» i «català») es poden fusionar. Les que fa servir una rotació no es poden esborrar.',
+      body: [list],
+    });
+    await this.#loadFilters();
+    if (this.#track) await this.#open(this.#track.id, false); // la fitxa diu les etiquetes
+  }
+
+  // --- Selecció i accions en bloc (D-111) ---
+
+  /** La barra d'accions: quantes n'hi ha de seleccionades, seleccionar totes les del filtre i què se'ls pot fer. */
+  #renderBulk() {
+    const bar = $('tm-bulk');
+    const n = this.#selected.size;
+    bar.classList.toggle('d-none', n === 0);
+    if (n === 0) {
+      bar.replaceChildren();
+      return;
+    }
+    const button = (/** @type {string} */ iconName, /** @type {string} */ text, /** @type {() => void} */ run, css = 'btn-outline-secondary') => {
+      const b = el('button', `btn btn-sm ${css}`);
+      b.type = 'button';
+      b.append(icon(iconName), ' ', el('span', '', text));
+      b.addEventListener('click', run);
+      return b;
+    };
+    const count = el('span', 'tm-bulk-count', `${n.toLocaleString('ca-ES')} ${n === 1 ? 'seleccionada' : 'seleccionades'}`);
+    const items = [count];
+    if (n < this.#total) {
+      const all = el('button', 'btn btn-sm btn-link p-0', `Selecciona les ${this.#total.toLocaleString('ca-ES')} del filtre`);
+      all.type = 'button';
+      all.addEventListener('click', () => this.#selectAllMatching());
+      items.push(all);
+    }
+    items.push(
+      button('bi-folder-symlink', 'Canvia la subcategoria…', () => this.#bulkSubcategory()),
+      button('bi-check-circle', 'Activa', () => this.#bulk({ action: 'enable' }, 'activades')),
+      button('bi-slash-circle', 'Desactiva', () => this.#bulk({ action: 'disable' }, 'desactivades')),
+      button('bi-tags', 'Etiqueta…', () => this.#bulkTag()),
+      button('bi-trash', 'Esborra…', () => this.#bulkDelete(), 'btn-outline-danger'),
+      button('bi-x-lg', 'Treu la selecció', () => this.#clearSelection(), 'btn-link'),
+    );
+    bar.replaceChildren(...items);
+  }
+
+  /** Marca o desmarca una pista. @param {number} id @param {boolean} on */
+  #toggleSelected(id, on) {
+    if (on) this.#selected.add(id);
+    else this.#selected.delete(id);
+    this.#syncChecks();
+  }
+
+  /** Les caselles de les files i la de la capçalera (marcada, desmarcada o a mitges), i la barra. */
+  #syncChecks() {
+    let visible = 0;
+    let checked = 0;
+    for (const box of /** @type {NodeListOf<HTMLInputElement>} */ ($('tm-list').querySelectorAll('.tm-check'))) {
+      const id = Number(/** @type {HTMLElement} */ (box.closest('tr')).dataset.trackId);
+      box.checked = this.#selected.has(id);
+      visible++;
+      if (box.checked) checked++;
+    }
+    const all = /** @type {HTMLInputElement | null} */ ($('tm-head').querySelector('.tm-check-all'));
+    if (all) {
+      all.checked = visible > 0 && checked === visible;
+      all.indeterminate = checked > 0 && checked < visible;
+    }
+    this.#renderBulk();
+  }
+
+  /** La casella de la capçalera: selecciona (o treu) totes les que es veuen. @param {boolean} on */
+  #toggleVisible(on) {
+    for (const row of /** @type {NodeListOf<HTMLElement>} */ ($('tm-list').querySelectorAll('.tm-row'))) {
+      const id = Number(row.dataset.trackId);
+      if (on) this.#selected.add(id);
+      else this.#selected.delete(id);
+    }
+    this.#syncChecks();
+  }
+
+  /** Selecciona totes les pistes del filtre (no només les que es veuen), demanant-ne els ids al motor. */
+  async #selectAllMatching() {
+    const result = await this.#try('No s\'han pogut seleccionar', () => this.#send('library.ids', filtersToParams(this.#f)));
+    if (!result) return;
+    for (const id of result.ids) this.#selected.add(id);
+    if (result.total > result.ids.length) {
+      await confirmAction({ title: 'Massa pistes', message: `Només se n'han seleccionat ${result.ids.length.toLocaleString('ca-ES')} de ${result.total.toLocaleString('ca-ES')}.`, confirm: 'D\'acord', info: true });
+    }
+    this.#syncChecks();
+  }
+
+  #clearSelection() {
+    this.#selected.clear();
+    this.#syncChecks();
+  }
+
+  /**
+   * Fa una acció en bloc (library.bulk) i ho diu. @param {Record<string, any>} params @param {string} done  «activades»…
+   */
+  async #bulk(params, done) {
+    const ids = [...this.#selected];
+    const result = await this.#try('No s\'ha pogut fer', () => this.#send('library.bulk', { trackIds: ids, ...params }));
+    if (!result) return;
+    await this.#afterBulk();
+    await confirmAction({ title: 'Fet', message: `${result.changed.toLocaleString('ca-ES')} de ${ids.length.toLocaleString('ca-ES')} pistes ${done}.`, confirm: 'D\'acord', info: true });
+  }
+
+  /** Després d'un canvi en bloc: la llista, els comptes i, si hi era, la fitxa oberta. La selecció es manté. */
+  async #afterBulk() {
+    await this.#loadFilters();
+    await this.#load(true);
+    if (this.#track) await this.#open(this.#track.id, false);
+  }
+
+  /** «Canvia la subcategoria…» (la «migració» de categories): totes les seleccionades passen a la que es triï. */
+  async #bulkSubcategory() {
+    const select = /** @type {HTMLSelectElement} */ (el('select', 'form-select'));
+    select.append(option('', '(sense subcategoria)'), ...(this.#filters?.categories ?? []).flatMap((/** @type {any} */ c) =>
+      c.subcategories.map((/** @type {any} */ s) => option(String(s.id), `${c.name} / ${s.name}`))));
+    if (this.#f.subcategoryId != null) select.value = '';
+    const n = this.#selected.size;
+    const ok = await formDialog({
+      title: 'Canviar la subcategoria', icon: 'bi-folder-symlink', confirm: `Mou ${n === 1 ? 'la pista' : `les ${n.toLocaleString('ca-ES')} pistes`}`,
+      message: `${n === 1 ? 'La pista seleccionada passarà' : `Les ${n.toLocaleString('ca-ES')} pistes seleccionades passaran`} a la subcategoria que triïs.`,
+      body: [dialogField('Subcategoria nova', select)],
+    });
+    if (!ok) return;
+    await this.#bulk({ action: 'subcategory', subcategoryId: select.value === '' ? null : Number(select.value) }, 'mogudes');
+  }
+
+  /** «Etiqueta…»: afegeix o treu una etiqueta a totes les seleccionades. */
+  async #bulkTag() {
+    const tags = this.#filters?.tags ?? [];
+    const what = /** @type {HTMLSelectElement} */ (el('select', 'form-select'));
+    what.append(option('add', 'Afegeix-los l\'etiqueta'), option('remove', 'Treu-los l\'etiqueta'));
+    const name = /** @type {HTMLInputElement} */ (el('input', 'form-control'));
+    name.type = 'text';
+    name.maxLength = 100;
+    name.setAttribute('list', 'tm-tag-names');
+    const names = el('datalist', '');
+    names.id = 'tm-tag-names';
+    names.append(...tags.map((/** @type {any} */ t) => option(t.name, '')));
+    const n = this.#selected.size;
+    const ok = await formDialog({
+      title: 'Etiqueta', icon: 'bi-tags', confirm: 'Fes-ho',
+      message: `A ${n === 1 ? 'la pista seleccionada' : `les ${n.toLocaleString('ca-ES')} pistes seleccionades`}.`,
+      body: [dialogField('Què', what), dialogField('Etiqueta', name, 'Si l\'afegeixes i no existeix, es crea.'), names],
+    });
+    const text = name.value.trim();
+    if (!ok || !text) return;
+    if (what.value === 'add') {
+      await this.#bulk({ action: 'addTag', tag: text }, 'amb l\'etiqueta');
+      return;
+    }
+    const tag = tags.find((/** @type {any} */ t) => t.name.toLocaleLowerCase('ca') === text.toLocaleLowerCase('ca'));
+    if (!tag) {
+      await confirmAction({ title: 'Etiqueta', message: `No hi ha cap etiqueta «${text}».`, confirm: 'D\'acord', info: true });
+      return;
+    }
+    await this.#bulk({ action: 'removeTag', tagId: tag.id }, 'sense l\'etiqueta');
+  }
+
+  /** «Esborra…»: primer el motor diu què passaria (les dels esdeveniments es queden; les que han sonat fa poc). */
+  async #bulkDelete() {
+    const ids = [...this.#selected];
+    const preview = await this.#try('No s\'ha pogut esborrar', () => this.#send('library.bulk', { trackIds: ids, action: 'delete', dryRun: true }));
+    if (!preview) return;
+    const kept = preview.kept.length;
+    const toDelete = ids.length - kept;
+    if (toDelete === 0) {
+      await confirmAction({ title: 'Esborrar pistes', message: 'Totes les pistes seleccionades les fan servir esdeveniments: no se n\'esborra cap.', confirm: 'D\'acord', info: true });
+      return;
+    }
+    const lines = [`S'esborraran de la biblioteca ${toDelete.toLocaleString('ca-ES')} ${toDelete === 1 ? 'pista' : 'pistes'}. Els fitxers no es toquen, però no es pot desfer.`];
+    if (kept > 0) {
+      const sample = preview.kept.slice(0, 5).map((/** @type {any} */ k) => `«${k.title}» (${k.events})`).join(', ');
+      lines.push(`${kept} les fan servir esdeveniments i no s'esborraran: ${sample}${kept > 5 ? '…' : ''}.`);
+    }
+    if (preview.playedRecently > 0) {
+      lines.push(`⚠ ${preview.playedRecently} han sonat els últims 2 anys: l'historial es conserva, però ja no es podrà fer el seu certificat ` +
+        'per pista. Si són falques, potser és millor desactivar-les.');
+    }
+    const ok = await confirmAction({ title: 'Esborrar pistes', message: lines.join('\n\n'), confirm: `Esborra ${toDelete.toLocaleString('ca-ES')} ${toDelete === 1 ? 'pista' : 'pistes'}` });
+    if (!ok) return;
+    const done = await this.#try('No s\'ha pogut esborrar', () => this.#send('library.bulk', { trackIds: ids, action: 'delete' }));
+    if (!done) return;
+    for (const id of ids) if (!done.kept.some((/** @type {any} */ k) => k.id === id)) this.#selected.delete(id);
+    if (this.#track && !done.kept.some((/** @type {any} */ k) => k.id === this.#track.id) && ids.includes(this.#track.id)) {
+      this.#track = null;
+      this.#renderDetail();
+    }
+    await this.#afterBulk();
+    await confirmAction({ title: 'Fet', message: `${done.deleted.toLocaleString('ca-ES')} pistes esborrades.`, confirm: 'D\'acord', info: true });
+  }
+
   // --- Llista de pistes (D-111): filtres, capçaleres per ordenar, taula i recompte ---
 
   /** Les columnes de la taula: clau d'ordre (null = no s'hi pot ordenar), títol i classe. */
   static COLUMNS = [
+    { sort: null, label: '', css: 'tm-c-check' },
     { sort: 'title', label: 'Títol', css: 'tm-c-title' },
     { sort: 'artist', label: 'Artista', css: 'tm-c-artist' },
     { sort: 'type', label: 'Tipus', css: 'tm-c-type' },
@@ -388,9 +629,17 @@ export class TrackManagerView {
 
   /** Canvia els filtres (des d'un control), torna a dibuixar el que en depèn i cerca. @param {import('../tracks-filter.js').TrackFilters} f */
   #setFilters(f) {
+    // Si canvien els filtres (no només l'ordre), la selecció ja no correspon a la llista: es treu
+    const key = (/** @type {import('../tracks-filter.js').TrackFilters} */ x) => JSON.stringify({ ...filtersToParams(x), sort: null, desc: null });
+    if (key(f) !== key(this.#f)) this.#selected.clear();
+    // El requadre «Categories» segueix la categoria i la subcategoria del filtre (per actuar-hi sense tornar-les a triar)
+    if (f.categoryId !== this.#f.categoryId || f.subcategoryId !== this.#f.subcategoryId) {
+      this.#boxCategory = f.categoryId;
+      this.#boxSubcategory = f.subcategoryId;
+      this.#renderBox();
+    }
     this.#f = f;
     this.#syncFilterControls();
-    this.#renderTree();
     this.#search();
   }
 
@@ -400,7 +649,15 @@ export class TrackManagerView {
     for (const c of TrackManagerView.COLUMNS) {
       const th = el('th', c.css);
       th.scope = 'col';
-      if (!c.sort) {
+      if (c.css === 'tm-c-check') {
+        // Selecciona (o treu) totes les que es veuen
+        const all = /** @type {HTMLInputElement} */ (el('input', 'form-check-input tm-check-all'));
+        all.type = 'checkbox';
+        all.title = 'Selecciona totes les que es veuen';
+        all.setAttribute('aria-label', all.title);
+        all.addEventListener('change', () => this.#toggleVisible(all.checked));
+        th.append(all);
+      } else if (!c.sort) {
         th.textContent = c.label;
       } else {
         const sorted = this.#f.sort === c.sort;
@@ -534,18 +791,6 @@ export class TrackManagerView {
     $('tm-filters-toggle').setAttribute('aria-expanded', String(open));
   }
 
-  #scopeText() {
-    const scope = this.#scope;
-    if (scope.kind === 'state') return STATES.find((s) => s.id === scope.id)?.name ?? '';
-    if (scope.kind === 'category') return this.#selectedCategory()?.name ?? '';
-    if (scope.kind === 'subcategory') {
-      const category = this.#selectedCategory();
-      const sub = category?.subcategories.find((/** @type {any} */ s) => s.id === scope.id);
-      return category && sub ? `${category.name} / ${sub.name}` : '';
-    }
-    return 'Totes les pistes';
-  }
-
   /** @param {boolean} fromStart */
   async #load(fromStart) {
     const token = ++this.#token;
@@ -563,6 +808,8 @@ export class TrackManagerView {
       this.#offset = offset + result.tracks.length;
       this.#more = result.more;
       const total = result.total ?? this.#offset;
+      this.#total = total;
+      this.#syncChecks();
       $('tm-count').textContent = totalText(total) + (this.#offset < total ? ` · se'n veuen ${this.#offset.toLocaleString('ca-ES')}: baixa per veure'n més` : '');
     } catch (err) {
       if (token === this.#token) $('tm-count').textContent = `No s'ha pogut cercar: ${/** @type {Error} */ (err).message}`;
@@ -584,6 +831,14 @@ export class TrackManagerView {
       tr.append(td);
       return td;
     };
+    // La casella de selecció: no obre la fitxa
+    const check = /** @type {HTMLInputElement} */ (el('input', 'form-check-input tm-check'));
+    check.type = 'checkbox';
+    check.checked = this.#selected.has(track.id);
+    check.setAttribute('aria-label', `Selecciona «${track.title || '(sense títol)'}»`);
+    check.addEventListener('click', (e) => e.stopPropagation());
+    check.addEventListener('change', () => this.#toggleSelected(track.id, check.checked));
+    cell('tm-c-check', check);
     cell('tm-c-title', track.title || '(sense títol)');
     cell('tm-c-artist', track.artist || '');
     cell('tm-c-type', typeName(track.type));
@@ -601,6 +856,7 @@ export class TrackManagerView {
     if (track.lastPlayed) played.title = new Date(track.lastPlayed).toLocaleString('ca-ES');
     tr.addEventListener('click', () => this.#select(track.id));
     tr.addEventListener('keydown', (e) => {
+      if (e.target !== tr) return; // la casella fa la seva
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         this.#select(track.id);
