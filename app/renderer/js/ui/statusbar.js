@@ -7,14 +7,15 @@ import { $, statusLabel } from './dom.js';
 /** @param {any} output  de output.get o output.changed (docs/protocol.md, 4.3) */
 export function renderOutput(output) {
   const target = $('status-output');
+  target.title = 'Clica per triar la sortida d\'àudio';
   if (!output?.current) {
     target.replaceChildren(statusLabel('text-danger', 'bi-volume-mute-fill', `Sense sortida d'àudio${output?.problem ? `: ${output.problem}` : ''}`));
   } else if (output.emergency) {
     target.replaceChildren(statusLabel('text-danger', 'bi-exclamation-triangle-fill', `Sortida d'emergència: ${output.current.name}`));
-    target.title = output.problem ?? '';
+    if (output.problem) target.title = `${output.problem}\nClica per triar la sortida d'àudio`;
   } else {
-    target.replaceChildren(statusLabel('text-body-secondary', 'bi-speaker-fill', `Sortida: ${output.current.name}`));
-    target.title = output.problem ?? '';
+    target.replaceChildren(statusLabel('', 'bi-speaker-fill', `Sortida: ${output.current.name}`));
+    if (output.problem) target.title = `${output.problem}\nClica per triar la sortida d'àudio`;
   }
 }
 

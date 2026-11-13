@@ -11,6 +11,7 @@ import { NowPlaying } from './ui/now-playing.js';
 import { QueueView, HistoryView } from './ui/queue.js';
 import { AutoDjView } from './ui/autodj.js';
 import { renderOutput, renderNowPlaying, renderWarnings } from './ui/statusbar.js';
+import { openOutputPicker } from './ui/output-picker.js';
 import { PlannerView } from './ui/planner.js';
 import { UpcomingEvents } from './ui/upcoming.js';
 import { EventsPause } from './ui/events-pause.js';
@@ -322,6 +323,9 @@ $('btn-pause').addEventListener('click', async () => {
     await confirmAction({ title: 'No s\'ha pogut fer pausa', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
   }
 });
+
+// Triar la sortida d'àudio, en clicar-la a la barra de sota (D-120)
+$('status-output').addEventListener('click', () => openOutputPicker(send));
 
 // Els avisos, sencers, en clicar el comptador de la barra de sota
 $('status-warnings').addEventListener('click', () => {

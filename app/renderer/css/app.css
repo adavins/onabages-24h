@@ -1632,6 +1632,69 @@ body {
   color: var(--bs-body-color);
 }
 
+/* La sortida (D-120): botó que s'escurça amb punts suspensius si el nom és llarg */
+.statusbar-output {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Finestra per triar la sortida d'àudio (D-120) */
+.op-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.op-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+
+.op-row:has(input:checked) {
+  border-color: var(--bs-primary);
+  background: rgba(var(--bs-primary-rgb), 0.12);
+}
+
+.op-row.is-inactive {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.op-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.op-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.op-details {
+  font-size: 0.8rem;
+  color: var(--bs-secondary-color);
+}
+
+.op-marks {
+  display: flex;
+  gap: 0.35rem;
+  flex: none;
+}
+
+.op-missing {
+  font-size: 0.9rem;
+  padding: 0.25rem 0.25rem 0;
+}
+
 /* Quant comprimeix el processador (fase 3, pas 6b): plena = 12 dB o més */
 .reduction-bar {
   display: inline-block;
