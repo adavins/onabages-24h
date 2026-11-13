@@ -1678,12 +1678,30 @@ button.section:hover {
   }
 }
 
-.cal-back {
-  margin-bottom: 0.6rem;
+/* Capçalera en una fila (D-116): tornar i la pista a l'esquerra, la vista a la dreta */
+.cal-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
 }
 
-.cal-head {
-  margin-bottom: 0.75rem;
+.cal-back {
+  flex: none;
+}
+
+.cal-info {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.cal-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1rem;
+  color: var(--ob-muted);
+  font-size: 0.82rem;
 }
 
 .cal-title {
@@ -1832,7 +1850,8 @@ button.section:hover {
 }
 
 .cal-mode {
-  margin-top: 0.5rem;
+  flex: none;
+  margin-left: auto;
 }
 
 /* Vista «Només aquesta pista»: una marca els dies que sona */

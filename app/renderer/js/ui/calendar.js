@@ -127,10 +127,15 @@ export class CalendarView {
       el('span', 'text-body-secondary', formatDuration(t.durationMs)));
     const dates = t.validFrom || t.validUntil
       ? `Vigent ${t.validFrom ? `del ${dateText(t.validFrom)}` : ''}${t.validUntil ? ` al ${dateText(t.validUntil)}` : ' sense data de fi'}`
-      : 'Sense dates d\'inici ni de fi (es canvien a la fitxa, a la pestanya Pistes)';
-    head.append(back, title, el('div', 'form-text m-0', dates));
-    if (t.fileState === 'missing') head.append(statusLabel('text-danger small', 'bi-exclamation-octagon-fill', 'El fitxer d\'aquesta pista falta: no sonarà'));
-    head.append(this.#modeSwitch());
+      : 'Sense dates d\'inici ni de fi';
+    // Una sola fila (D-116): a l'esquerra, tornar i la pista (les dates i els avisos en una línia petita a sota);
+    // a la dreta, quina vista
+    const info = el('div', 'cal-info');
+    const sub = el('div', 'cal-sub');
+    sub.append(el('span', '', dates));
+    if (t.fileState === 'missing') sub.append(statusLabel('text-danger', 'bi-exclamation-octagon-fill', 'El fitxer falta: no sonarà'));
+    info.append(title, sub);
+    head.append(back, info, this.#modeSwitch());
 
     // A sota de la capçalera: la graella (amb el seu desplaçament) i, si n'hi ha d'obert, el contingut de l'esdeveniment
     // en un panell a la dreta (D-114). Es conserva on s'havia baixat (la vista es torna a dibuixar a cada clic).
