@@ -199,6 +199,35 @@ public static class TrackCalendar
         return ev with { Actions = actions, DaysMask = blockDays & Weekdays.All };
     }
 
+    /// <summary>L'acció sona el dia <paramref name="day"/> (0 = dilluns): no té dies propis o el té marcat.</summary>
+    public static bool AppliesOn(EventAction action, int day) => action.DaysMask is not { } mask || (mask & (1 << day)) != 0;
+
+    /// <summary>
+    /// Mou la pista una posició amunt (<paramref name="delta"/> = −1) o avall (+1) dins del contingut de l'esdeveniment
+    /// que sona el dia <paramref name="day"/> (fase 4, pas 2c): passa just abans (o just després) de l'acció veïna
+    /// d'aquell dia. L'ordre de les accions és un de sol per a tots els dies. Retorna l'esdeveniment canviat (sense
+    /// desar); si ja és la primera (o l'última), sense canvis.
+    /// </summary>
+    /// <exception cref="ArgumentException">Si la pista no hi és aquell dia o el moviment no és −1 o +1.</exception>
+    public static ScheduledEvent Move(ScheduledEvent ev, long trackId, int day, int delta)
+    {
+        if (delta is not (-1 or 1)) throw new ArgumentException("Només es pot moure una posició amunt (−1) o avall (+1).");
+        var actions = ev.Actions.ToList();
+        var ofDay = Enumerable.Range(0, actions.Count).Where(i => AppliesOn(actions[i], day)).ToList();
+        int position = ofDay.FindIndex(i => TrackOf(actions[i]) == trackId);
+        if (position < 0) throw new ArgumentException($"La pista no és a «{ev.Name}» aquest dia.");
+        int target = position + delta;
+        if (target < 0 || target >= ofDay.Count) return ev;
+
+        int from = ofDay[position];
+        int neighbor = ofDay[target];
+        var item = actions[from];
+        actions.RemoveAt(from);
+        if (neighbor > from) neighbor--; // s'ha desplaçat en treure la pista
+        actions.Insert(delta < 0 ? neighbor : neighbor + 1, item);
+        return ev with { Actions = actions };
+    }
+
     /// <summary>
     /// Passis de la pista entre <paramref name="from"/> i <paramref name="to"/> (tots dos inclosos), dia a dia amb les
     /// dates reals: només els esdeveniments actius, les seves recurrències i excepcions, els dies propis de l'acció i les

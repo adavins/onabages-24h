@@ -213,4 +213,38 @@ public sealed class TrackCalendarTests : IDisposable
         Set(_spot, 0, false);
         Assert.DoesNotContain(_events.List(), e => e.StartTime == new TimeOnly(7, 5));
     }
+
+    [Fact]
+    public void Moure_la_pista_la_passa_abans_o_despres_de_la_veina_d_aquell_dia()
+    {
+        long a = _library.AddTrack(new Track { Path = @"C:\f\A.mp3", Title = "A", Type = TrackType.Commercial, DurationMs = 10_000 });
+        long b = _library.AddTrack(new Track { Path = @"C:\f\B.mp3", Title = "B", Type = TrackType.Commercial, DurationMs = 10_000 });
+        // Ordre: A (tots els dies), B (només dimarts), Ferreteria (tots), Magazín (tots)
+        var ev = Save("Magazín", EventMode.Cut, 9, 0, Weekdays.MondayToFriday,
+            actions: [Track(a), Track(b, 0b10), Track(_spot), Track(_program)]);
+        long[] Order(ScheduledEvent e) => e.Actions.Select(x => TrackCalendar.TrackOf(x)!.Value).ToArray();
+
+        // Dilluns, B no hi és: pujar Ferreteria la passa just abans d'A
+        Assert.Equal([_spot, a, b, _program], Order(TrackCalendar.Move(ev, _spot, 0, -1)));
+        // Dimarts, B hi és: pujar Ferreteria la passa just abans de B
+        Assert.Equal([a, _spot, b, _program], Order(TrackCalendar.Move(ev, _spot, 1, -1)));
+        // Baixar-la la passa darrere del Magazín
+        Assert.Equal([a, b, _program, _spot], Order(TrackCalendar.Move(ev, _spot, 0, 1)));
+        // La primera no puja més
+        Assert.Same(ev, TrackCalendar.Move(ev, a, 0, -1));
+        Assert.Throws<ArgumentException>(() => TrackCalendar.Move(ev, b, 0, 1)); // dilluns, B no hi és
+
+        // Per ordre: el contingut del dimarts en ordre, amb la pista marcada; moure-la es desa
+        var router = new CommandRouter(new EngineState(), () => { }, _library, events: _events);
+        JsonNode Send(JsonObject msg) { msg["v"] = 1; msg["id"] = 1; return router.Handle(msg.ToJsonString())["result"]!; }
+        var content = Send(new() { ["cmd"] = "calendar.content", ["eventId"] = ev.Id, ["day"] = 1, ["trackId"] = _spot });
+        Assert.Equal(["A", "B", "Ferreteria", "Magazín"], content["items"]!.AsArray().Select(i => i!["label"]!.GetValue<string>()));
+        Assert.Equal([false, false, true, false], content["items"]!.AsArray().Select(i => i!["isTrack"]!.GetValue<bool>()));
+        Assert.Equal(20_000, content["items"]![2]!["durationMs"]!.GetValue<long>());
+        Assert.Equal(3, Send(new() { ["cmd"] = "calendar.content", ["eventId"] = ev.Id, ["day"] = 0 })["items"]!.AsArray().Count); // dilluns, sense B
+
+        var moved = Send(new() { ["cmd"] = "calendar.move", ["eventId"] = ev.Id, ["day"] = 1, ["trackId"] = _spot, ["delta"] = -1 });
+        Assert.Equal(["A", "Ferreteria", "B", "Magazín"], moved["items"]!.AsArray().Select(i => i!["label"]!.GetValue<string>()));
+        Assert.Equal([a, _spot, b, _program], Order(_events.Get(ev.Id)!));
+    }
 }

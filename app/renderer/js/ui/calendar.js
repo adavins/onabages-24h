@@ -10,7 +10,7 @@ import { typeName, formatDuration } from '../format.js';
 import { modeInfo } from '../schedule.js';
 import {
   DAY_SHORT, DAY_NAMES, cellWarnings, cellTitle, blockTimeProblem, normalizeBlockTime, dateText, monthText, passes, periodText,
-  withExtraRows, trackOnlyRows,
+  withExtraRows, trackOnlyRows, contentTimes,
 } from '../calendar-form.js';
 
 const PAGE = 50;
@@ -36,6 +36,11 @@ export class CalendarView {
   #extraTimes = new Set();
   /** Què es veu: tots els esdeveniments (per programar) o només on sona la pista (D-105). @type {'all' | 'track'} */
   #mode = 'all';
+  /** El contingut obert sota la graella (pas 2c): quin esdeveniment i quin dia, i el que ha dit calendar.content. */
+  /** @type {{ eventId: number, day: number, time: string } | null} */
+  #contentOf = null;
+  /** @type {any} */
+  #content = null;
 
   /** @param {(cmd: string, params?: object) => Promise<any>} send */
   constructor(send) {
@@ -70,7 +75,22 @@ export class CalendarView {
     } catch {
       this.#calendar = null; // la pista s'ha esborrat o no hi ha connexió
     }
+    await this.#loadContent();
     this.#renderEditor();
+  }
+
+  /** Torna a demanar el contingut obert (si n'hi ha): p. ex. després de posar-hi o treure'n la pista. */
+  async #loadContent() {
+    if (!this.#contentOf || this.#trackId == null) {
+      this.#content = null;
+      return;
+    }
+    try {
+      this.#content = await this.#send('calendar.content', { eventId: this.#contentOf.eventId, day: this.#contentOf.day, trackId: this.#trackId });
+    } catch {
+      this.#contentOf = null; // l'esdeveniment s'ha esborrat (p. ex. un bloc buit)
+      this.#content = null;
+    }
   }
 
   // --- Cercador de pistes (text, categoria i subcategoria, com a la Biblioteca) ---
@@ -142,7 +162,10 @@ export class CalendarView {
 
   /** @param {number} trackId */
   async #select(trackId) {
-    if (trackId !== this.#trackId) this.#extraTimes.clear(); // les hores provisionals eren per a l'altra pista
+    if (trackId !== this.#trackId) {
+      this.#extraTimes.clear(); // les hores provisionals eren per a l'altra pista
+      this.#contentOf = null;
+    }
     this.#trackId = trackId;
     for (const b of $('cal-results').querySelectorAll('.cal-result')) b.classList.remove('active');
     await this.refresh();
@@ -175,7 +198,7 @@ export class CalendarView {
     head.append(this.#modeSwitch());
 
     if (this.#mode === 'track') box.replaceChildren(head, this.#trackOnlyTable(cal), this.#counts(cal.counts));
-    else box.replaceChildren(head, this.#table(cal), this.#addBlock(), this.#counts(cal.counts));
+    else box.replaceChildren(head, this.#table(cal), this.#addBlock(), ...(this.#content ? [this.#contentPanel(this.#content)] : []), this.#counts(cal.counts));
   }
 
   /** «Tots els esdeveniments» (per programar) o «Només aquesta pista» (com queda la setmana de la pista, D-105). */
@@ -288,8 +311,122 @@ export class CalendarView {
     if (warnings.length > (cell.enabled ? 0 : 1)) b.append(' ', icon('bi-exclamation-triangle-fill'));
     b.disabled = this.#busy;
     b.addEventListener('click', () => this.#toggle(cell, day, time));
-    td.append(b);
+    // Al costat, el botó per veure el contingut en ordre d'emissió (pas 2c): el clic a la casella ja posa o treu la pista
+    const open = /** @type {HTMLButtonElement} */ (el('button', 'cal-cell-open'));
+    open.type = 'button';
+    const shown = this.#contentOf?.eventId === cell.eventId && this.#contentOf.day === day;
+    if (shown) open.classList.add('active');
+    open.title = `Contingut de «${cell.name}» el ${DAY_NAMES[day]}, en ordre d'emissió (per moure-hi la pista)`;
+    open.setAttribute('aria-label', open.title);
+    open.setAttribute('aria-pressed', String(shown));
+    open.append(icon('bi-card-list'));
+    open.addEventListener('click', () => this.#openContent(shown ? null : { eventId: cell.eventId, day, time }));
+    const pair = el('div', 'cal-cell-pair');
+    pair.append(b, open);
+    td.append(pair);
     return td;
+  }
+
+  // --- Contingut d'un esdeveniment, en ordre d'emissió (pas 2c) ---
+
+  /** Obre (o tanca, amb null) el contingut d'una casella. @param {{ eventId: number, day: number, time: string } | null} of */
+  async #openContent(of) {
+    this.#contentOf = of;
+    await this.#loadContent();
+    this.#renderEditor();
+    if (of) $('cal-editor').querySelector('.cal-content')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  /** @param {any} content  de calendar.content */
+  #contentPanel(content) {
+    const ev = content.event;
+    const time = this.#contentOf?.time ?? ev.time;
+    const info = modeInfo(ev.mode);
+    const box = el('section', 'cal-content');
+    box.setAttribute('aria-label', 'Contingut de l\'esdeveniment');
+
+    const head = el('div', 'cal-content-head');
+    const title = el('div', '');
+    const tag = el('span', `cal-mode-tag ${info.css}`);
+    tag.append(icon(info.icon), ` ${ev.mode}`); // color + icona + text
+    title.append(tag, ' ', el('strong', '', ev.name), ` · ${DAY_NAMES[content.day]} ${time.slice(0, 5)}`);
+    if (!ev.enabled) title.append(' ', statusLabel('text-warning small', 'bi-slash-circle', 'desactivat'));
+    const close = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    close.type = 'button';
+    close.append(icon('bi-x-lg'), ' Tanca');
+    close.addEventListener('click', () => this.#openContent(null));
+    head.append(title, close);
+    box.append(head);
+
+    const notes = [];
+    notes.push(ev.mode === 'TALLA'
+      ? 'Comença a l\'hora exacta. Les hores de cada pista són previstes (amb els encavalcaments poden avançar uns segons).'
+      : 'ENCUA: entra a la cua a aquesta hora i comença quan s\'acaba la pista que sona; les hores són aproximades.');
+    if (ev.repeats) notes.push('Es repeteix dins del dia: aquestes són les hores de la primera vegada.');
+    notes.push('L\'ordre és el mateix tots els dies: moure la pista aquí també la mou els altres dies on hi és.');
+    box.append(el('p', 'form-text mt-1 mb-2', notes.join(' ')));
+
+    const items = /** @type {any[]} */ (content.items);
+    if (items.length === 0) {
+      box.append(el('p', 'text-body-secondary m-0', 'Aquest dia no hi ha res.'));
+      return box;
+    }
+    const { starts, end } = contentTimes(items, time);
+    const list = el('ol', 'cal-content-list');
+    items.forEach((item, i) => {
+      const li = el('li', `cal-content-item${item.isTrack ? ' is-track' : ''}`);
+      li.append(el('span', 'cal-content-time', starts[i] ?? (item.type === 'PISTA' || item.type === 'STREAM' ? '?' : '')));
+      const text = el('div', 'cal-content-text');
+      text.append(el('div', 'cal-content-label', item.label));
+      if (item.detail) text.append(el('div', 'form-text m-0', item.detail));
+      li.append(text);
+      if (item.missing) li.append(statusLabel('text-danger small', 'bi-exclamation-octagon-fill', 'no sonarà'));
+      if (item.isTrack) {
+        li.append(statusLabel('text-success small', 'bi-check-square-fill', 'aquesta pista'),
+          this.#moveButton(-1, i === 0), this.#moveButton(1, i === items.length - 1));
+      }
+      list.append(li);
+    });
+    box.append(list);
+    if (!items.some((it) => it.isTrack)) box.append(el('p', 'form-text m-0', 'La pista no hi és aquest dia: marca la casella per posar-la-hi.'));
+    const footer = el('div', 'form-text mt-2', end ? `S'acaba cap a les ${end}.` : 'No se sap quan s\'acaba (hi ha alguna durada desconeguda).');
+    box.append(footer);
+    if (end && ev.maxDurationSeconds) {
+      const [h, m, s] = time.split(':').map(Number);
+      const [eh, em, es] = end.split(':').map(Number);
+      const used = ((eh * 3600 + em * 60 + es) - (h * 3600 + m * 60 + s) + 86400) % 86400;
+      if (used > ev.maxDurationSeconds) {
+        box.append(statusLabel('text-warning small', 'bi-exclamation-triangle-fill',
+          `Dura més que la durada màxima de l'esdeveniment (${formatDuration(ev.maxDurationSeconds * 1000)}).`));
+      }
+    }
+    return box;
+  }
+
+  /** @param {-1 | 1} delta @param {boolean} atEnd */
+  #moveButton(delta, atEnd) {
+    const b = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary cal-content-move'));
+    b.type = 'button';
+    b.append(icon(delta < 0 ? 'bi-arrow-up' : 'bi-arrow-down'));
+    b.title = delta < 0 ? 'Mou la pista una posició amunt (sona abans)' : 'Mou la pista una posició avall (sona després)';
+    b.setAttribute('aria-label', b.title);
+    b.disabled = atEnd || this.#busy;
+    b.addEventListener('click', () => this.#move(delta));
+    return b;
+  }
+
+  /** @param {-1 | 1} delta */
+  async #move(delta) {
+    if (this.#busy || !this.#contentOf || this.#trackId == null) return;
+    this.#busy = true;
+    try {
+      this.#content = await this.#send('calendar.move', { eventId: this.#contentOf.eventId, day: this.#contentOf.day, trackId: this.#trackId, delta });
+    } catch (err) {
+      await confirmAction({ title: 'No s\'ha pogut moure', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+    } finally {
+      this.#busy = false;
+    }
+    this.#renderEditor();
   }
 
   /** @param {any} cell @param {number} day @param {string} time */
@@ -323,6 +460,7 @@ export class CalendarView {
     } finally {
       this.#busy = false;
     }
+    await this.#loadContent(); // el contingut obert pot haver canviat (o el bloc s'ha esborrat)
     this.#renderEditor();
   }
 

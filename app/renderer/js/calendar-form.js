@@ -77,6 +77,35 @@ export function trackOnlyRows(rows) {
     .filter((r) => r.days.some(Boolean));
 }
 
+/** Les accions que ocupen temps a l'emissió (les altres, com ROTACIO o AUXILIAR, no endarrereixen la següent). */
+const TIMED = new Set(['PISTA', 'STREAM']);
+
+/**
+ * L'hora prevista de cada element del contingut d'un esdeveniment (calendar.content; fase 4, pas 2c): l'hora de
+ * l'esdeveniment més la durada de les pistes d'abans. Una pista que falta no sona (no compta). Després d'una pista o
+ * un stream de durada desconeguda, ja no se sap: null. Les accions sense àudio no tenen hora (null).
+ * @param {{ type: string, durationMs: number | null, missing: boolean }[]} items
+ * @param {string} time  l'hora de l'esdeveniment, 'HH:MM:SS'
+ * @returns {{ starts: (string | null)[], end: string | null }}  l'hora de cada element i quan s'acaba tot
+ */
+export function contentTimes(items, time) {
+  const [h, m, s] = time.split(':').map(Number);
+  /** @type {number | null} */
+  let at = (h * 3600 + m * 60 + (s || 0)) * 1000;
+  const clock = (/** @type {number} */ ms) => {
+    const total = Math.round(ms / 1000) % 86400;
+    return [Math.floor(total / 3600), Math.floor(total / 60) % 60, total % 60].map((n) => String(n).padStart(2, '0')).join(':');
+  };
+  const starts = items.map((item) => {
+    if (!TIMED.has(item.type)) return null;
+    const start = at == null ? null : clock(at);
+    if (item.missing) return start;
+    at = at == null || item.durationMs == null ? null : at + item.durationMs;
+    return start;
+  });
+  return { starts, end: at == null ? null : clock(at) };
+}
+
 /** «8:5» → «08:05». @param {string} text */
 export function normalizeBlockTime(text) {
   const [h, m] = text.trim().split(':');

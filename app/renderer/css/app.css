@@ -1581,6 +1581,102 @@ button.section:hover {
   color: var(--ob-muted);
 }
 
+/* Casella amb esdeveniment: el botó de marcar i, al costat, el de veure'n el contingut (pas 2c) */
+.cal-cell-pair {
+  display: flex;
+  gap: 2px;
+}
+
+.cal-cell-pair .cal-cell {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cal-cell-open {
+  flex: 0 0 auto;
+  padding: 0 0.3rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--ob-muted);
+}
+
+.cal-cell-open:hover,
+.cal-cell-open:focus-visible,
+.cal-cell-open.active {
+  color: var(--bs-body-color);
+  border-color: var(--bs-info);
+}
+
+.cal-cell-open.active {
+  background: rgba(13, 202, 240, 0.15);
+}
+
+/* Contingut d'un esdeveniment en ordre d'emissió */
+.cal-content {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--bs-info);
+  border-radius: 0.375rem;
+}
+
+.cal-content-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cal-mode-tag {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--mode-line);
+  border-radius: 0.25rem;
+  background: var(--mode-bg);
+  color: var(--mode-fg);
+  font-size: 0.8rem;
+}
+
+.cal-content-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cal-content-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.cal-content-item.is-track {
+  background: rgba(25, 135, 84, 0.18);
+  border-left: 3px solid var(--bs-success);
+}
+
+.cal-content-time {
+  flex: 0 0 4.5rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ob-muted);
+}
+
+.cal-content-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cal-content-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-content-move {
+  padding: 0 0.4rem;
+}
+
 /* Hora afegida que encara no té res (no es desa fins que s'hi marca un dia) */
 .cal-provisional .cal-time {
   font-style: italic;

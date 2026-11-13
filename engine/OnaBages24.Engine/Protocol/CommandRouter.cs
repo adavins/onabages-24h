@@ -177,6 +177,8 @@ public sealed class CommandRouter
                 "separation.set" => SeparationSet(msg),
                 "calendar.get" => CalendarGet(msg),
                 "calendar.set" => CalendarSet(msg),
+                "calendar.content" => CalendarContent(msg),
+                "calendar.move" => CalendarMove(msg),
                 "reserve.get" => ReserveJson(AutoDjOrError().Reserve),
                 "reserve.set" => ReserveSet(msg),
                 "history.list" => HistoryList(msg),
@@ -1661,6 +1663,81 @@ public sealed class CommandRouter
         foreach (var empty in events.List().Where(TrackCalendar.IsEmptyBlock)) events.Delete(empty.Id);
         _scheduler?.Reload();
         return CalendarGet(msg);
+    }
+
+    /// <summary>L'esdeveniment d'una casella (<c>eventId</c>) i el dia (<c>day</c>, 0 = dilluns), comprovats.</summary>
+    private (ScheduledEvent Event, int Day) CalendarEvent(JsonObject msg)
+    {
+        var ev = EventsOrError().Get(RequiredId(msg, "eventId")) ?? throw new BadParamsException("Aquest esdeveniment ja no existeix.");
+        if (!TrackCalendar.Carries(ev)) throw new BadParamsException("Aquest esdeveniment no pot portar pistes (només TALLA i ENCUA).");
+        int day = ReadInt(msg["day"]) ?? -1;
+        if (day is < 0 or > 6) throw new BadParamsException("El dia ha de ser de 0 (dilluns) a 6 (diumenge).");
+        return (ev, day);
+    }
+
+    /// <summary>
+    /// El contingut d'un esdeveniment un dia de la setmana, en ordre d'emissió (fase 4, pas 2c): <c>eventId</c>, <c>day</c>
+    /// i, opcional, <c>trackId</c> (la pista del calendari, marcada amb <c>isTrack</c>). Només les accions que sonen aquell dia.
+    /// </summary>
+    private JsonObject CalendarContent(JsonObject msg)
+    {
+        var (ev, day) = CalendarEvent(msg);
+        long? trackId = msg["trackId"] is null ? null : RequiredId(msg, "trackId");
+        var describer = Describer();
+        var items = new JsonArray();
+        foreach (var action in ev.Actions.Where(a => TrackCalendar.AppliesOn(a, day)))
+        {
+            var info = describer.Describe(action);
+            items.Add(new JsonObject
+            {
+                ["type"] = Events.ActionTypeText(action.Type),
+                ["label"] = info.Label,
+                ["detail"] = info.Detail,
+                ["missing"] = info.Missing,
+                ["durationMs"] = info.DurationMs,
+                ["daysMask"] = action.DaysMask,
+                ["isTrack"] = trackId is { } id && TrackCalendar.TrackOf(action) == id,
+            });
+        }
+        return new JsonObject
+        {
+            ["event"] = new JsonObject
+            {
+                ["id"] = ev.Id,
+                ["name"] = ev.Name,
+                ["mode"] = Events.ModeText(ev.Mode),
+                ["time"] = ev.StartTime.ToString("HH:mm:ss"),
+                ["enabled"] = ev.Enabled,
+                ["commercialBlock"] = ev.CommercialBlock,
+                ["repeats"] = ev.Repeat != EventRepeat.None,
+                ["maxDurationSeconds"] = ev.MaxDurationSeconds,
+            },
+            ["day"] = day,
+            ["items"] = items,
+        };
+    }
+
+    /// <summary>
+    /// Mou la pista una posició dins del contingut d'un esdeveniment (fase 4, pas 2c): <c>eventId</c>, <c>day</c>,
+    /// <c>trackId</c> i <c>delta</c> (−1 amunt, +1 avall). Es desa i el planificador ho té en compte de seguida.
+    /// Retorna el contingut (com <c>calendar.content</c>).
+    /// </summary>
+    private JsonObject CalendarMove(JsonObject msg)
+    {
+        var (ev, day) = CalendarEvent(msg);
+        long trackId = RequiredId(msg, "trackId");
+        int delta = ReadInt(msg["delta"]) ?? 0;
+        try
+        {
+            var moved = TrackCalendar.Move(ev, trackId, day, delta);
+            if (!ReferenceEquals(moved, ev)) EventsOrError().Save(moved);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new BadParamsException(ex.Message);
+        }
+        _scheduler?.Reload();
+        return CalendarContent(msg);
     }
 
     // --- Reserva de l'AutoDJ (fase 3, pas 8d; D-099) ---

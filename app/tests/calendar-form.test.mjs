@@ -1,7 +1,7 @@
 // Proves del calendari d'una pista (fase 4, pas 2b; D-104): textos i comprovacions, sense pàgina.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cellWarnings, cellTitle, blockTimeProblem, normalizeBlockTime, dateText, monthText, passes, periodText, withExtraRows, trackOnlyRows } from '../renderer/js/calendar-form.js';
+import { cellWarnings, cellTitle, blockTimeProblem, normalizeBlockTime, dateText, monthText, passes, periodText, withExtraRows, trackOnlyRows, contentTimes } from '../renderer/js/calendar-form.js';
 
 const cell = { eventId: 1, name: 'Magazín', mode: 'TALLA', enabled: true, commercialBlock: false, repeats: false, nonWeekly: false, marked: false, busyBy: null, others: [] };
 
@@ -54,6 +54,22 @@ test('trackOnlyRows: només les hores i els dies on sona la pista', () => {
     { time: '09:00:00', days: [marked, cell, marked, null, null, null, null] },
   ];
   assert.deepEqual(trackOnlyRows(rows), [{ time: '09:00:00', days: [true, false, true, false, false, false, false] }]);
+});
+
+test('contentTimes: hores previstes sumant les durades, i desconegudes després d\'una durada que no se sap', () => {
+  const items = [
+    { type: 'ROTACIO', durationMs: null, missing: false },
+    { type: 'PISTA', durationMs: 20_000, missing: false },
+    { type: 'PISTA', durationMs: 30_000, missing: true },  // falta: no sona
+    { type: 'PISTA', durationMs: 45_500, missing: false },
+    { type: 'STREAM', durationMs: null, missing: false },
+    { type: 'PISTA', durationMs: 10_000, missing: false },
+  ];
+  assert.deepEqual(contentTimes(items, '10:59:50'), {
+    starts: [null, '10:59:50', '11:00:10', '11:00:10', '11:00:56', null],
+    end: null,
+  });
+  assert.deepEqual(contentTimes(items.slice(0, 4), '23:59:30'), { starts: [null, '23:59:30', '23:59:50', '23:59:50'], end: '00:00:36' });
 });
 
 test('dates, mesos i passis', () => {
