@@ -132,8 +132,23 @@ export class CalendarView {
     if (t.fileState === 'missing') head.append(statusLabel('text-danger small', 'bi-exclamation-octagon-fill', 'El fitxer d\'aquesta pista falta: no sonarà'));
     head.append(this.#modeSwitch());
 
-    if (this.#mode === 'track') box.replaceChildren(head, this.#trackOnlyTable(cal), this.#counts(cal.counts));
-    else box.replaceChildren(head, this.#table(cal), this.#addBlock(), ...(this.#content ? [this.#contentPanel(this.#content)] : []), this.#counts(cal.counts));
+    // A sota de la capçalera: la graella (amb el seu desplaçament) i, si n'hi ha d'obert, el contingut de l'esdeveniment
+    // en un panell a la dreta (D-114). Es conserva on s'havia baixat (la vista es torna a dibuixar a cada clic).
+    const scroll = box.querySelector('.cal-main')?.scrollTop ?? 0;
+    const main = el('div', 'cal-main');
+    const side = this.#mode === 'all' && this.#content ? this.#contentPanel(this.#content) : null;
+    if (this.#mode === 'track') main.append(this.#trackOnlyTable(cal), this.#counts(cal.counts));
+    else main.append(this.#table(cal), this.#addBlock(), this.#counts(cal.counts));
+    const body = el('div', `cal-body${side ? ' has-side' : ''}`);
+    body.append(main);
+    if (side) {
+      const aside = el('aside', 'cal-side');
+      aside.setAttribute('aria-label', 'Contingut de l\'esdeveniment');
+      aside.append(side);
+      body.append(aside);
+    }
+    box.replaceChildren(head, body);
+    main.scrollTop = scroll;
   }
 
   /** «Tots els esdeveniments» (per programar) o «Només aquesta pista» (com queda la setmana de la pista, D-105). */
@@ -268,8 +283,7 @@ export class CalendarView {
   async #openContent(of) {
     this.#contentOf = of;
     await this.#loadContent();
-    this.#renderEditor();
-    if (of) $('cal-editor').querySelector('.cal-content')?.scrollIntoView({ block: 'nearest' });
+    this.#renderEditor(); // el panell surt a la dreta (D-114): no cal desplaçar res
   }
 
   /** @param {any} content  de calendar.content */
