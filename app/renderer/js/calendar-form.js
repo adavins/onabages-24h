@@ -25,10 +25,11 @@ export function cellWarnings(cell) {
 /**
  * El text d'ajuda d'una casella (en passar-hi el ratolí).
  * @param {any} cell  @param {number} day 0 = dilluns  @param {string} time 'HH:MM:SS'
+ * @param {string} [word]  què es programa: 'pista' o 'campanya' (fase 4, pas 3d)
  */
-export function cellTitle(cell, day, time) {
+export function cellTitle(cell, day, time, word = 'pista') {
   const head = `${DAY_NAMES[day]} ${time.slice(0, 5)} · ${cell.name}${cell.commercialBlock ? ' (bloc de falques)' : ''}`;
-  const state = cell.marked ? 'La pista hi és. Fes clic per treure-la d\'aquest dia.' : 'Fes clic per posar-hi la pista aquest dia.';
+  const state = cell.marked ? `La ${word} hi és. Fes clic per treure-la d'aquest dia.` : `Fes clic per posar-hi la ${word} aquest dia.`;
   return [head, state, ...cellWarnings(cell)].join('\n');
 }
 
@@ -78,7 +79,7 @@ export function trackOnlyRows(rows) {
 }
 
 /** Les accions que ocupen temps a l'emissió (les altres, com ROTACIO o AUXILIAR, no endarrereixen la següent). */
-const TIMED = new Set(['PISTA', 'STREAM']);
+const TIMED = new Set(['PISTA', 'STREAM', 'CAMPANYA']); // CAMPANYA: la durada de la falca més llarga
 
 /**
  * L'hora prevista de cada element del contingut d'un esdeveniment (calendar.content; fase 4, pas 2c): l'hora de
@@ -135,8 +136,9 @@ export function passes(n) {
 /**
  * El període dels recomptes, en una frase.
  * @param {{ from: string, to: string, periodFromTrack: boolean }} counts
+ * @param {string} [word]  'pista' o 'campanya'
  */
-export function periodText(counts) {
+export function periodText(counts, word = 'pista') {
   const range = `del ${dateText(counts.from)} al ${dateText(counts.to)}`;
-  return counts.periodFromTrack ? `${range} (les dates de la pista)` : `${range} (la pista no té dates d'inici i de fi: 4 setmanes des d'avui)`;
+  return counts.periodFromTrack ? `${range} (les dates de la ${word})` : `${range} (la ${word} no té dates d'inici i de fi: 4 setmanes des d'avui)`;
 }

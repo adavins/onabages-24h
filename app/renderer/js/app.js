@@ -12,6 +12,7 @@ import { QueueView, HistoryView } from './ui/queue.js';
 import { AutoDjView } from './ui/autodj.js';
 import { renderOutput, renderNowPlaying, renderWarnings } from './ui/statusbar.js';
 import { openOutputPicker } from './ui/output-picker.js';
+import { CampaignsView } from './ui/campaigns.js';
 import { PlannerView } from './ui/planner.js';
 import { UpcomingEvents } from './ui/upcoming.js';
 import { EventsPause } from './ui/events-pause.js';
@@ -124,6 +125,16 @@ const notes = new NotesView(send);
 const processor = new ProcessorView(send);
 const folders = new FoldersView(send, (path) => bridge.chooseFolder(path));
 const rotationsView = new RotationsView(send);
+// El calendari d'una campanya (fase 4, pas 3d) és part de la pestanya Campanyes: «Calendari…» a l'editor l'obre i
+// «Torna a la campanya» hi torna, tal com era (amb el que diu on sona al dia)
+const campaignCalendar = new CalendarView(send, () => {
+  showView('campanyes');
+  campaignsView.refresh();
+}, { boxId: 'cpcal-editor', backText: 'Torna a la campanya' });
+const campaignsView = new CampaignsView(send, (campaign) => {
+  showView('calendari-campanya');
+  campaignCalendar.openCampaign(campaign);
+});
 // El calendari d'una pista és part de la pestanya Pistes (D-113): «Torna a les pistes» hi torna, tal com era
 const calendarView = new CalendarView(send, () => showView('biblioteca'));
 // «Calendari…» a la fitxa d'una pista (D-111): obre la pestanya Calendari amb aquella pista
@@ -243,14 +254,15 @@ async function refreshNowPlayingStatus() {
 
 // --- Pantalles: Emissió i Planificador (fase 2, pas 8a). L'emissió continua igual, es mostri la que es mostri. ---
 
-/** @param {'emissio' | 'planificador' | 'biblioteca' | 'rotacions' | 'calendari'} name */
+/** @param {'emissio' | 'planificador' | 'biblioteca' | 'rotacions' | 'campanyes' | 'calendari' | 'calendari-campanya'} name */
 function showView(name) {
-  for (const view of /** @type {const} */ (['emissio', 'planificador', 'biblioteca', 'rotacions', 'calendari'])) {
+  for (const view of /** @type {const} */ (['emissio', 'planificador', 'biblioteca', 'rotacions', 'campanyes', 'calendari', 'calendari-campanya'])) {
     const active = view === name;
     $(`view-${view}`).classList.toggle('d-none', !active);
-    if (view === 'calendari') continue; // no té pestanya: és part de Pistes (D-113)
+    // Els calendaris no tenen pestanya: són part de Pistes (D-113) i de Campanyes (pas 3d), que continuen marcades
+    if (view === 'calendari' || view === 'calendari-campanya') continue;
     const tab = $(`nav-${view}`);
-    const current = active || (view === 'biblioteca' && name === 'calendari'); // dins del calendari, «Pistes» continua marcada
+    const current = active || (view === 'biblioteca' && name === 'calendari') || (view === 'campanyes' && name === 'calendari-campanya');
     tab.classList.toggle('active', current);
     if (current) tab.setAttribute('aria-current', 'page');
     else tab.removeAttribute('aria-current');
@@ -261,13 +273,18 @@ function showView(name) {
   else trackManager.hide();
   if (name === 'rotacions') rotationsView.show();
   else rotationsView.hide();
+  if (name === 'campanyes') campaignsView.show();
+  else campaignsView.hide();
   if (name === 'calendari') calendarView.show();
   else calendarView.hide();
+  if (name === 'calendari-campanya') campaignCalendar.show();
+  else campaignCalendar.hide();
 }
 $('nav-emissio').addEventListener('click', () => showView('emissio'));
 $('nav-planificador').addEventListener('click', () => showView('planificador'));
 $('nav-biblioteca').addEventListener('click', () => showView('biblioteca'));
 $('nav-rotacions').addEventListener('click', () => showView('rotacions'));
+$('nav-campanyes').addEventListener('click', () => showView('campanyes'));
 
 // Saltar a la següent: interromp la cançó, per tant demana confirmació
 // «Regenera la cua» (D-034): només canvia les pistes que ha posat l'AutoDJ i no interromp res, per això no demana confirmació
@@ -423,6 +440,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
     planner.refresh();
     upcoming.refresh();
     calendarView.refresh(); // només si es mostra (p. ex. s'ha canviat un esdeveniment al Planificador)
+    campaignCalendar.refresh();
   });
   client.addEventListener('ev:scheduler.fired', () => upcoming.refresh());
   client.addEventListener('ev:scheduler.paused', (e) => eventsPause.show(detail(e).paused));
@@ -444,11 +462,19 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
     send('rotations.list').then((r) => autoDjView.setRotations(r.rotations)).catch(() => {});
     planner.refresh();
   });
+  // Campanyes (fase 4, pas 3c): la pantalla i el planificador (l'acció «Campanya» en diu el nom i l'estat)
+  client.addEventListener('ev:campaigns.changed', () => {
+    campaignsView.refresh();
+    campaignCalendar.refresh(); // el nom, l'estat o les dates de la campanya oberta
+    planner.refresh();
+  });
   // Gestor de pistes (fase 3, pas 7a): una pista o les categories han canviat
   client.addEventListener('ev:library.changed', (e) => {
     const trackId = detail(e).trackId ?? null;
     trackManager.libraryChanged(trackId);
     calendarView.refresh(); // el títol o les dates de la pista triada poden haver canviat
+    campaignCalendar.refresh(); // la durada de les falques (hores previstes del contingut)
+    campaignsView.refresh(); // els avisos de les falques (fitxer, dates…)
     if (trackId == null) library.refresh(); // els filtres de la cerca de l'Emissió (noms i comptes)
   });
   client.addEventListener('ev:meters', (e) => {
@@ -486,6 +512,7 @@ async function loadState() {
     importView.refresh();
     folders.refresh();
     rotationsView.refresh(); // només si es mostra
+    campaignsView.refresh(); // només si es mostra
   } catch (err) {
     console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }

@@ -542,7 +542,8 @@ export class EventEditor {
 
       if (action.missing) {
         const warning = el('div', 'pl-action-warning');
-        warning.append(icon('bi-exclamation-triangle-fill'), ' ', el('span', '', 'No sonarà: la pista o el fitxer falta'));
+        warning.append(icon('bi-exclamation-triangle-fill'), ' ', el('span', '', action.type === 'CAMPANYA'
+          ? 'No sonarà: la campanya no existeix, no és activa o no té falques' : 'No sonarà: la pista o el fitxer falta'));
         li.append(warning);
       }
       if (dates) {
@@ -705,6 +706,9 @@ export class EventEditor {
           });
         });
         break;
+      case 'CAMPANYA':
+        this.#pickCampaign((c) => push({ type, params: { campanyaId: c.id }, label: `Campanya «${c.name}»`, detail: campaignDetail(c), missing: c.effectiveState !== 'ACTIVA' || c.spots.length === 0 }));
+        break;
       case 'SWEEPERS':
         this.#pickSweepers((sub) => push({ type, params: { subcategoriaId: sub.id }, label: sub.label }));
         break;
@@ -838,6 +842,34 @@ export class EventEditor {
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
     search();
     input.focus();
+  }
+
+  /** Finestra per triar una campanya (campaigns.list): primer les actives, després els esborranys. @param {(c: any) => void} onPick */
+  async #pickCampaign(onPick) {
+    const list = el('div', 'ee-results');
+    const dialog = this.#modal('bi-megaphone', 'Afegeix una campanya', [
+      el('p', 'ob-dialog-message', 'A cada passi sonarà la falca que toca segons el pla de la campanya. Les campanyes es fan a la pestanya Campanyes.'), list]);
+    list.append(el('div', 'text-body-secondary', 'Carregant…'));
+    try {
+      const { campaigns } = await this.#send('campaigns.list');
+      const order = { ACTIVA: 0, ESBORRANY: 1, ACABADA: 2 };
+      const shown = campaigns.filter((/** @type {any} */ c) => c.effectiveState !== 'ACABADA')
+        .sort((/** @type {any} */ a, /** @type {any} */ b) => order[/** @type {keyof typeof order} */ (a.effectiveState)] - order[/** @type {keyof typeof order} */ (b.effectiveState)]);
+      list.replaceChildren();
+      if (shown.length === 0) list.append(el('div', 'text-body-secondary', 'No hi ha cap campanya activa ni cap esborrany. Crea-la primer a la pestanya Campanyes.'));
+      for (const c of shown) {
+        const row = el('button', `ee-result${c.effectiveState !== 'ACTIVA' ? ' is-missing' : ''}`);
+        row.type = 'button';
+        row.append(el('span', 'ee-result-label', c.name), el('span', 'ee-result-detail', campaignDetail(c)));
+        row.addEventListener('click', () => {
+          dialog.close();
+          onPick(c);
+        });
+        list.append(row);
+      }
+    } catch (err) {
+      list.replaceChildren(el('div', 'text-danger', `No s'han pogut llegir les campanyes: ${/** @type {Error} */ (err).message}`));
+    }
   }
 
   /** Finestra per triar la categoria de sweepers. @param {(sub: { id: number, label: string }) => void} onPick */
@@ -1169,15 +1201,24 @@ function actionsSummary(actions) {
   return actions.length === 1 ? first : `${actions.length} accions: ${first}…`;
 }
 
+/** «3 falques · del 1/11/2026 al 30/11/2026 · activa» (com el motor, ActionDescriber). @param {any} c */
+function campaignDetail(c) {
+  const dmy = (/** @type {string} */ iso) => iso.split('-').reverse().map((x, i) => (i < 2 ? String(Number(x)) : x)).join('/');
+  const state = c.effectiveState === 'ACTIVA' ? (c.spots.length === 0 ? 'sense falques: no sona' : 'activa')
+    : c.effectiveState === 'ESBORRANY' ? 'esborrany: no sona' : 'acabada: no sona';
+  return `${c.spots.length === 1 ? '1 falca' : `${c.spots.length} falques`} · del ${dmy(c.startDate)} al ${dmy(c.endDate)} · ${state}`;
+}
+
 /** El desplegable «Afegeix» de les accions. */
 const ADD_TYPES = [
-  ['PISTA', 'Pista'], ['AUXILIAR', 'Auxiliar'], ['ROTACIO', 'Rotació'], ['AUTODJ', 'AutoDJ'],
+  ['PISTA', 'Pista'], ['CAMPANYA', 'Campanya'], ['AUXILIAR', 'Auxiliar'], ['ROTACIO', 'Rotació'], ['AUTODJ', 'AutoDJ'],
   ['SWEEPERS', 'Sweepers'], ['BOSSA', 'Bossa'], // els streams, com a pista (D-109)
 ];
 
 /** Què fa cada tipus d'acció, en una frase (a sota del desplegable). */
 const ADD_HELP = {
   PISTA: "Una pista de la biblioteca, a la cua. Un stream (p. ex. de «Radio Streams») també s'hi afegeix així, i porta la durada.",
+  CAMPANYA: "Una campanya de falques: a cada passi sona la falca que toca segons el seu pla (pestanya Campanyes).",
   AUXILIAR: 'Una pista que sona per sobre del que soni (senyals horaris).',
   ROTACIO: 'Canvia la rotació de l\'AutoDJ.',
   AUTODJ: 'Activa o atura l\'AutoDJ.',

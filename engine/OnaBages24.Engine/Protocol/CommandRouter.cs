@@ -1545,31 +1545,50 @@ public sealed partial class CommandRouter
         return result;
     }
 
-    // --- Calendari d'una pista (fase 4, pas 2; D-104) ---
+    // --- Calendari d'una pista (fase 4, pas 2; D-104) o d'una campanya (fase 4, pas 3d; D-126) ---
 
     /// <summary>
-    /// El calendari d'una pista: <c>trackId</c> i, opcionals, <c>from</c> i <c>to</c> (dies, per als recomptes). Sense dates,
-    /// el període és el de la pista (les seves dates) o, si no en té, les 4 setmanes que comencen avui.
+    /// De qui és el calendari: <c>campaignId</c> (una campanya, acció CAMPANYA) o, si no n'hi ha, <c>trackId</c> (una pista,
+    /// acció PISTA). Amb les dates on pot sonar i la fitxa en JSON (<c>track</c> o <c>campaign</c>).
+    /// </summary>
+    private (CalendarSubject Subject, DateOnly? ValidFrom, DateOnly? ValidUntil, string Key, JsonObject Json) CalendarSubjectOf(JsonObject msg)
+    {
+        if (msg["campaignId"] is not null)
+        {
+            long id = RequiredId(msg, "campaignId");
+            var campaign = CampaignsOrError().Get(id) ?? throw new BadParamsException($"No existeix la campanya {id}.");
+            return (CalendarSubject.ForCampaign(id), campaign.StartDate, campaign.EndDate, "campaign", CampaignJson(campaign, Today(), null));
+        }
+        var track = TrackOrError(LibraryOrError(), RequiredId(msg, "trackId"));
+        var trackJson = QueueJson.Track(track);
+        trackJson["validFrom"] = track.ValidFrom?.ToString("yyyy-MM-dd");
+        trackJson["validUntil"] = track.ValidUntil?.ToString("yyyy-MM-dd");
+        return (CalendarSubject.ForTrack(track.Id), track.ValidFrom, track.ValidUntil, "track", trackJson);
+    }
+
+    /// <summary>
+    /// El calendari d'una pista (<c>trackId</c>) o d'una campanya (<c>campaignId</c>) i, opcionals, <c>from</c> i <c>to</c>
+    /// (dies, per als recomptes). Sense dates, el període és el de la pista o la campanya (les seves dates) o, si no en té,
+    /// les 4 setmanes que comencen avui.
     /// </summary>
     private JsonObject CalendarGet(JsonObject msg)
     {
-        var library = LibraryOrError();
         var events = EventsOrError();
-        var track = TrackOrError(library, RequiredId(msg, "trackId"));
+        var (subject, validFrom, validUntil, key, subjectJson) = CalendarSubjectOf(msg);
         var today = DateOnly.FromDateTime(DateTime.Today);
         DateOnly? Day(string field)
         {
             if (ReadString(msg[field]) is not { } text) return null;
             return DateOnly.TryParseExact(text, "yyyy-MM-dd", out var d) ? d : throw new BadParamsException($"El camp '{field}' ha de ser una data AAAA-MM-DD.");
         }
-        var from = Day("from") ?? track.ValidFrom ?? today;
-        var to = Day("to") ?? track.ValidUntil ?? from.AddDays(27);
-        if (to < from) throw new BadParamsException("El període s'acaba abans de començar (mira les dates de la pista).");
+        var from = Day("from") ?? validFrom ?? today;
+        var to = Day("to") ?? validUntil ?? from.AddDays(27);
+        if (to < from) throw new BadParamsException($"El període s'acaba abans de començar (mira les dates de la {(subject.IsCampaign ? "campanya" : "pista")}).");
         if (to.DayNumber - from.DayNumber > 400) to = from.AddDays(400);
 
         var all = events.List();
-        var rows = TrackCalendar.Build(all, track.Id, today);
-        var counts = TrackCalendar.Count(all, track, from, to, today);
+        var rows = TrackCalendar.Build(all, subject, today);
+        var counts = TrackCalendar.Count(all, subject, validFrom, validUntil, from, to, today);
         JsonNode? Cell(CalendarCell? c) => c is null ? null : new JsonObject
         {
             ["eventId"] = c.Event.Id,
@@ -1585,12 +1604,9 @@ public sealed partial class CommandRouter
             ["busyBy"] = c.BusyBy,
             ["others"] = new JsonArray(c.Others.Select(o => (JsonNode)JsonValue.Create(o)!).ToArray()),
         };
-        var trackJson = QueueJson.Track(track);
-        trackJson["validFrom"] = track.ValidFrom?.ToString("yyyy-MM-dd");
-        trackJson["validUntil"] = track.ValidUntil?.ToString("yyyy-MM-dd");
         return new JsonObject
         {
-            ["track"] = trackJson,
+            [key] = subjectJson,
             ["rows"] = new JsonArray(rows.Select(r => (JsonNode)new JsonObject
             {
                 ["time"] = r.Time.ToString("HH:mm:ss"),
@@ -1600,7 +1616,7 @@ public sealed partial class CommandRouter
             {
                 ["from"] = counts.From.ToString("yyyy-MM-dd"),
                 ["to"] = counts.To.ToString("yyyy-MM-dd"),
-                ["periodFromTrack"] = Day("from") is null && track.ValidFrom is not null && track.ValidUntil is not null,
+                ["periodFromTrack"] = Day("from") is null && validFrom is not null && validUntil is not null,
                 ["total"] = counts.Total,
                 ["perWeekday"] = new JsonArray(counts.PerWeekday.Select(n => (JsonNode)n).ToArray()),
                 ["weeks"] = new JsonArray(counts.Weeks.Select(w => (JsonNode)new JsonObject { ["from"] = w.WeekStart.ToString("yyyy-MM-dd"), ["count"] = w.Count }).ToArray()),
@@ -1611,7 +1627,7 @@ public sealed partial class CommandRouter
     }
 
     /// <summary>
-    /// Marca o desmarca una casella: <c>trackId</c>, <c>time</c> («HH:MM» o «HH:MM:SS»), <c>day</c> (0 = dilluns … 6 =
+    /// Marca o desmarca una casella: <c>trackId</c> o <c>campaignId</c>, <c>time</c> («HH:MM» o «HH:MM:SS»), <c>day</c> (0 = dilluns … 6 =
     /// diumenge) i <c>marked</c>. Si a la casella hi ha un esdeveniment, la pista hi entra o en surt; si no n'hi ha cap
     /// (D-105), va al bloc de falques d'aquella hora, que es crea si no existeix. Un bloc que es queda sense pistes s'esborra.
     /// Tot es desa d'una vegada i el planificador ho té en compte de seguida. Retorna el calendari (com <c>calendar.get</c>,
@@ -1621,7 +1637,7 @@ public sealed partial class CommandRouter
     {
         var library = LibraryOrError();
         var events = EventsOrError();
-        var track = TrackOrError(library, RequiredId(msg, "trackId"));
+        var subject = CalendarSubjectOf(msg).Subject;
         string text = (ReadString(msg["time"]) ?? "").Trim();
         if (!TimeOnly.TryParseExact(text, ["HH:mm", "HH:mm:ss"], out var time))
             throw new BadParamsException("Falta 'time' (l'hora de la casella, HH:MM).");
@@ -1632,7 +1648,7 @@ public sealed partial class CommandRouter
         var today = DateOnly.FromDateTime(DateTime.Today);
         var all = events.List();
         // L'esdeveniment de la casella; si no n'hi ha cap, el bloc de falques d'aquella hora (un de nou si no n'hi ha)
-        var ev = TrackCalendar.CellAt(TrackCalendar.Build(all, track.Id, today), time, day)?.Event;
+        var ev = TrackCalendar.CellAt(TrackCalendar.Build(all, subject, today), time, day)?.Event;
         if (ev is null)
         {
             if (!marked) return CalendarGet(msg); // treure-la d'on no hi és: res a fer
@@ -1640,7 +1656,7 @@ public sealed partial class CommandRouter
         }
         try
         {
-            var changed = TrackCalendar.Set(ev, track.Id, day, marked, id => library.GetTrack(id)?.Type, today);
+            var changed = TrackCalendar.Set(ev, subject, day, marked, id => library.GetTrack(id)?.Type, today);
             if (TrackCalendar.IsEmptyBlock(changed)) { if (changed.Id != 0) events.Delete(changed.Id); }
             else events.Save(changed);
         }
@@ -1666,12 +1682,14 @@ public sealed partial class CommandRouter
 
     /// <summary>
     /// El contingut d'un esdeveniment un dia de la setmana, en ordre d'emissió (fase 4, pas 2c): <c>eventId</c>, <c>day</c>
-    /// i, opcional, <c>trackId</c> (la pista del calendari, marcada amb <c>isTrack</c>). Només les accions que sonen aquell dia.
+    /// i, opcional, <c>trackId</c> o <c>campaignId</c> (la pista o la campanya del calendari, marcada amb <c>isTrack</c>).
+    /// Només les accions que sonen aquell dia.
     /// </summary>
     private JsonObject CalendarContent(JsonObject msg)
     {
         var (ev, day) = CalendarEvent(msg);
-        long? trackId = msg["trackId"] is null ? null : RequiredId(msg, "trackId");
+        CalendarSubject? subject = msg["campaignId"] is not null ? CalendarSubject.ForCampaign(RequiredId(msg, "campaignId"))
+            : msg["trackId"] is not null ? CalendarSubject.ForTrack(RequiredId(msg, "trackId")) : null;
         var describer = Describer();
         var items = new JsonArray();
         foreach (var action in ev.Actions.Where(a => TrackCalendar.AppliesOn(a, day)))
@@ -1685,7 +1703,7 @@ public sealed partial class CommandRouter
                 ["missing"] = info.Missing,
                 ["durationMs"] = info.DurationMs,
                 ["daysMask"] = action.DaysMask,
-                ["isTrack"] = trackId is { } id && TrackCalendar.TrackOf(action) == id,
+                ["isTrack"] = subject is { } s && s.Matches(action),
             });
         }
         return new JsonObject
@@ -1707,18 +1725,19 @@ public sealed partial class CommandRouter
     }
 
     /// <summary>
-    /// Mou la pista una posició dins del contingut d'un esdeveniment (fase 4, pas 2c): <c>eventId</c>, <c>day</c>,
-    /// <c>trackId</c> i <c>delta</c> (−1 amunt, +1 avall). Es desa i el planificador ho té en compte de seguida.
+    /// Mou la pista o la campanya una posició dins del contingut d'un esdeveniment (fase 4, pas 2c): <c>eventId</c>, <c>day</c>,
+    /// <c>trackId</c> o <c>campaignId</c>, i <c>delta</c> (−1 amunt, +1 avall). Es desa i el planificador ho té en compte de seguida.
     /// Retorna el contingut (com <c>calendar.content</c>).
     /// </summary>
     private JsonObject CalendarMove(JsonObject msg)
     {
         var (ev, day) = CalendarEvent(msg);
-        long trackId = RequiredId(msg, "trackId");
+        var subject = msg["campaignId"] is not null ? CalendarSubject.ForCampaign(RequiredId(msg, "campaignId"))
+            : CalendarSubject.ForTrack(RequiredId(msg, "trackId"));
         int delta = ReadInt(msg["delta"]) ?? 0;
         try
         {
-            var moved = TrackCalendar.Move(ev, trackId, day, delta);
+            var moved = TrackCalendar.Move(ev, subject, day, delta);
             if (!ReferenceEquals(moved, ev)) EventsOrError().Save(moved);
         }
         catch (ArgumentException ex)
@@ -2027,6 +2046,7 @@ public sealed partial class CommandRouter
             var ev = EventJson.FromJson(json);
             Events.Check(ev);
             CheckContent(ev);
+            CheckCampaigns(ev);
             id = events.Save(ev);
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException)
@@ -2080,6 +2100,16 @@ public sealed partial class CommandRouter
             if (!hasSource) throw new ArgumentException("Un stream no diu quin stream és: tria'n un de la biblioteca.");
             if (p?["durada_seg"] is not JsonValue v || !v.TryGetValue(out long seconds) || seconds <= 0)
                 throw new ArgumentException("Cal posar la durada del stream (si no, no s'acabaria mai).");
+        }
+    }
+
+    /// <summary>Cada acció CAMPANYA ha de dir una campanya que existeixi (fase 4, pas 3c).</summary>
+    private void CheckCampaigns(ScheduledEvent ev)
+    {
+        foreach (var action in ev.Actions.Where(a => a.Type == EventActionType.Campaign))
+        {
+            if (Scheduling.CampaignPlanner.CampaignIdOf(action) is not { } id) throw new ArgumentException("Una acció de campanya no diu quina campanya és.");
+            if (_campaigns is not null && _campaigns.Get(id) is null) throw new ArgumentException($"La campanya {id} no existeix.");
         }
     }
 
@@ -2168,7 +2198,7 @@ public sealed partial class CommandRouter
     }
 
     /// <summary>Per descriure les accions dels esdeveniments (títols de les pistes, rotacions…).</summary>
-    private ActionDescriber Describer() => new(_library, _rotations);
+    private ActionDescriber Describer() => new(_library, _rotations, _campaigns);
 
     private static long RequireId(JsonObject msg) =>
         msg["eventId"] is JsonValue v && v.TryGetValue(out long id) ? id : throw new BadParamsException("Falta el camp 'eventId' (un nombre).");

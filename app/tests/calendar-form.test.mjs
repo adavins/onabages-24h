@@ -81,3 +81,15 @@ test('dates, mesos i passis', () => {
   assert.match(periodText({ from: '2026-11-01', to: '2026-11-30', periodFromTrack: true }), /^del 01\/11\/2026 al 30\/11\/2026 \(les dates/);
   assert.match(periodText({ from: '2026-11-12', to: '2026-12-09', periodFromTrack: false }), /4 setmanes/);
 });
+
+test('calendari d\'una campanya (pas 3d): els textos diuen «campanya» i la campanya ocupa temps al contingut', () => {
+  const cell = { name: 'Bloc de falques 10:50', commercialBlock: true, marked: false, enabled: true, others: [], dates: [] };
+  assert.match(cellTitle(cell, 0, '10:50:00', 'campanya'), /posar-hi la campanya aquest dia/);
+  assert.match(cellTitle(cell, 0, '10:50:00'), /posar-hi la pista aquest dia/);
+  assert.match(periodText({ from: '2026-11-01', to: '2026-11-30', periodFromTrack: true }, 'campanya'), /les dates de la campanya/);
+  const items = [
+    { type: 'CAMPANYA', durationMs: 30_000, missing: false },
+    { type: 'PISTA', durationMs: 20_000, missing: false },
+  ];
+  assert.deepEqual(contentTimes(items, '10:50:00'), { starts: ['10:50:00', '10:50:30'], end: '10:50:50' });
+});

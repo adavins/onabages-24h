@@ -22,6 +22,28 @@ public sealed record CalendarCounts(
     int MarkedInDisabled);
 
 /// <summary>
+/// Què es programa al calendari: una pista (acció PISTA, fase 4, pas 2) o una campanya (acció CAMPANYA, fase 4, pas 3d;
+/// D-126). Tota la resta del calendari (blocs de falques, dies propis, ordre, recomptes) és igual per a les dues.
+/// </summary>
+public readonly record struct CalendarSubject(long Id, bool IsCampaign)
+{
+    public static CalendarSubject ForTrack(long trackId) => new(trackId, false);
+    public static CalendarSubject ForCampaign(long campaignId) => new(campaignId, true);
+
+    /// <summary>L'acció és la d'aquest subjecte (la PISTA d'aquesta pista o la CAMPANYA d'aquesta campanya).</summary>
+    public bool Matches(EventAction action) =>
+        IsCampaign ? CampaignPlanner.IsCampaignAction(action, Id) : TrackCalendar.TrackOf(action) == Id;
+
+    /// <summary>Una acció nova per a aquest subjecte, amb els dies propis indicats (null = els de l'esdeveniment).</summary>
+    public EventAction NewAction(int? daysMask) => new()
+    {
+        Type = IsCampaign ? EventActionType.Campaign : EventActionType.Track,
+        Params = new JsonObject { [IsCampaign ? "campanyaId" : "songId"] = Id }.ToJsonString(),
+        DaysMask = daysMask,
+    };
+}
+
+/// <summary>
 /// Calendari d'una pista (fase 4, pas 2; D-028, D-029, planificador.md 10): la graella setmanal on es marca a quins
 /// esdeveniments ha de sonar una pista (una falca, una càpsula, una promo…; de qualsevol tipus).
 /// - Files: les hores on hi ha esdeveniments que poden portar pistes (TALLA, ENCUA i blocs de falques; no les plantilles).
@@ -71,14 +93,21 @@ public static class TrackCalendar
     }
 
     /// <summary>La pista és a l'esdeveniment el dia <paramref name="day"/> (0 = dilluns).</summary>
-    public static bool IsMarked(ScheduledEvent ev, long trackId, int day) =>
-        ev.Actions.Any(a => TrackOf(a) == trackId && (a.DaysMask is not { } mask || (mask & (1 << day)) != 0));
+    public static bool IsMarked(ScheduledEvent ev, long trackId, int day) => IsMarked(ev, CalendarSubject.ForTrack(trackId), day);
+
+    /// <summary>La pista o la campanya és a l'esdeveniment el dia <paramref name="day"/> (0 = dilluns).</summary>
+    public static bool IsMarked(ScheduledEvent ev, CalendarSubject subject, int day) =>
+        ev.Actions.Any(a => subject.Matches(a) && (a.DaysMask is not { } mask || (mask & (1 << day)) != 0));
+
+    /// <summary>La graella d'una pista (vegeu l'altra sobrecàrrega).</summary>
+    public static IReadOnlyList<CalendarRow> Build(IEnumerable<ScheduledEvent> events, long trackId, DateOnly today) =>
+        Build(events, CalendarSubject.ForTrack(trackId), today);
 
     /// <summary>
-    /// La graella de la pista: una fila per hora, en ordre. Només els esdeveniments que encara poden sonar a partir de
-    /// <paramref name="today"/> (els que ja s'han acabat o les dates soltes passades, no).
+    /// La graella de la pista o la campanya: una fila per hora, en ordre. Només els esdeveniments que encara poden sonar a
+    /// partir de <paramref name="today"/> (els que ja s'han acabat o les dates soltes passades, no).
     /// </summary>
-    public static IReadOnlyList<CalendarRow> Build(IEnumerable<ScheduledEvent> events, long trackId, DateOnly today)
+    public static IReadOnlyList<CalendarRow> Build(IEnumerable<ScheduledEvent> events, CalendarSubject subject, DateOnly today)
     {
         // Un bloc de falques buit no hi surt (D-105: no n'hauria d'haver cap; s'esborren sols)
         var carrying = events.Where(Carries).Where(e => EventDays(e, today) != 0 && !IsEmptyBlock(e)).ToList();
@@ -113,7 +142,7 @@ public static class TrackCalendar
                 var chosen = ordered[0];
                 string? busyBy = busy.FirstOrDefault(b => b.Event.Id != chosen.Id && (EventDays(b.Event, today) & (1 << day)) != 0
                     && time.ToTimeSpan() > b.Start && time.ToTimeSpan() < b.End).Event?.Name;
-                cells[day] = new CalendarCell(chosen, IsMarked(chosen, trackId, day), ordered.Skip(1).Select(e => e.Name).ToList(), busyBy);
+                cells[day] = new CalendarCell(chosen, IsMarked(chosen, subject, day),ordered.Skip(1).Select(e => e.Name).ToList(), busyBy);
             }
             rows.Add(new CalendarRow(time, cells));
         }
@@ -150,7 +179,11 @@ public static class TrackCalendar
     /// </summary>
     /// <param name="typeOf">El tipus de cada pista de l'esdeveniment (per trobar el primer programa); null si no hi és.</param>
     /// <exception cref="ArgumentException">Si l'esdeveniment no pot portar pistes o no sona aquell dia.</exception>
-    public static ScheduledEvent Set(ScheduledEvent ev, long trackId, int day, bool marked, Func<long, TrackType?> typeOf, DateOnly today)
+    public static ScheduledEvent Set(ScheduledEvent ev, long trackId, int day, bool marked, Func<long, TrackType?> typeOf, DateOnly today) =>
+        Set(ev, CalendarSubject.ForTrack(trackId), day, marked, typeOf, today);
+
+    /// <summary>Com l'altra sobrecàrrega, per a una pista (acció PISTA) o una campanya (acció CAMPANYA).</summary>
+    public static ScheduledEvent Set(ScheduledEvent ev, CalendarSubject subject, int day, bool marked, Func<long, TrackType?> typeOf, DateOnly today)
     {
         if (!Carries(ev)) throw new ArgumentException("Aquest esdeveniment no pot portar pistes (només TALLA i ENCUA).");
         if (day is < 0 or > 6) throw new ArgumentException("El dia ha de ser de 0 (dilluns) a 6 (diumenge).");
@@ -165,7 +198,7 @@ public static class TrackCalendar
         int ActionDays(EventAction a) => a.DaysMask ?? (block ? ev.DaysMask : eventDays);
         int? Normalize(int mask) => block ? mask & Weekdays.All : (mask & eventDays) == eventDays ? null : mask & eventDays;
         var actions = ev.Actions.ToList();
-        int index = actions.FindIndex(a => TrackOf(a) == trackId);
+        int index = actions.FindIndex(subject.Matches);
         if (marked)
         {
             if (index >= 0)
@@ -175,12 +208,7 @@ public static class TrackCalendar
             }
             else
             {
-                var action = new EventAction
-                {
-                    Type = EventActionType.Track,
-                    Params = new JsonObject { ["songId"] = trackId }.ToJsonString(),
-                    DaysMask = Normalize(bit),
-                };
+                var action = subject.NewAction(Normalize(bit));
                 int program = actions.FindIndex(a => TrackOf(a) is { } id && typeOf(id) == TrackType.Program);
                 actions.Insert(program >= 0 ? program : actions.Count, action);
             }
@@ -209,13 +237,17 @@ public static class TrackCalendar
     /// desar); si ja és la primera (o l'última), sense canvis.
     /// </summary>
     /// <exception cref="ArgumentException">Si la pista no hi és aquell dia o el moviment no és −1 o +1.</exception>
-    public static ScheduledEvent Move(ScheduledEvent ev, long trackId, int day, int delta)
+    public static ScheduledEvent Move(ScheduledEvent ev, long trackId, int day, int delta) =>
+        Move(ev, CalendarSubject.ForTrack(trackId), day, delta);
+
+    /// <summary>Com l'altra sobrecàrrega, per a una pista o una campanya.</summary>
+    public static ScheduledEvent Move(ScheduledEvent ev, CalendarSubject subject, int day, int delta)
     {
         if (delta is not (-1 or 1)) throw new ArgumentException("Només es pot moure una posició amunt (−1) o avall (+1).");
         var actions = ev.Actions.ToList();
         var ofDay = Enumerable.Range(0, actions.Count).Where(i => AppliesOn(actions[i], day)).ToList();
-        int position = ofDay.FindIndex(i => TrackOf(actions[i]) == trackId);
-        if (position < 0) throw new ArgumentException($"La pista no és a «{ev.Name}» aquest dia.");
+        int position = ofDay.FindIndex(i => subject.Matches(actions[i]));
+        if (position < 0) throw new ArgumentException($"{(subject.IsCampaign ? "La campanya" : "La pista")} no és a «{ev.Name}» aquest dia.");
         int target = position + delta;
         if (target < 0 || target >= ofDay.Count) return ev;
 
@@ -234,9 +266,18 @@ public static class TrackCalendar
     /// dates de la pista. També els d'una setmana tipus (per dia de la setmana) i quants dies estan marcats en esdeveniments desactivats.
     /// </summary>
     /// <param name="today">Per a la setmana tipus: les dates soltes que ja han passat no hi compten.</param>
-    public static CalendarCounts Count(IEnumerable<ScheduledEvent> events, Track track, DateOnly from, DateOnly to, DateOnly today)
+    public static CalendarCounts Count(IEnumerable<ScheduledEvent> events, Track track, DateOnly from, DateOnly to, DateOnly today) =>
+        Count(events, CalendarSubject.ForTrack(track.Id), track.ValidFrom, track.ValidUntil, from, to, today);
+
+    /// <summary>
+    /// Com l'altra sobrecàrrega, per a una pista o una campanya, amb les dates on pot sonar (<paramref name="validFrom"/> i
+    /// <paramref name="validUntil"/>: les de la pista o les de la campanya). Una campanya compta un passi per emissió encara
+    /// que hi sigui dues vegades (només sona la primera, D-123).
+    /// </summary>
+    public static CalendarCounts Count(IEnumerable<ScheduledEvent> events, CalendarSubject subject, DateOnly? validFrom, DateOnly? validUntil,
+        DateOnly from, DateOnly to, DateOnly today)
     {
-        var carrying = events.Where(Carries).Where(e => e.Actions.Any(a => TrackOf(a) == track.Id)).ToList();
+        var carrying = events.Where(Carries).Where(e => e.Actions.Any(subject.Matches)).ToList();
         var active = carrying.Where(e => e.Enabled).ToList();
 
         int total = 0;
@@ -244,14 +285,15 @@ public static class TrackCalendar
         var months = new SortedDictionary<(int, int), int>();
         for (var date = from; date <= to; date = date.AddDays(1))
         {
-            if (track.ValidFrom is { } vf && date < vf) continue;
-            if (track.ValidUntil is { } vu && date > vu) continue;
+            if (validFrom is { } vf && date < vf) continue;
+            if (validUntil is { } vu && date > vu) continue;
             int count = 0;
             foreach (var ev in active)
             {
                 if (!Recurrences.OccursOn(ev, date)) continue;
                 int times = Recurrences.TimesOfDay(ev).Count;
-                count += times * Recurrences.ActionsFor(ev, date).Count(a => TrackOf(a) == track.Id);
+                int actions = Recurrences.ActionsFor(ev, date).Count(subject.Matches);
+                count += times * (subject.IsCampaign ? Math.Min(actions, 1) : actions);
             }
             if (count == 0) continue;
             total += count;
@@ -266,7 +308,7 @@ public static class TrackCalendar
         foreach (var ev in carrying)
             for (int day = 0; day < 7; day++)
             {
-                if ((EventDays(ev, today) & (1 << day)) == 0 || !IsMarked(ev, track.Id, day)) continue;
+                if ((EventDays(ev, today) & (1 << day)) == 0 || !IsMarked(ev, subject, day)) continue;
                 if (ev.Enabled) perWeekday[day] += Recurrences.TimesOfDay(ev).Count;
                 else markedInDisabled++;
             }

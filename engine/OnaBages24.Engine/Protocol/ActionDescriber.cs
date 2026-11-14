@@ -16,7 +16,7 @@ public sealed record ActionInfo(string Label, string? Detail, bool Missing, long
 /// Descriu les accions dels esdeveniments per a la interfície, perquè no hagi de buscar cada pista a la biblioteca
 /// (docs/protocol.md, 4.7). Només llegeix (a través de la biblioteca i les rotacions).
 /// </summary>
-public sealed class ActionDescriber(Library? library, Rotations? rotations)
+public sealed class ActionDescriber(Library? library, Rotations? rotations, Campaigns? campaigns = null)
 {
     private IReadOnlyList<Rotation>? _rotations;
 
@@ -37,6 +37,7 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations)
                     Long(p, "subcategoriaId") is { } sub ? library?.SubcategoryName(sub) ?? $"Subcategoria {sub}" : "Sense subcategoria",
                     "Categoria de sweepers (trepitjador)", false, null),
                 EventActionType.Bag => new ActionInfo(BagLabel(Long(p, "bossaId"), Long(p, "subcategoriaId")), "Canvia la bossa", false, null),
+                EventActionType.Campaign => CampaignInfo(Long(p, "campanyaId")),
                 EventActionType.AutoDj => new ActionInfo(
                     p.TryGetProperty("actiu", out var on) && on.ValueKind == JsonValueKind.False ? "Atura l'AutoDJ" : "Activa l'AutoDJ", null, false, null),
                 _ => new ActionInfo(Events.ActionTypeText(action.Type), "encara no fa res", false, null),
@@ -46,6 +47,32 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations)
         {
             return new ActionInfo(Events.ActionTypeText(action.Type), "paràmetres il·legibles", true, null);
         }
+    }
+
+    /// <summary>
+    /// Una acció CAMPANYA (fase 4, pas 3c): «Campanya «Ferreteria»», amb les falques i l'estat. Si no existeix o no sona (esborrany,
+    /// acabada o sense falques), es marca com a `Missing`: l'editor ho mostra com una pista que no sonarà.
+    /// </summary>
+    private ActionInfo CampaignInfo(long? id)
+    {
+        if (id is null) return new ActionInfo("Campanya sense indicar", null, true, null);
+        var c = campaigns?.Get(id.Value);
+        if (c is null) return new ActionInfo($"Campanya {id} (no existeix)", null, true, null);
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        string spots = c.Spots.Count == 1 ? "1 falca" : $"{c.Spots.Count} falques";
+        static string Day(DateOnly d) => d.ToString("d/M/yyyy", System.Globalization.CultureInfo.InvariantCulture);
+        string dates = $"del {Day(c.StartDate)} al {Day(c.EndDate)}";
+        var (state, silent) = c.EffectiveState(today) switch
+        {
+            CampaignState.Draft => ("esborrany: no sona", true),
+            CampaignState.Finished => ("acabada: no sona", true),
+            _ => (c.Spots.Count == 0 ? "sense falques: no sona" : "activa", c.Spots.Count == 0),
+        };
+        // Quant ocupa: la falca més llarga (per a les hores previstes del contingut; quina sona ho decideix el pla)
+        long? duration = c.Spots.Select(s => library?.GetTrack(s.TrackId))
+            .Select(t => t is null ? null : t.EndMs is { } end ? end - (t.StartMs ?? 0) : t.DurationMs)
+            .Max();
+        return new ActionInfo($"Campanya «{c.Name}»", $"{spots} · {dates} · {state}", silent, duration);
     }
 
     /// <summary>«Bossa «Generalista A» → Music / Adult 6».</summary>

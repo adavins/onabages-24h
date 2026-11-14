@@ -18,6 +18,7 @@
       <button id="nav-planificador" class="section" type="button"><i class="bi bi-calendar-week" aria-hidden="true"></i> Planificador</button>
       <button id="nav-biblioteca" class="section" type="button"><i class="bi bi-collection-play" aria-hidden="true"></i> Pistes</button>
       <button id="nav-rotacions" class="section" type="button"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Rotacions</button>
+      <button id="nav-campanyes" class="section" type="button"><i class="bi bi-megaphone" aria-hidden="true"></i> Campanyes</button>
     </nav>
     <span id="zoom-indicator" class="zoom-indicator" aria-live="polite"></span>
     <span id="engine-status" class="engine-status status-connecting" role="status">
@@ -387,6 +388,35 @@
       </aside>
       <section id="rt-editor" class="rt-editor" aria-label="Editor de la rotació"></section>
     </div>
+  </div>
+
+  <!-- Campanyes de falques (fase 4, pas 3c; D-122, D-124): la llista a l'esquerra i l'editor a la dreta -->
+  <div id="view-campanyes" class="view d-none">
+    <div class="rt-main">
+      <aside class="rt-side" aria-label="Llista de campanyes">
+        <details class="rt-box" open>
+          <summary class="rt-box-title"><i class="bi bi-megaphone" aria-hidden="true"></i> Campanyes</summary>
+          <div class="rt-box-body">
+            <div class="rt-box-tools">
+              <button id="cp-new" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
+            </div>
+            <select id="cp-filter" class="form-select form-select-sm" aria-label="Quines campanyes es mostren">
+              <option value="current" selected>Actives i esborranys</option>
+              <option value="finished">Acabades</option>
+              <option value="all">Totes</option>
+            </select>
+            <input id="cp-search" class="form-control form-control-sm" type="search" placeholder="Cerca per nom o anunciant" aria-label="Cerca una campanya">
+            <ul id="cp-list" class="rt-list"></ul>
+          </div>
+        </details>
+      </aside>
+      <section id="cp-editor" class="rt-editor" aria-label="Editor de la campanya"></section>
+    </div>
+  </div>
+
+  <!-- Calendari d'una campanya (fase 4, pas 3d): forma part de la pestanya Campanyes (s'hi arriba des de l'editor) -->
+  <div id="view-calendari-campanya" class="view d-none">
+    <section id="cpcal-editor" class="cal-page" aria-label="Calendari de la campanya"></section>
   </div>
 
   <!-- Calendari d'una pista (D-104): forma part de la pestanya Pistes (s'hi arriba des de la fitxa; D-113) -->

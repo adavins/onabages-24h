@@ -226,4 +226,29 @@ public sealed class CampaignsTests : IDisposable
         Assert.False(_library.IsTrackInUse(_a)); // ja es pot esborrar
         Assert.Contains("No existeix", Send(new() { ["cmd"] = "campaigns.get", ["campaignId"] = id })["error"]!["message"]!.GetValue<string>());
     }
+
+    [Fact]
+    public void Un_esdeveniment_amb_l_accio_CAMPANYA_la_descriu_i_rebutja_una_que_no_existeix()
+    {
+        long id = Send(Ferreteria())["result"]!["campaign"]!["id"]!.GetValue<long>();
+        JsonObject Save(long campaignId) => Send(new()
+        {
+            ["cmd"] = "scheduler.save",
+            ["event"] = new JsonObject
+            {
+                ["name"] = "Falques 8:30", ["mode"] = "ENCUA", ["startTime"] = "08:30",
+                ["actions"] = new JsonArray(new JsonObject { ["type"] = "CAMPANYA", ["params"] = new JsonObject { ["campanyaId"] = campaignId } }),
+            },
+        });
+
+        var bad = Save(999);
+        Assert.Equal("bad_params", bad["error"]!["code"]!.GetValue<string>());
+        Assert.Contains("La campanya 999 no existeix", bad["error"]!["message"]!.GetValue<string>());
+
+        var action = Save(id)["result"]!["event"]!["actions"]![0]!;
+        Assert.Equal("Campanya «Ferreteria»", action["label"]!.GetValue<string>());
+        Assert.Contains("3 falques", action["detail"]!.GetValue<string>());
+        Assert.Contains("del 1/11/2026 al 30/11/2026", action["detail"]!.GetValue<string>());
+        Assert.False(action["missing"]!.GetValue<bool>() && DateOnly.FromDateTime(DateTime.Now) <= new DateOnly(2026, 11, 30));
+    }
 }

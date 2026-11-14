@@ -4,12 +4,15 @@
 // té una fila per a cada hora on hi ha esdeveniments que poden portar pistes.
 // Fent clic a una casella, la pista entra o surt d'aquell esdeveniment aquell dia (calendar.set). A sota, els passis.
 // Tot ho calcula el motor; aquí només es mostra.
+// El mateix calendari serveix per a una campanya (fase 4, pas 3d; D-126): s'obre des de l'editor de la campanya, i
+// marcar una casella hi posa l'acció CAMPANYA en lloc de PISTA. Cada vista en té la seva instància (i el seu requadre).
 
 import { $, el, icon, statusLabel } from './dom.js';
 import { typeBadge } from './type-badge.js';
 import { confirmAction } from './confirm.js';
 import { formatDuration } from '../format.js';
 import { modeInfo } from '../schedule.js';
+import { STATES, datesText } from '../campaign-form.js';
 import {
   DAY_SHORT, DAY_NAMES, cellWarnings, cellTitle, blockTimeProblem, normalizeBlockTime, dateText, monthText, passes, periodText,
   withExtraRows, trackOnlyRows, contentTimes,
@@ -18,8 +21,12 @@ import {
 export class CalendarView {
   #send;
   #visible = false;
-  /** La pista triada. @type {number | null} */
-  #trackId = null;
+  /** Què es programa: una pista o una campanya (fase 4, pas 3d). @type {{ kind: 'track' | 'campaign', id: number } | null} */
+  #subject = null;
+  /** El requadre on es dibuixa (cada vista té el seu). */
+  #boxId;
+  /** El text del botó de tornar. */
+  #backText;
   /** L'últim calendari (calendar.get). @type {any} */
   #calendar = null;
   /** Hi ha un canvi enviant-se: no es deixa fer clic a cap altra casella. */
@@ -40,11 +47,14 @@ export class CalendarView {
 
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
-   * @param {() => void} back  torna a la llista de pistes (la pestanya Pistes, tal com era)
+   * @param {() => void} back  torna a la llista de pistes (la pestanya Pistes, tal com era) o a la campanya
+   * @param {{ boxId?: string, backText?: string }} [options]  el requadre i el text del botó de tornar
    */
-  constructor(send, back) {
+  constructor(send, back, { boxId = 'cal-editor', backText = 'Torna a les pistes' } = {}) {
     this.#send = send;
     this.#back = back;
+    this.#boxId = boxId;
+    this.#backText = backText;
     this.#renderEditor();
   }
 
@@ -57,18 +67,30 @@ export class CalendarView {
     this.#visible = false;
   }
 
-  /** Torna a demanar el calendari de la pista triada (si es mostra): p. ex. si s'ha canviat un esdeveniment. */
+  /** 'pista' o 'campanya', per als textos (totes dues paraules són femenines: «la», «aquesta», «posa-la»). */
+  get #word() {
+    return this.#subject?.kind === 'campaign' ? 'campanya' : 'pista';
+  }
+
+  /** El camp de les ordres calendar.*: { trackId } o { campaignId }. */
+  #param() {
+    const s = this.#subject;
+    if (!s) return {};
+    return s.kind === 'campaign' ? { campaignId: s.id } : { trackId: s.id };
+  }
+
+  /** Torna a demanar el calendari de la pista o la campanya triada (si es mostra): p. ex. si s'ha canviat un esdeveniment. */
   async refresh() {
-    if (!this.#visible || this.#trackId == null) return;
-    const trackId = this.#trackId;
+    if (!this.#visible || this.#subject == null) return;
+    const subject = this.#subject;
     /** @type {any} */
     let calendar;
     try {
-      calendar = await this.#send('calendar.get', { trackId });
+      calendar = await this.#send('calendar.get', this.#param());
     } catch {
-      calendar = false; // la pista s'ha esborrat o no hi ha connexió (null = encara s'està carregant)
+      calendar = false; // s'ha esborrat o no hi ha connexió (null = encara s'està carregant)
     }
-    if (trackId !== this.#trackId) return; // mentrestant se n'ha triat una altra (p. ex. des de la fitxa): no la trepitja
+    if (subject !== this.#subject) return; // mentrestant se n'ha triat una altra (p. ex. des de la fitxa): no la trepitja
     this.#calendar = calendar;
     await this.#loadContent();
     this.#renderEditor();
@@ -76,12 +98,12 @@ export class CalendarView {
 
   /** Torna a demanar el contingut obert (si n'hi ha): p. ex. després de posar-hi o treure'n la pista. */
   async #loadContent() {
-    if (!this.#contentOf || this.#trackId == null) {
+    if (!this.#contentOf || this.#subject == null) {
       this.#content = null;
       return;
     }
     try {
-      this.#content = await this.#send('calendar.content', { eventId: this.#contentOf.eventId, day: this.#contentOf.day, trackId: this.#trackId });
+      this.#content = await this.#send('calendar.content', { eventId: this.#contentOf.eventId, day: this.#contentOf.day, ...this.#param() });
     } catch {
       this.#contentOf = null; // l'esdeveniment s'ha esborrat (p. ex. un bloc buit)
       this.#content = null;
@@ -93,35 +115,51 @@ export class CalendarView {
    * @param {{ id: number, title: string }} track
    */
   async openTrack(track) {
-    if (track.id !== this.#trackId) {
-      this.#extraTimes.clear(); // les hores provisionals eren per a l'altra pista
+    await this.#open('track', track.id);
+  }
+
+  /**
+   * Obre el calendari d'una campanya (des de l'editor de la campanya; fase 4, pas 3d). Qui la crida ja ha mostrat la vista.
+   * @param {{ id: number }} campaign
+   */
+  async openCampaign(campaign) {
+    await this.#open('campaign', campaign.id);
+  }
+
+  /** @param {'track' | 'campaign'} kind @param {number} id */
+  async #open(kind, id) {
+    if (this.#subject?.kind !== kind || this.#subject.id !== id) {
+      this.#extraTimes.clear(); // les hores provisionals eren per a una altra
       this.#contentOf = null;
     }
-    this.#trackId = track.id;
+    this.#subject = { kind, id };
     this.#calendar = null;
-    this.#renderEditor(); // de seguida: «Torna a les pistes» es veu mentre es carrega
+    this.#renderEditor(); // de seguida: el botó de tornar es veu mentre es carrega
     await this.refresh();
   }
 
   // --- Graella ---
 
   #renderEditor() {
-    const box = $('cal-editor');
+    const box = $(this.#boxId);
     const cal = this.#calendar;
     const back = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary cal-back'));
     back.type = 'button';
-    back.append(icon('bi-arrow-left'), ' Torna a les pistes');
+    back.append(icon('bi-arrow-left'), ` ${this.#backText}`);
     back.addEventListener('click', () => this.#back());
-    if (this.#trackId == null || !cal) {
+    if (this.#subject == null || !cal) {
       box.replaceChildren(back, el('p', 'text-body-secondary mt-3 mb-0',
-        this.#trackId == null ? 'Obre el calendari des de la fitxa d\'una pista (botó «Calendari…»).'
-          : cal === false ? 'No s\'ha pogut llegir el calendari d\'aquesta pista.' : 'Carregant el calendari…'));
+        this.#subject == null ? 'Obre el calendari des de la fitxa d\'una pista (botó «Calendari…»).'
+          : cal === false ? `No s'ha pogut llegir el calendari d'aquesta ${this.#word}.` : 'Carregant el calendari…'));
       return;
     }
-    const t = cal.track;
-
-    // Capçalera: la pista, el tipus, la durada i les dates
     const head = el('div', 'cal-head');
+    head.append(back, cal.campaign ? this.#campaignInfo(cal.campaign) : this.#trackInfo(cal.track), this.#modeSwitch());
+    this.#renderBody(box, head, cal);
+  }
+
+  /** Capçalera d'una pista: el títol, el tipus, la durada i les dates. @param {any} t */
+  #trackInfo(t) {
     const title = el('div', 'cal-title');
     title.append(el('strong', '', `${t.artist ? `${t.artist} - ` : ''}${t.title || '(sense títol)'}`), ' ',
       typeBadge(t.type), ' ',
@@ -136,8 +174,30 @@ export class CalendarView {
     sub.append(el('span', '', dates));
     if (t.fileState === 'missing') sub.append(statusLabel('text-danger', 'bi-exclamation-octagon-fill', 'El fitxer falta: no sonarà'));
     info.append(title, sub);
-    head.append(back, info, this.#modeSwitch());
+    return info;
+  }
 
+  /** Capçalera d'una campanya: el nom, l'estat, l'anunciant, les dates i les falques. @param {any} c */
+  #campaignInfo(c) {
+    const state = STATES[/** @type {keyof typeof STATES} */ (c.effectiveState)] ?? STATES.ESBORRANY;
+    const title = el('div', 'cal-title');
+    title.append(icon('bi-megaphone'), ' ', el('strong', '', c.name), ' ', statusLabel(state.css, state.icon, state.text));
+    const sub = el('div', 'cal-sub');
+    const parts = [c.advertiser, datesText(c.startDate, c.endDate), `${c.spots.length} ${c.spots.length === 1 ? 'falca' : 'falques'}`];
+    sub.append(el('span', '', parts.filter(Boolean).join(' · ')));
+    if (c.effectiveState === 'ESBORRANY') sub.append(statusLabel('text-warning', 'bi-info-circle', 'Esborrany: es pot programar, però no sonarà fins que l\'activis'));
+    else if (c.effectiveState === 'ACABADA') sub.append(statusLabel('text-warning', 'bi-info-circle', 'Acabada: ja no sona'));
+    if (c.spots.length === 0) sub.append(statusLabel('text-danger', 'bi-exclamation-octagon-fill', 'Sense falques: no sonarà'));
+    const info = el('div', 'cal-info');
+    info.append(title, sub);
+    return info;
+  }
+
+  /**
+   * La graella (o la vista «Només aquesta…»), els recomptes i, si n'hi ha, el contingut obert.
+   * @param {HTMLElement} box @param {HTMLElement} head @param {any} cal
+   */
+  #renderBody(box, head, cal) {
     // A sota de la capçalera: la graella (amb el seu desplaçament) i, si n'hi ha d'obert, el contingut de l'esdeveniment
     // en un panell a la dreta (D-114). Es conserva on s'havia baixat (la vista es torna a dibuixar a cada clic).
     const scroll = box.querySelector('.cal-main')?.scrollTop ?? 0;
@@ -175,14 +235,14 @@ export class CalendarView {
       group.append(b);
     };
     option('all', 'bi-grid-3x3', 'Tots els esdeveniments', 'Per programar: totes les hores amb esdeveniments, i les caselles buides per crear-hi un bloc de falques');
-    option('track', 'bi-check2-square', 'Només aquesta pista', 'Com queda la setmana de la pista: només les hores i els dies on sona');
+    option('track', 'bi-check2-square', `Només aquesta ${this.#word}`, `Com queda la setmana de la ${this.#word}: només les hores i els dies on sona`);
     return group;
   }
 
   /** Vista «Només aquesta pista»: les hores on sona i, cada dia, si hi és (sense esdeveniments ni caselles buides). @param {any} cal */
   #trackOnlyTable(cal) {
     const rows = trackOnlyRows(cal.rows);
-    if (rows.length === 0) return el('p', 'text-body-secondary', 'Aquesta pista encara no està programada enlloc. Canvia a «Tots els esdeveniments» per programar-la.');
+    if (rows.length === 0) return el('p', 'text-body-secondary', `Aquesta ${this.#word} encara no està programada enlloc. Canvia a «Tots els esdeveniments» per programar-la.`);
     const table = el('table', 'cal-grid cal-grid-track');
     const head = el('tr', '');
     head.append(el('th', 'cal-time', 'Hora'), ...DAY_SHORT.map((d, i) => {
@@ -246,8 +306,8 @@ export class CalendarView {
       // Casella buida (D-105): un clic hi programa la pista en un bloc de falques d'aquella hora (es crea si cal)
       const b = /** @type {HTMLButtonElement} */ (el('button', 'cal-cell cal-cell-empty'));
       b.type = 'button';
-      b.title = `${DAY_NAMES[day]} ${time.slice(0, 5)}: no hi ha cap esdeveniment.\nFes clic per programar-hi la pista: anirà al bloc de falques de les ${time.slice(0, 5)} (es crea si no n'hi ha).`;
-      b.setAttribute('aria-label', `${DAY_NAMES[day]} ${time.slice(0, 5)}: buida, programa-hi la pista`);
+      b.title = `${DAY_NAMES[day]} ${time.slice(0, 5)}: no hi ha cap esdeveniment.\nFes clic per programar-hi la ${this.#word}: anirà al bloc de falques de les ${time.slice(0, 5)} (es crea si no n'hi ha).`;
+      b.setAttribute('aria-label', `${DAY_NAMES[day]} ${time.slice(0, 5)}: buida, programa-hi la ${this.#word}`);
       b.append(icon('bi-plus'));
       b.disabled = this.#busy;
       b.addEventListener('click', () => this.#change(time, day, true));
@@ -258,7 +318,7 @@ export class CalendarView {
     const warnings = cellWarnings(cell);
     const b = /** @type {HTMLButtonElement} */ (el('button', `cal-cell ${info.css}${cell.marked ? ' is-marked' : ''}${cell.enabled ? '' : ' is-disabled'}`));
     b.type = 'button';
-    b.title = cellTitle(cell, day, time);
+    b.title = cellTitle(cell, day, time, this.#word);
     b.setAttribute('aria-pressed', String(cell.marked));
     b.setAttribute('aria-label', `${DAY_NAMES[day]} ${time.slice(0, 5)}, ${cell.name}: ${cell.marked ? 'hi és' : 'no hi és'}`);
     // Sempre icona + text (CLAUDE.md): la marca, el nom i, si n'hi ha, l'avís
@@ -272,7 +332,7 @@ export class CalendarView {
     open.type = 'button';
     const shown = this.#contentOf?.eventId === cell.eventId && this.#contentOf.day === day;
     if (shown) open.classList.add('active');
-    open.title = `Contingut de «${cell.name}» el ${DAY_NAMES[day]}, en ordre d'emissió (per moure-hi la pista)`;
+    open.title = `Contingut de «${cell.name}» el ${DAY_NAMES[day]}, en ordre d'emissió (per moure-hi la ${this.#word})`;
     open.setAttribute('aria-label', open.title);
     open.setAttribute('aria-pressed', String(shown));
     open.append(icon('bi-card-list'));
@@ -318,7 +378,8 @@ export class CalendarView {
       ? 'Comença a l\'hora exacta. Les hores de cada pista són previstes (amb els encavalcaments poden avançar uns segons).'
       : 'ENCUA: entra a la cua a aquesta hora i comença quan s\'acaba la pista que sona; les hores són aproximades.');
     if (ev.repeats) notes.push('Es repeteix dins del dia: aquestes són les hores de la primera vegada.');
-    notes.push('L\'ordre és el mateix tots els dies: moure la pista aquí també la mou els altres dies on hi és.');
+    notes.push(`L'ordre és el mateix tots els dies: moure la ${this.#word} aquí també la mou els altres dies on hi és.`);
+    if (this.#subject?.kind === 'campaign') notes.push('Per a les hores, la campanya compta el que dura la seva falca més llarga: quina sona ho decideix el pla.');
     box.append(el('p', 'form-text mt-1 mb-2', notes.join(' ')));
 
     const items = /** @type {any[]} */ (content.items);
@@ -337,13 +398,13 @@ export class CalendarView {
       li.append(text);
       if (item.missing) li.append(statusLabel('text-danger small', 'bi-exclamation-octagon-fill', 'no sonarà'));
       if (item.isTrack) {
-        li.append(statusLabel('text-success small', 'bi-check-square-fill', 'aquesta pista'),
+        li.append(statusLabel('text-success small', 'bi-check-square-fill', `aquesta ${this.#word}`),
           this.#moveButton(-1, i === 0), this.#moveButton(1, i === items.length - 1));
       }
       list.append(li);
     });
     box.append(list);
-    if (!items.some((it) => it.isTrack)) box.append(el('p', 'form-text m-0', 'La pista no hi és aquest dia: marca la casella per posar-la-hi.'));
+    if (!items.some((it) => it.isTrack)) box.append(el('p', 'form-text m-0', `La ${this.#word} no hi és aquest dia: marca la casella per posar-la-hi.`));
     const footer = el('div', 'form-text mt-2', end ? `S'acaba cap a les ${end}.` : 'No se sap quan s\'acaba (hi ha alguna durada desconeguda).');
     box.append(footer);
     if (end && ev.maxDurationSeconds) {
@@ -363,7 +424,7 @@ export class CalendarView {
     const b = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary cal-content-move'));
     b.type = 'button';
     b.append(icon(delta < 0 ? 'bi-arrow-up' : 'bi-arrow-down'));
-    b.title = delta < 0 ? 'Mou la pista una posició amunt (sona abans)' : 'Mou la pista una posició avall (sona després)';
+    b.title = delta < 0 ? `Mou la ${this.#word} una posició amunt (sona abans)` : `Mou la ${this.#word} una posició avall (sona després)`;
     b.setAttribute('aria-label', b.title);
     b.disabled = atEnd || this.#busy;
     b.addEventListener('click', () => this.#move(delta));
@@ -372,10 +433,10 @@ export class CalendarView {
 
   /** @param {-1 | 1} delta */
   async #move(delta) {
-    if (this.#busy || !this.#contentOf || this.#trackId == null) return;
+    if (this.#busy || !this.#contentOf || this.#subject == null) return;
     this.#busy = true;
     try {
-      this.#content = await this.#send('calendar.move', { eventId: this.#contentOf.eventId, day: this.#contentOf.day, trackId: this.#trackId, delta });
+      this.#content = await this.#send('calendar.move', { eventId: this.#contentOf.eventId, day: this.#contentOf.day, ...this.#param(), delta });
     } catch (err) {
       await confirmAction({ title: 'No s\'ha pogut moure', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
     } finally {
@@ -386,12 +447,12 @@ export class CalendarView {
 
   /** @param {any} cell @param {number} day @param {string} time */
   async #toggle(cell, day, time) {
-    if (this.#busy || this.#trackId == null) return;
+    if (this.#busy || this.#subject == null) return;
     // Un esdeveniment que es repeteix dins del dia: la pista hi seria a totes les hores. S'avisa una vegada
     if (!cell.marked && cell.repeats && !this.#warnedRepeats.has(cell.eventId)) {
       const ok = await confirmAction({
         title: 'Esdeveniment que es repeteix',
-        message: `«${cell.name}» es repeteix dins del dia: la pista sonarà a totes les seves hores, no només a aquesta.`,
+        message: `«${cell.name}» es repeteix dins del dia: la ${this.#word} sonarà a totes les seves hores, no només a aquesta.`,
         confirm: 'Posa-la igualment',
       });
       if (!ok) return;
@@ -406,10 +467,10 @@ export class CalendarView {
    * @param {string} time @param {number} day @param {boolean} marked
    */
   async #change(time, day, marked) {
-    if (this.#busy || this.#trackId == null) return;
+    if (this.#busy || this.#subject == null) return;
     this.#busy = true;
     try {
-      this.#calendar = await this.#send('calendar.set', { trackId: this.#trackId, time, day, marked });
+      this.#calendar = await this.#send('calendar.set', { ...this.#param(), time, day, marked });
     } catch (err) {
       await confirmAction({ title: 'No s\'ha pogut canviar', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
     } finally {
@@ -453,7 +514,7 @@ export class CalendarView {
   #counts(counts) {
     const box = el('div', 'cal-counts');
     const total = el('div', 'cal-total');
-    total.append(el('strong', '', passes(counts.total)), ` ${periodText(counts)}`);
+    total.append(el('strong', '', passes(counts.total)), ` ${periodText(counts, this.#word)}`);
     box.append(total);
 
     // Setmana tipus: per dia de la setmana
