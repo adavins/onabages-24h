@@ -3496,14 +3496,42 @@ button.pl-chip.is-off {
   font-size: 0.9rem;
 }
 
-/* «Calendari…» (pas 3d): a dalt del requadre, sense ocupar tota l'amplada */
-.cp-calendar {
-  align-self: flex-start;
+/* Editor de la campanya en columnes (D-132): depèn de l'amplada de l'editor (no de la finestra), perquè la llista de
+   l'esquerra ja n'ocupa una part */
+#cp-editor {
+  container-type: inline-size;
 }
 
-.cp-events {
-  margin: 0;
-  padding-left: 1.2rem;
+.cp-top {
+  display: flex;
+  flex-direction: column;
+}
+
+/* El calendari i la llegenda, un sota l'altre */
+.cp-plan-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* «Dades» (estreta) i «Falques» (la resta), una al costat de l'altra si hi caben les columnes de les falques */
+@container (min-width: 78rem) {
+  .cp-top {
+    display: grid;
+    grid-template-columns: minmax(0, 31rem) minmax(0, 1fr);
+    gap: 0 1rem;
+    align-items: start;
+  }
+}
+
+/* Pla de passis: el resum a l'esquerra i el calendari amb la llegenda a la dreta */
+@container (min-width: 48rem) {
+  .cp-plan-panel.is-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.75rem 1rem;
+    align-items: start;
+  }
 }
 
 .cp-plan {

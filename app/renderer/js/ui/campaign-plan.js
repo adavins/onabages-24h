@@ -13,11 +13,12 @@ import { planSummary, monthWeeks, dmy } from '../campaign-form.js';
  * @param {any} plan  de campaigns.plan
  * @param {any} campaign  la campanya (startDate, endDate, contractedTotal, contractedPerDay, effectiveState)
  * @param {string} today  'AAAA-MM-DD'
- * @param {{ months?: boolean }} [options]  months: amb el calendari mensual (per defecte, sí)
+ * @param {{ months?: boolean, columns?: boolean }} [options]  months: amb el calendari mensual (per defecte, sí);
+ *   columns: el resum a l'esquerra i el calendari i la llegenda a la dreta, si hi caben (a l'editor de la campanya, D-132)
  */
-export function planPanel(plan, campaign, today, { months = true } = {}) {
+export function planPanel(plan, campaign, today, { months = true, columns = false } = {}) {
   const s = planSummary(plan, campaign, today);
-  const box = el('div', 'cp-plan-panel');
+  const box = el('div', `cp-plan-panel${columns ? ' is-columns' : ''}`);
 
   // Requadre «Resum» (D-130): la taula i, a sota, els avisos
   const summary = [];
@@ -37,8 +38,11 @@ export function planPanel(plan, campaign, today, { months = true } = {}) {
   box.append(section('Resum', 'bi-table', summary));
 
   if (months) {
-    box.append(section('Calendari', 'bi-calendar3', [monthCalendars(s, campaign, today)]));
-    box.append(section('Llegenda', 'bi-info-circle', [legend(campaign.contractedPerDay ?? null)]));
+    // El calendari i la llegenda van junts (a la dreta del resum quan hi ha dues columnes)
+    const col = el('div', 'cp-plan-col');
+    col.append(section('Calendari', 'bi-calendar3', [monthCalendars(s, campaign, today)]),
+      section('Llegenda', 'bi-info-circle', [legend(campaign.contractedPerDay ?? null)]));
+    box.append(col);
   }
   return box;
 }

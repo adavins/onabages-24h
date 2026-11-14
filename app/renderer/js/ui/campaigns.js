@@ -238,17 +238,30 @@ export class CampaignsView {
     const showState = () => stateBox.replaceChildren(stateLabel(form.state), el('span', 'form-text ms-2', STATES[/** @type {keyof typeof STATES} */ (form.state)].help));
     showState();
     stateSelect.addEventListener('change', () => { form.state = stateSelect.value; showState(); changed(); });
-    const close = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary ms-auto'));
+    // «Calendari…» (D-132): la graella per programar-la; només d'una campanya desada
+    const campaign = this.#campaign;
+    const calendar = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-primary ms-auto'));
+    calendar.type = 'button';
+    calendar.append(icon('bi-calendar-week'), ' Calendari…');
+    calendar.title = campaign
+      ? 'La graella setmanal: marca a quines hores i quins dies ha de sonar, com amb una pista'
+      : 'Desa la campanya per poder-la programar al calendari';
+    calendar.disabled = !campaign;
+    if (campaign) calendar.addEventListener('click', () => this.#openCalendar(campaign));
+    const close = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
     close.type = 'button';
     close.append(icon('bi-x-lg'), ' Tanca');
     close.addEventListener('click', () => this.#closeEditor());
-    head.append(nameLabel, name, stateSelect, stateBox, close);
+    head.append(nameLabel, name, stateSelect, stateBox, calendar, close);
 
     const notes = [];
     if (this.#campaign && this.#campaign.state === 'ACTIVA' && this.#campaign.effectiveState === 'ACABADA')
       notes.push(statusLabel('text-secondary small', 'bi-info-circle', 'Ha passat la data de fi: compta com a acabada i ja no sona.'));
 
-    box.replaceChildren(head, ...notes, this.#generalBox(form, changed), this.#spotsBox(form), ...(this.#campaign ? [this.#whereBox()] : []), this.#actionsBar());
+    // «Dades» i «Falques» una al costat de l'altra si hi caben (D-132); a sota, el pla de passis (d'una campanya desada)
+    const top = el('div', 'cp-top');
+    top.append(this.#generalBox(form, changed), this.#spotsBox(form));
+    box.replaceChildren(head, ...notes, top, ...(this.#campaign ? [this.#planBox()] : []), this.#actionsBar());
     this.#updateActions();
   }
 
@@ -526,31 +539,21 @@ export class CampaignsView {
     this.#renderEditor();
   }
 
-  /** Requadre «On sona»: els esdeveniments, quantes vegades ha sonat i el resum del pla (de la campanya desada). */
-  #whereBox() {
+  /**
+   * Requadre «Pla de passis» (de la campanya desada; D-132): el resum i, al costat, el calendari i la llegenda. Els
+   * esdeveniments on sona ja no es llisten (sortiran a l'informe de programació); només s'avisa si no en té cap.
+   */
+  #planBox() {
     const c = this.#campaign;
     const body = el('div', 'cp-where');
-    const calendar = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-primary cp-calendar'));
-    calendar.type = 'button';
-    calendar.append(icon('bi-calendar-week'), ' Calendari…');
-    calendar.title = 'La graella setmanal: marca a quines hores i quins dies ha de sonar, com amb una pista';
-    calendar.addEventListener('click', () => this.#openCalendar(c));
-    body.append(calendar);
     if (c.events.length === 0) {
-      body.append(statusLabel('text-warning d-block', 'bi-exclamation-triangle-fill', 'Cap esdeveniment la fa sonar.'),
-        el('div', 'form-text', 'Prem «Calendari…» per triar les hores i els dies on ha de sonar. També es pot afegir l\'acció «Campanya» a un esdeveniment des del Planificador.'));
-    } else {
-      body.append(el('div', 'form-text', `La fan sonar ${c.events.length === 1 ? 'l\'esdeveniment' : `${c.events.length} esdeveniments`}:`));
-      const list = el('ul', 'cp-events');
-      for (const ev of c.events) list.append(el('li', '', ev.name));
-      body.append(list);
+      body.append(statusLabel('text-warning d-block', 'bi-exclamation-triangle-fill', 'Encara no està programada enlloc.'),
+        el('div', 'form-text', 'Prem «Calendari…» (a dalt) per triar les hores i els dies on ha de sonar. També es pot afegir l\'acció «Campanya» a un esdeveniment des del Planificador.'));
     }
-    body.append(el('div', 'form-text', c.playCount === 0 ? 'Encara no ha sonat cap vegada.' : `Ha sonat ${c.playCount} ${c.playCount === 1 ? 'vegada' : 'vegades'}.`));
     const plan = el('div', 'cp-plan');
     body.append(plan);
     this.#loadPlan(plan, c);
-    const summary = c.events.length === 0 ? 'cap esdeveniment' : `${c.events.length} ${c.events.length === 1 ? 'esdeveniment' : 'esdeveniments'}`;
-    return box('On sona i pla de passis', summary, body, true);
+    return box('Pla de passis', c.events.length === 0 ? 'no està programada' : '', body, true);
   }
 
   /** El resum del pla (campaigns.plan): passis per falca i si quadren amb els contractats. @param {HTMLElement} into @param {any} c */
@@ -559,7 +562,7 @@ export class CampaignsView {
     try {
       const plan = await this.#send('campaigns.plan', { campaignId: c.id });
       if (this.#campaign?.id !== c.id) return;
-      const parts = [planPanel(plan, c, todayIso())];
+      const parts = [planPanel(plan, c, todayIso(), { columns: true })];
       if (this.dirty) parts.push(statusLabel('text-warning small d-block', 'bi-info-circle', 'És el pla de la campanya desada: els canvis sense desar no hi compten.'));
       into.replaceChildren(...parts);
     } catch (err) {
