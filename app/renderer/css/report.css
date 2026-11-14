@@ -134,3 +134,9 @@
 .report .rp-on {
   font-weight: 600;
 }
+
+/* «Previst i emès» (D-141): el resum, estret */
+.report .rp-summary {
+  width: auto;
+  min-width: 50%;
+}

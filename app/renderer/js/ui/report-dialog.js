@@ -53,7 +53,16 @@ export function openReport({ send, savePdf, openStation, kind, target, subject }
   close.type = 'button';
   close.append(icon('bi-x-lg'), ' Tanca');
   close.addEventListener('click', () => dialog.close());
-  tools.append(from.wrap, to.wrap, state, el('span', 'ms-auto'), station, save, close);
+  // Al certificat, la comparació amb el previst és opcional i comença desactivada (D-141)
+  const compare = /** @type {HTMLInputElement} */ (el('input', 'form-check-input'));
+  compare.type = 'checkbox';
+  compare.id = `rp-compare-${Date.now()}`;
+  const compareWrap = el('div', 'form-check m-0 rp-dialog-compare');
+  const compareLabel = /** @type {HTMLLabelElement} */ (el('label', 'form-check-label', 'Compara amb el previst'));
+  compareLabel.htmlFor = compare.id;
+  compareLabel.title = 'Afegeix quants passis estaven previstos, quants han sonat i el motiu dels que no';
+  compareWrap.append(compare, compareLabel);
+  tools.append(from.wrap, to.wrap, ...(kind === 'certificate' ? [compareWrap] : []), state, el('span', 'ms-auto'), station, save, close);
 
   const notice = el('div', 'rp-dialog-notice');
   // La vista prèvia: el document en blanc, com un full
@@ -77,7 +86,7 @@ export function openReport({ send, savePdf, openStation, kind, target, subject }
     }
     state.replaceChildren(statusLabel('text-info', 'bi-hourglass-split', 'Preparant l\'informe…'));
     try {
-      const params = { ...target, from: from.input.value, to: to.input.value };
+      const params = { ...target, from: from.input.value, to: to.input.value, ...(kind === 'certificate' && compare.checked ? { compare: true } : {}) };
       const [data, st] = await Promise.all([
         send(kind === 'programming' ? 'reports.programming' : 'reports.certificate', params),
         send('station.get'),
@@ -101,6 +110,7 @@ export function openReport({ send, savePdf, openStation, kind, target, subject }
 
   from.input.addEventListener('change', load);
   to.input.addEventListener('change', load);
+  compare.addEventListener('change', load);
   station.addEventListener('click', async () => {
     await openStation();
     await load();

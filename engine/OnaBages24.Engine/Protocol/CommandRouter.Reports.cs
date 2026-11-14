@@ -126,6 +126,13 @@ public sealed partial class CommandRouter
         return (subject, campaign, track, from, to, json);
     }
 
+    /// <summary>Els passis previstos d'una campanya o d'una pista entre dues dates (dies locals, totes dues incloses).</summary>
+    private IReadOnlyList<PlannedPass> PlannedPasses(Campaign? campaign, Track? track, IReadOnlyList<ScheduledEvent> events, DateOnly from, DateOnly to) =>
+        campaign is not null
+            ? ScheduleReports.CampaignPasses(campaign, CampaignsOrError(), events, LibraryOrError().GetTrack,
+                LocalDayStart(from), LocalDayStart(to.AddDays(1)), CampaignClock(), TimeZoneInfo.Local)
+            : ScheduleReports.TrackPasses(track!, events, from, to, TimeZoneInfo.Local);
+
     /// <summary>
     /// Informe de programació (fase 4, pas 4a): <c>campaignId</c> o <c>trackId</c>, i <c>from</c>/<c>to</c>. Els passis
     /// previstos (amb la falca de cadascun), quants en té cada falca i la graella setmanal amb les franges programades.
@@ -135,11 +142,7 @@ public sealed partial class CommandRouter
         var library = LibraryOrError();
         var events = EventsOrError().List();
         var (subject, campaign, track, from, to, json) = ReportSubject(msg);
-        var start = LocalDayStart(from);
-        var end = LocalDayStart(to.AddDays(1));
-        var passes = campaign is not null
-            ? ScheduleReports.CampaignPasses(campaign, CampaignsOrError(), events, library.GetTrack, start, end, CampaignClock(), TimeZoneInfo.Local)
-            : ScheduleReports.TrackPasses(track!, events, from, to, TimeZoneInfo.Local);
+        var passes = PlannedPasses(campaign, track, events, from, to);
 
         // Les falques (o la pista): quants passis previstos en té cadascuna
         var spotIds = campaign is not null ? campaign.Spots.Select(s => s.TrackId).ToList() : [track!.Id];
@@ -190,12 +193,21 @@ public sealed partial class CommandRouter
     /// Certificat d'emissió (fase 4, pas 4a): <c>campaignId</c> o <c>trackId</c>, i <c>from</c>/<c>to</c>. Cada emissió
     /// real, de l'historial (no del pla): hora d'inici, artista, títol, quant va sonar i si va sonar sencera. El nombre de
     /// passis és el de la llista. D'una campanya, les emissions de qualsevol de les seves falques.
+    /// Amb <c>compare: true</c> (pas 4c; D-141), també la comparació amb el que estava previst (<c>comparison</c>) i, a cada
+    /// emissió, si corresponia a un passi previst (<c>planned</c>).
     /// </summary>
     private JsonObject ReportsCertificate(JsonObject msg)
     {
         var library = LibraryOrError();
         var (_, campaign, track, from, to, json) = ReportSubject(msg);
         var emissions = library.HistoryFor(track?.Id, campaign?.Id, LocalDayStart(from), LocalDayStart(to.AddDays(1)));
+        bool compare = msg["compare"] is JsonValue c && c.TryGetValue(out bool yes) && yes;
+        JsonObject? comparison = null;
+        HashSet<long>? unplannedIds = null;
+        if (compare)
+        {
+            (comparison, unplannedIds) = Comparison(campaign, track, from, to, emissions);
+        }
         var bySpot = emissions
             .GroupBy(e => (e.TrackId, e.Artist, e.Title))
             .Select(g => (JsonNode)new JsonObject
@@ -221,7 +233,74 @@ public sealed partial class CommandRouter
                 ["title"] = e.Title,
                 ["playedMs"] = e.PlayedMs,
                 ["complete"] = e.Complete,
+                ["planned"] = unplannedIds is null ? null : !unplannedIds.Contains(e.Id),
             }).ToArray()),
+            ["comparison"] = comparison,
         };
     }
+
+    /// <summary>
+    /// «Previst i emès» (pas 4c; D-141): els passis previstos fins ara (amb falca) comparats amb les emissions. Retorna el
+    /// resum, els passis que no van sonar amb el motiu, i els ids de l'historial de les emissions que no eren previstes.
+    /// </summary>
+    private (JsonObject Json, HashSet<long> Unplanned) Comparison(Campaign? campaign, Track? track, DateOnly from, DateOnly to,
+        IReadOnlyList<HistoryEntry> emissions)
+    {
+        var library = LibraryOrError();
+        var events = EventsOrError();
+        var now = CampaignClock();
+        var all = PlannedPasses(campaign, track, events.List(), from, to).Where(p => p.TrackId is not null).ToList();
+        var past = all.Where(p => p.At < now).ToList();
+
+        // Les línies del registre de cada esdeveniment del període, per emissió (hora prevista)
+        var start = LocalDayStart(from);
+        var end = LocalDayStart(to.AddDays(1));
+        var lines = new Dictionary<long, ILookup<DateTimeOffset, ExecutionRecord>>();
+        IReadOnlyList<ExecutionRecord> Lines(long eventId, DateTimeOffset at)
+        {
+            if (!lines.TryGetValue(eventId, out var byTime))
+            {
+                byTime = events.Executions(start, end, eventId, limit: 100_000).ToLookup(l => l.ScheduledFor);
+                lines[eventId] = byTime;
+            }
+            return byTime[at].ToList();
+        }
+
+        var (checks, unplanned) = ScheduleReports.Compare(past, emissions, Lines);
+        var missing = checks.Where(k => k.Emission is null).ToList();
+        var json = new JsonObject
+        {
+            ["planned"] = past.Count,
+            ["played"] = checks.Count - missing.Count,
+            ["missing"] = missing.Count,
+            ["pending"] = all.Count - past.Count,
+            ["unplanned"] = unplanned.Count,
+            ["missingPasses"] = new JsonArray(missing.Select(k => (JsonNode)new JsonObject
+            {
+                ["at"] = LocalText(k.Pass.At),
+                ["eventName"] = k.Pass.EventName,
+                ["trackId"] = k.Pass.TrackId,
+                ["title"] = k.Pass.TrackId is { } id ? library.GetTrack(id)?.Title : null,
+                ["reason"] = MissingReason(k.Execution),
+                ["detail"] = k.Execution?.Detail,
+            }).ToArray()),
+        };
+        return (json, unplanned.Select(e => e.Id).ToHashSet());
+    }
+
+    /// <summary>
+    /// Per què no va sonar un passi: el resultat del registre (<c>OMES_TARD</c>, <c>NO_EMES</c>…), <c>SENSE_EMISSIO</c> si
+    /// l'esdeveniment s'hi va executar però no consta que sonés, o <c>SENSE_REGISTRE</c> si no hi consta res.
+    /// </summary>
+    private static string MissingReason(ExecutionRecord? line) => line?.Result switch
+    {
+        null => "SENSE_REGISTRE",
+        ExecutionResult.Ok => "SENSE_EMISSIO",
+        ExecutionResult.SkippedLate => "OMES_TARD",
+        ExecutionResult.SkippedConflict => "OMES_CONFLICTE",
+        ExecutionResult.SkippedClockChange => "OMES_CANVI_HORA",
+        ExecutionResult.NotPlayed => "NO_EMES",
+        ExecutionResult.SkippedPaused => "OMES_ATURAT",
+        _ => "ERROR",
+    };
 }

@@ -185,6 +185,87 @@ public sealed class ReportsTests : IDisposable
     }
 
     [Fact]
+    public void La_comparacio_aparella_cada_passi_amb_la_seva_emissio_i_dona_el_motiu_dels_que_falten()
+    {
+        // D-141: quatre passis previstos a les 10:00 (esdeveniment 7), de la falca A
+        var day = new DateOnly(2026, 11, 2);
+        var planned = Enumerable.Range(0, 4).Select(i => new PlannedPass(7, "Falques 10:00", Local(day.AddDays(i), 10), _a)).ToList();
+        HistoryEntry Played(int dayOffset, int hour, int minute, long trackId) => new(
+            dayOffset * 100 + minute, trackId, Local(day.AddDays(dayOffset), hour).AddMinutes(minute), 20_000, true, QueueOrigin.Event, "Ferreteria", "Falca", "f.mp3");
+        var emissions = new[]
+        {
+            Played(0, 10, 3, _a),  // un ENCUA que espera la cançó: 3 minuts tard, compta
+            Played(3, 10, 0, _b),  // l'altra falca de la campanya: també compta
+            Played(3, 15, 0, _a),  // a la tarda, posada a mà: no era prevista
+        };
+        var notPlayed = new ExecutionRecord { EventId = 7, ScheduledFor = planned[1].At, Result = ExecutionResult.NotPlayed, Detail = "treta a mà" };
+        var queued = new ExecutionRecord { EventId = 7, ScheduledFor = planned[1].At, Result = ExecutionResult.Ok };
+        IReadOnlyList<ExecutionRecord> Lines(long eventId, DateTimeOffset at) => at == planned[1].At ? [queued, notPlayed] : [];
+
+        var (checks, unplanned) = ScheduleReports.Compare(planned, emissions, Lines);
+        Assert.Equal([true, false, false, true], checks.Select(k => k.Emission is not null));
+        Assert.Equal(ExecutionResult.NotPlayed, checks[1].Execution!.Result); // el NO_EMES diu més que l'OK d'encuar-lo
+        Assert.Null(checks[2].Execution);                                       // no hi consta res: el motor no funcionava
+        Assert.Equal(Local(day.AddDays(3), 15), Assert.Single(unplanned).Started);
+    }
+
+    [Fact]
+    public void El_certificat_amb_comparacio_compta_els_previstos_els_emesos_i_els_que_falten()
+    {
+        var c = Campaign(CampaignState.Active);
+        Event(EventActionType.Campaign, c.Id);
+        long eventId = _events.List().Single().Id;
+        new CampaignPlans(_campaigns, _events, _library, TimeZoneInfo.Local, () => _now).RecalculateAll();
+
+        // Dia 4 a les 12:00: s'han previst 4 passis (de l'1 al 4); n'han sonat 2, un s'ha omès i de l'altre no consta res
+        _now = Local(new DateOnly(2026, 11, 4), 12);
+        var a = _library.GetTrack(_a)!;
+        _library.AddHistory(a, Local(new DateOnly(2026, 11, 1), 10).AddSeconds(5), QueueOrigin.Event, c.Id);
+        _library.AddHistory(a, Local(new DateOnly(2026, 11, 4), 10), QueueOrigin.Event, c.Id);
+        _library.AddHistory(a, Local(new DateOnly(2026, 11, 3), 18), QueueOrigin.Manual, c.Id); // no prevista
+        _events.AddExecution(new ExecutionRecord
+        {
+            EventId = eventId, Name = "Falques 10:00", ScheduledFor = Local(new DateOnly(2026, 11, 2), 10), Result = ExecutionResult.SkippedLate,
+        });
+
+        var certificate = Send(new() { ["cmd"] = "reports.certificate", ["campaignId"] = c.Id, ["to"] = "2026-11-30", ["compare"] = true })["result"]!;
+        var comparison = certificate["comparison"]!;
+        Assert.Equal((4, 2, 2, 26, 1), (comparison["planned"]!.GetValue<int>(), comparison["played"]!.GetValue<int>(),
+            comparison["missing"]!.GetValue<int>(), comparison["pending"]!.GetValue<int>(), comparison["unplanned"]!.GetValue<int>()));
+        Assert.Equal(["OMES_TARD", "SENSE_REGISTRE"], comparison["missingPasses"]!.AsArray().Select(p => p!["reason"]!.GetValue<string>()));
+        Assert.Equal([true, false, true], certificate["emissions"]!.AsArray().Select(e => e!["planned"]!.GetValue<bool>()));
+
+        // Sense «compare», com abans
+        var plain = Send(new() { ["cmd"] = "reports.certificate", ["campaignId"] = c.Id })["result"]!;
+        Assert.Null(plain["comparison"]);
+        Assert.Null(plain["emissions"]![0]!["planned"]);
+    }
+
+    [Fact]
+    public void Una_falca_posada_a_ma_compta_per_a_la_seva_campanya_si_nomes_es_d_una_d_activa()
+    {
+        // D-142: en esborrany no sona; activa i dins de les dates, sí
+        var c = Campaign(CampaignState.Draft);
+        Assert.Null(_router.ManualCampaignFor(_a));
+        _campaigns.Save(c with { State = CampaignState.Active }, _now);
+        Assert.Equal(c.Id, _router.ManualCampaignFor(_a));
+
+        // Fora de les dates de la campanya, no
+        _now = Local(new DateOnly(2026, 12, 1), 10);
+        Assert.Null(_router.ManualCampaignFor(_a));
+
+        // Si la falca és de dues campanyes actives, no se sap per quina sona
+        _now = Local(new DateOnly(2026, 11, 5), 10);
+        _campaigns.Save(new Campaign
+        {
+            Name = "Una altra", StartDate = new DateOnly(2026, 11, 1), EndDate = new DateOnly(2026, 11, 30), State = CampaignState.Active,
+            Spots = [new CampaignSpot { TrackId = _a }],
+        }, _now);
+        Assert.Null(_router.ManualCampaignFor(_a));
+        Assert.Equal(c.Id, _router.ManualCampaignFor(_b)); // la B només és de la primera
+    }
+
+    [Fact]
     public void Un_periode_incorrecte_es_rebutja()
     {
         var c = Campaign(CampaignState.Active);

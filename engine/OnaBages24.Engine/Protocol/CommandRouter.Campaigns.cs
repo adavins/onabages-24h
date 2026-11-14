@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using OnaBages24.Data;
+using OnaBages24.Engine.Playback;
 
 namespace OnaBages24.Engine.Protocol;
 
@@ -15,6 +16,28 @@ public sealed partial class CommandRouter
     private Campaigns CampaignsOrError() => _campaigns ?? throw new BadParamsException("El motor no té campanyes.");
 
     private static DateOnly Today() => DateOnly.FromDateTime(DateTime.Now);
+
+    /// <summary>
+    /// Una pista posada a mà (a la cua o a un reproductor auxiliar). Si és una falca d'una sola campanya activa aquell dia,
+    /// l'emissió queda anotada amb aquella campanya: compta al certificat i als passis que ja han sonat (D-142).
+    /// </summary>
+    private QueueItem ManualItem(Track track) =>
+        QueueItem.FromTrack(track, QueueOrigin.Manual) with { CampaignId = ManualCampaignFor(track.Id) };
+
+    /// <summary>
+    /// La campanya d'una falca posada a mà (D-142): la campanya activa, amb la data d'avui dins de les seves dates, que la
+    /// té entre les falques. Si n'hi ha més d'una, o cap, null (no se sap per quina sona).
+    /// </summary>
+    internal long? ManualCampaignFor(long trackId)
+    {
+        if (_campaigns is null) return null;
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(CampaignClock(), TimeZoneInfo.Local).DateTime);
+        var ids = _campaigns.List()
+            .Where(c => c.State == CampaignState.Active && c.StartDate <= today && today <= c.EndDate && c.Spots.Any(s => s.TrackId == trackId))
+            .Select(c => c.Id)
+            .ToList();
+        return ids.Count == 1 ? ids[0] : null;
+    }
 
     /// <summary>Totes les campanyes, amb les falques (sense la fitxa de cada pista: per a la llista).</summary>
     private JsonObject CampaignsList()

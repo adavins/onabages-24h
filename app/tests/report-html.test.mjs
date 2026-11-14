@@ -44,6 +44,33 @@ test('certificat: la frase amb el nombre de passis i cada emissió real', () => 
   assert.match(html, /<img class="rp-logo" src="data:image\/png;base64,AAA="/);
   assert.match(html, /Ona Bages certifica que la campanya «Ferreteria &lt;Black Friday&gt;» s'ha emès <strong>1 passi<\/strong> entre el 1\/11\/2026 i el 14\/11\/2026/);
   assert.match(html, /<td>2\/11\/2026<\/td><td>10:00:04<\/td><td>Ferreteria<\/td><td>Falca A<\/td><td>Sí<\/td>/);
+  assert.doesNotMatch(html, /Previst i emès|Prevista/); // sense comparació, com abans
+});
+
+test('certificat amb comparació: el resum, els passis que falten amb el motiu i si cada emissió era prevista (D-141)', () => {
+  const html = certificateHtml({
+    subject: campaign, from: '2026-11-01', to: '2026-11-14', total: 2,
+    bySpot: [{ trackId: 1, artist: 'Ferreteria', title: 'Falca A', count: 2 }],
+    emissions: [
+      { at: '2026-11-02T10:00:04.5000000+01:00', trackId: 1, artist: 'Ferreteria', title: 'Falca A', playedMs: 20_000, complete: true, planned: true },
+      { at: '2026-11-03T18:00:00.0000000+01:00', trackId: 1, artist: 'Ferreteria', title: 'Falca A', playedMs: 20_000, complete: true, planned: false },
+    ],
+    comparison: {
+      planned: 3, played: 1, missing: 2, pending: 0, unplanned: 1,
+      missingPasses: [
+        { at: '2026-11-03T10:00:00.0000000+01:00', eventName: 'Falques <10>', trackId: 1, title: 'Falca A', reason: 'OMES_TARD', detail: null },
+        { at: '2026-11-04T10:00:00.0000000+01:00', eventName: 'Falques', trackId: 1, title: 'Falca A', reason: 'SENSE_REGISTRE', detail: null },
+      ],
+    },
+  }, station, '2026-11-14');
+  assert.match(html, /<h2>Previst i emès<\/h2>/);
+  assert.match(html, /Passis previstos fins avui<\/td><td class="rp-num">3<\/td>/);
+  assert.match(html, /No emesos<\/td><td class="rp-num">2<\/td>/);
+  assert.doesNotMatch(html, /Previstos més endavant/); // cap de pendent
+  assert.match(html, /<td>3\/11\/2026<\/td><td>10:00<\/td><td>Falca A<\/td><td>Falques &lt;10&gt;<\/td><td>Omès: el motor hi va arribar tard<\/td>/);
+  assert.match(html, /No consta al registre \(el motor no funcionava\)/);
+  assert.match(html, /<th>Prevista<\/th>/);
+  assert.match(html, /18:00:00<\/td><td>Ferreteria<\/td><td>Falca A<\/td><td>Sí<\/td><td>No<\/td>/);
 });
 
 test('suggestedName i defaultPeriod', () => {

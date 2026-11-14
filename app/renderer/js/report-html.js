@@ -115,9 +115,51 @@ export function programmingHtml(data, station, today) {
   return `<article class="report">${parts.join('')}</article>`;
 }
 
+/** Per què no va sonar un passi previst (el codi del motor, D-141). */
+export const MISSING_REASONS = /** @type {Record<string, string>} */ ({
+  OMES_TARD: 'Omès: el motor hi va arribar tard',
+  OMES_CONFLICTE: 'Omès per un altre esdeveniment a la mateixa hora',
+  OMES_CANVI_HORA: "L'hora no existia (canvi d'hora)",
+  NO_EMES: 'Tret de la cua abans de sonar',
+  OMES_ATURAT: 'Els esdeveniments estaven aturats',
+  ERROR: "Error en executar l'esdeveniment",
+  SENSE_EMISSIO: 'Executat, però no consta que sonés',
+  SENSE_REGISTRE: 'No consta al registre (el motor no funcionava)',
+});
+
+/**
+ * La secció «Previst i emès» (D-141): el resum i els passis previstos que no van sonar, amb el motiu.
+ * @param {any} c  comparison, de reports.certificate amb compare
+ * @param {boolean} campaign
+ */
+function comparisonHtml(c, campaign) {
+  const rows = [
+    ['Passis previstos fins avui', c.planned],
+    ['Emesos', c.played],
+    ['No emesos', c.missing],
+    ['Emissions no previstes (comptades al total)', c.unplanned],
+  ];
+  if (c.pending > 0) rows.push(['Previstos més endavant, dins del període', c.pending]);
+  const parts = ['<h2>Previst i emès</h2><table class="rp-table rp-summary"><tbody>'
+    + rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="rp-num">${v}</td></tr>`).join('')
+    + '</tbody></table>'];
+  const missing = /** @type {any[]} */ (c.missingPasses);
+  if (missing.length > 0) {
+    parts.push(`<h2>Passis previstos que no s'han emès</h2><table class="rp-table rp-list"><thead><tr><th class="rp-num">Núm.</th><th>Data</th><th>Hora</th>${campaign ? '<th>Falca prevista</th>' : ''}<th>Esdeveniment</th><th>Motiu</th></tr></thead><tbody>`
+      + missing.map((p, i) => {
+        const { date, time } = split(p.at);
+        const spot = campaign ? `<td>${esc(p.title ?? '')}</td>` : '';
+        return `<tr><td class="rp-num">${i + 1}</td><td>${esc(dmy(date))}</td><td>${esc(time.slice(0, 5))}</td>${spot}<td>${esc(p.eventName)}</td><td>${esc(MISSING_REASONS[p.reason] ?? p.reason)}</td></tr>`;
+      }).join('')
+      + '</tbody></table>');
+  }
+  return parts.join('');
+}
+
 /**
  * Certificat d'emissió (D-138): les dades, la frase del certificat, el nombre de passis emesos, per falca, i la llista de
- * cada emissió real (de l'historial) amb la data, l'hora, l'anunciant o artista, el títol i si va sonar sencera.
+ * cada emissió real (de l'historial) amb la data, l'hora, l'anunciant o artista, el títol i si va sonar sencera. Si porta
+ * la comparació (D-141), també la secció «Previst i emès» i, a cada emissió, si era prevista.
  * @param {any} data  de reports.certificate
  * @param {{ name: string, frequency: string, logo: string | null }} station
  * @param {string} today  'AAAA-MM-DD'
@@ -135,16 +177,19 @@ export function certificateHtml(data, station, today) {
       + data.bySpot.map((/** @type {any} */ s) => `<tr><td>${esc(trackName(s))}</td><td class="rp-num">${s.count}</td></tr>`).join('')
       + '</tbody></table>');
   }
+  if (data.comparison) parts.push(comparisonHtml(data.comparison, campaign));
 
   const emissions = /** @type {any[]} */ (data.emissions);
+  const compared = Boolean(data.comparison);
   parts.push('<h2>Emissions</h2>');
   if (emissions.length === 0) parts.push('<p>No hi ha cap emissió en aquest període.</p>');
   else {
-    parts.push('<table class="rp-table rp-list"><thead><tr><th class="rp-num">Núm.</th><th>Data</th><th>Hora</th><th>Anunciant</th><th>Títol</th><th>Sencera</th></tr></thead><tbody>'
+    parts.push(`<table class="rp-table rp-list"><thead><tr><th class="rp-num">Núm.</th><th>Data</th><th>Hora</th><th>Anunciant</th><th>Títol</th><th>Sencera</th>${compared ? '<th>Prevista</th>' : ''}</tr></thead><tbody>`
       + emissions.map((e, i) => {
         const { date, time } = split(e.at);
         const complete = e.complete == null ? '' : e.complete ? 'Sí' : 'No';
-        return `<tr><td class="rp-num">${i + 1}</td><td>${esc(dmy(date))}</td><td>${esc(time)}</td><td>${esc(e.artist)}</td><td>${esc(e.title)}</td><td>${complete}</td></tr>`;
+        const planned = compared ? `<td>${e.planned ? 'Sí' : 'No'}</td>` : '';
+        return `<tr><td class="rp-num">${i + 1}</td><td>${esc(dmy(date))}</td><td>${esc(time)}</td><td>${esc(e.artist)}</td><td>${esc(e.title)}</td><td>${complete}</td>${planned}</tr>`;
       }).join('')
       + '</tbody></table>');
   }

@@ -3964,6 +3964,10 @@ button.pl-chip.is-off {
   width: auto;
 }
 
+.rp-dialog-compare {
+  font-size: 0.9rem;
+}
+
 .rp-preview {
   flex: 1 1 auto;
   min-height: 0;

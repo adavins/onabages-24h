@@ -325,7 +325,7 @@ public sealed partial class CommandRouter
             int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 10, 1, 500);
             var tracks = library.TracksInFolder(folder).Where(t => t.FileState == FileState.Ok).ToList();
             if (tracks.Count == 0) throw new BadParamsException("No hi ha cap pista disponible en aquesta carpeta de la biblioteca.");
-            items.AddRange(tracks.OrderBy(_ => Random.Shared.Next()).Take(limit).Select(t => QueueItem.FromTrack(t, QueueOrigin.Manual)));
+            items.AddRange(tracks.OrderBy(_ => Random.Shared.Next()).Take(limit).Select(t => ManualItem(t)));
         }
         else if (msg["items"] is not JsonArray { Count: > 0 })
         {
@@ -338,12 +338,12 @@ public sealed partial class CommandRouter
             if (entry["trackId"] is JsonValue idValue && idValue.TryGetValue(out long trackId))
             {
                 var track = _library?.GetTrack(trackId) ?? throw new BadParamsException($"No existeix la pista {trackId}.");
-                items.Add(QueueItem.FromTrack(track, QueueOrigin.Manual));
+                items.Add(ManualItem(track));
             }
             else if (ReadString(entry["path"]) is { Length: > 0 } path)
             {
                 items.Add(_library?.FindByPath(path) is { } known
-                    ? QueueItem.FromTrack(known, QueueOrigin.Manual)
+                    ? ManualItem(known)
                     : new QueueItem { Path = path, Title = System.IO.Path.GetFileNameWithoutExtension(path), Origin = QueueOrigin.Manual });
             }
             else throw new BadParamsException("Cada element d'items necessita 'trackId' o 'path'.");
@@ -1082,12 +1082,12 @@ public sealed partial class CommandRouter
         if (msg["trackId"] is JsonValue idValue && idValue.TryGetValue(out long trackId))
         {
             var track = _library?.GetTrack(trackId) ?? throw new BadParamsException($"No existeix la pista {trackId}.");
-            return QueueItem.FromTrack(track, QueueOrigin.Manual);
+            return ManualItem(track);
         }
         if (ReadString(msg["path"]) is { Length: > 0 } path)
         {
             return _library?.FindByPath(path) is { } known
-                ? QueueItem.FromTrack(known, QueueOrigin.Manual)
+                ? ManualItem(known)
                 : new QueueItem { Path = path, Title = System.IO.Path.GetFileNameWithoutExtension(path), Origin = QueueOrigin.Manual };
         }
         return null;
