@@ -13,6 +13,8 @@ const REFRESH_MS = 60_000;
 export class UpcomingEvents {
   #send;
   #onChange;
+  /** Obre un esdeveniment al Planificador (D-137). @type {(eventId: number, date: string) => void} */
+  #onOpen;
   /** @type {import('../forecast.js').UpcomingEvent[]} */
   #events = [];
   #token = 0;
@@ -22,10 +24,12 @@ export class UpcomingEvents {
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
    * @param {() => void} onChange  els esdeveniments han canviat (la previsió de la cua s'ha de tornar a calcular)
+   * @param {(eventId: number, date: string) => void} onOpen  obre l'esdeveniment al Planificador, a la setmana d'aquell dia
    */
-  constructor(send, onChange) {
+  constructor(send, onChange, onOpen) {
     this.#send = send;
     this.#onChange = onChange;
+    this.#onOpen = onOpen;
     setInterval(() => this.#tick(), 1000);
     setInterval(() => this.refresh(), REFRESH_MS);
   }
@@ -62,9 +66,12 @@ export class UpcomingEvents {
     $('upcoming-empty').classList.toggle('d-none', next.length > 0);
     next.forEach((e, index) => {
       const info = modeInfo(e.mode);
-      const chip = el('span', `upcoming-chip ${info.css}`);
+      // Un clic obre l'esdeveniment al Planificador (D-137)
+      const chip = /** @type {HTMLButtonElement} */ (el('button', `upcoming-chip ${info.css}`));
+      chip.type = 'button';
       const day = dayText(e.date, new Date());
-      chip.title = `${day} ${shortTime(e.time)} · ${e.name} · ${info.label}`;
+      chip.title = `${day} ${shortTime(e.time)} · ${e.name} · ${info.label}\nFes clic per obrir-lo al Planificador`;
+      chip.addEventListener('click', () => this.#onOpen(e.eventId, e.date));
       chip.append(icon(info.icon), ' ', el('span', 'upcoming-time', `${day === 'avui' ? '' : `${day} `}${shortTime(e.time)}`),
         ' ', el('span', 'upcoming-name', e.name), el('span', 'upcoming-mode', ` · ${info.label}`));
       if (index === 0) {

@@ -31,7 +31,7 @@ let nextId = 1;
 const uid = () => `ee-${nextId++}`;
 
 /**
- * @typedef {{ onSaved: (ev: any) => void, onDeleted: (id: number) => void, onClosed: () => void }} EditorCallbacks
+ * @typedef {{ onSaved: (ev: any) => void, onDeleted: (id: number) => void, onClosed: () => void, onOpenCampaign?: (campaignId: number) => void }} EditorCallbacks
  */
 
 export class EventEditor {
@@ -534,6 +534,12 @@ export class EventEditor {
         b.addEventListener('click', run);
         tools.append(b);
       };
+      // Una campanya: anar-hi directament (D-137); si l'esdeveniment té canvis sense desar, la pestanya Campanyes no els toca
+      const campaignId = action.type === 'CAMPANYA' ? Number(action.params?.campanyaId) : NaN;
+      if (Number.isFinite(campaignId) && this.#callbacks.onOpenCampaign) {
+        const open = this.#callbacks.onOpenCampaign;
+        tool('bi-box-arrow-up-right', 'Obre la campanya', () => open(campaignId));
+      }
       tool('bi-arrow-up', 'Puja (sona abans)', () => { ev.actions = moveItem(ev.actions, index, -1); this.#restructured(); }, index === 0);
       tool('bi-arrow-down', 'Baixa (sona després)', () => { ev.actions = moveItem(ev.actions, index, 1); this.#restructured(); }, index === ev.actions.length - 1);
       tool('bi-x-lg', 'Treu aquesta acció', () => { ev.actions = ev.actions.filter((/** @type {any} */ a) => a !== action); this.#restructured(); });

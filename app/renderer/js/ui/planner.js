@@ -40,14 +40,18 @@ export class PlannerView {
   #scrolled = false;
   #loadToken = 0;
 
-  /** @param {(cmd: string, params?: object) => Promise<any>} send */
-  constructor(send) {
+  /**
+   * @param {(cmd: string, params?: object) => Promise<any>} send
+   * @param {(campaignId: number) => void} openCampaign  obre una campanya a la pestanya Campanyes (des de l'acció «Campanya»)
+   */
+  constructor(send, openCampaign) {
     this.#send = send;
     this.#editor = new EventEditor($('pl-detail'), send, {
       // En desar o esborrar, el motor avisa (scheduler.changed) i la graella es torna a carregar; aquí només es marca
       onSaved: (ev) => { this.#selected = ev.id; this.load(); },
       onDeleted: () => { this.#selected = null; this.load(); },
       onClosed: () => this.#mark(null),
+      onOpenCampaign: openCampaign,
     });
     $('pl-new').addEventListener('click', () => this.#create());
 
@@ -93,6 +97,23 @@ export class PlannerView {
 
   hide() {
     this.#visible = false;
+  }
+
+  /**
+   * Obre un esdeveniment des d'una altra pantalla (p. ex. els pròxims esdeveniments de l'Emissió; D-137): la setmana del
+   * dia indicat i l'esdeveniment a l'editor. Si l'editor té canvis sense desar, abans pregunta. Qui la crida ja ha mostrat
+   * la pantalla.
+   * @param {number} id @param {string} date 'AAAA-MM-DD'
+   */
+  async openEvent(id, date) {
+    if (!(await this.#editor.confirmDiscard())) return;
+    this.#view = 'week';
+    this.#monday = weekStart(parseDate(date));
+    this.#scrolled = false;
+    this.#syncToolbar();
+    await this.load();
+    this.#editor.open(this.#events.get(id) ?? null);
+    this.#mark(this.#events.has(id) ? id : null);
   }
 
   /** Els esdeveniments han canviat al motor (scheduler.changed) o s'ha tornat a connectar. */

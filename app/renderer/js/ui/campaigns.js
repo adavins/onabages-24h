@@ -68,6 +68,24 @@ export class CampaignsView {
     this.#visible = false;
   }
 
+  /**
+   * Obre una campanya des d'una altra pantalla (p. ex. l'acció «Campanya» del Planificador; D-137). Qui la crida ja ha
+   * mostrat la pestanya. Si l'editor té canvis sense desar, abans pregunta.
+   * @param {number} id
+   */
+  async openById(id) {
+    if (!this.#loaded) await this.refresh();
+    const c = this.#campaigns.find((x) => x.id === id);
+    if (!c) {
+      await confirmAction({ title: 'No es troba la campanya', message: `La campanya ${id} ja no existeix.`, confirm: 'D\'acord', info: true });
+      return;
+    }
+    // Que es vegi a la llista encara que el filtre fos un altre (p. ex. si està acabada)
+    const filter = /** @type {HTMLSelectElement} */ ($('cp-filter'));
+    if (c.effectiveState === 'ACABADA' && filter.value === 'current') filter.value = 'all';
+    await this.#select(c);
+  }
+
   /** Hi ha canvis sense desar. */
   get dirty() {
     return !!this.#form && campaignChanged(this.#campaign, this.#form);

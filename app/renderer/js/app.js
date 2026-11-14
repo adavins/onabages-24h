@@ -113,10 +113,18 @@ const nowPlaying = new NowPlaying(async (itemId, positionMs) => {
 const queueView = new QueueView(send);
 const historyView = new HistoryView(send);
 const autoDjView = new AutoDjView(send);
-const planner = new PlannerView(send);
+// Des de l'acció «Campanya» de l'editor d'esdeveniments: la campanya a la pestanya Campanyes (D-137)
+const planner = new PlannerView(send, (campaignId) => {
+  showView('campanyes');
+  campaignsView.openById(campaignId);
+});
 /** L'última cua rebuda: la previsió es torna a calcular quan canvien els pròxims esdeveniments. @type {any} */
 let lastQueue = { current: null, currentEndsAt: null, upcoming: [] };
-const upcoming = new UpcomingEvents(send, () => queueView.render(lastQueue, upcoming.events));
+// Un clic a un dels pròxims esdeveniments l'obre al Planificador (D-137)
+const upcoming = new UpcomingEvents(send, () => queueView.render(lastQueue, upcoming.events), (eventId, date) => {
+  showView('planificador');
+  planner.openEvent(eventId, date);
+});
 const eventsPause = new EventsPause(send);
 const library = new LibraryView(send);
 queueView.acceptDrops(TRACK_DRAG_TYPE, (track, position) => library.add(track, position));
