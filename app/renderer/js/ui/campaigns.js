@@ -42,7 +42,19 @@ export class CampaignsView {
     $('cp-new').addEventListener('click', () => this.#new());
     $('cp-filter').addEventListener('change', () => this.#renderList());
     $('cp-search').addEventListener('input', () => this.#renderList());
+    document.addEventListener('click', (e) => {
+      if (!(/** @type {HTMLElement} */ (e.target).closest?.('#cp-editor .ee-more'))) this.#closeMenu();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.#closeMenu(); });
     this.#renderEditor();
+  }
+
+  /** Tanca el menú «Més» de la capçalera, si és obert. */
+  #closeMenu() {
+    const menu = document.querySelector('#cp-editor .ee-menu');
+    if (!menu || menu.classList.contains('d-none')) return;
+    menu.classList.add('d-none');
+    document.querySelector('#cp-editor .ee-more > button')?.setAttribute('aria-expanded', 'false');
   }
 
   show() {
@@ -203,9 +215,8 @@ export class CampaignsView {
       await this.refresh(); // la llista (campaigns.changed també hi arriba)
       this.#renderList();
       this.#renderEditor();
-      $('cp-state').textContent = 'Desat. El pla de passis s\'ha tornat a calcular.';
+      this.#flash('Desat. El pla de passis s\'ha tornat a calcular.');
     } catch (err) {
-      $('cp-state').textContent = '';
       await confirmAction({ title: 'No s\'ha pogut desar', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
     }
   }
@@ -221,8 +232,9 @@ export class CampaignsView {
     }
     const changed = () => this.#updateActions();
 
-    // Capçalera: nom, estat i «Tanca»
-    const head = el('div', 'rt-head');
+    // Capçalera fixa (D-133): nom, estat (amb el color de l'estat) i, a la dreta, l'avís de canvis sense desar, «Desa»,
+    // «Calendari…», el menú «Més» (duplica, descarta els canvis, esborra) i «Tanca». A sota, els problemes que no deixen desar.
+    const head = el('div', 'rt-head cp-head');
     const nameLabel = /** @type {HTMLLabelElement} */ (el('label', 'form-label mb-0', 'Nom'));
     nameLabel.htmlFor = 'cp-name';
     const name = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm rt-name'));
@@ -230,17 +242,40 @@ export class CampaignsView {
     name.maxLength = 100;
     name.value = form.name;
     name.addEventListener('input', () => { form.name = name.value; changed(); });
+    // L'estat: el desplegable té el fons del color de l'estat i, al davant, la seva icona (color + icona + text)
+    const stateIcon = el('span', 'cp-state-icon');
     const stateSelect = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm cp-state-select'));
     stateSelect.setAttribute('aria-label', 'Estat de la campanya');
-    for (const [value, s] of Object.entries(STATES)) stateSelect.append(option(value, s.text));
+    for (const [value, st] of Object.entries(STATES)) stateSelect.append(option(value, st.text));
     stateSelect.value = form.state;
-    const stateBox = el('span', 'cp-state-label');
-    const showState = () => stateBox.replaceChildren(stateLabel(form.state), el('span', 'form-text ms-2', STATES[/** @type {keyof typeof STATES} */ (form.state)].help));
+    const showState = () => {
+      const st = STATES[/** @type {keyof typeof STATES} */ (form.state)] ?? STATES.ESBORRANY;
+      stateSelect.dataset.state = form.state;
+      stateSelect.title = st.help; // l'explicació, en passar-hi el ratolí
+      stateIcon.className = `cp-state-icon ${st.css}`;
+      stateIcon.replaceChildren(icon(st.icon));
+    };
     showState();
     stateSelect.addEventListener('change', () => { form.state = stateSelect.value; showState(); changed(); });
+    const stateWrap = el('span', 'cp-state');
+    stateWrap.append(stateIcon, stateSelect);
+
+    const unsaved = el('span', 'cp-unsaved text-warning d-none');
+    unsaved.id = 'cp-unsaved';
+    unsaved.append(icon('bi-exclamation-circle-fill'), ' Canvis sense desar');
+    const flash = el('span', 'cp-flash form-text m-0');
+    flash.id = 'cp-flash';
+    flash.setAttribute('aria-live', 'polite');
+
+    const save = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-primary'));
+    save.id = 'cp-save';
+    save.type = 'button';
+    save.append(icon('bi-check-lg'), ' Desa');
+    save.addEventListener('click', () => this.#save());
+
     // «Calendari…» (D-132): la graella per programar-la; només d'una campanya desada
     const campaign = this.#campaign;
-    const calendar = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-primary ms-auto'));
+    const calendar = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-primary'));
     calendar.type = 'button';
     calendar.append(icon('bi-calendar-week'), ' Calendari…');
     calendar.title = campaign
@@ -248,11 +283,19 @@ export class CampaignsView {
       : 'Desa la campanya per poder-la programar al calendari';
     calendar.disabled = !campaign;
     if (campaign) calendar.addEventListener('click', () => this.#openCalendar(campaign));
+
     const close = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
     close.type = 'button';
     close.append(icon('bi-x-lg'), ' Tanca');
     close.addEventListener('click', () => this.#closeEditor());
-    head.append(nameLabel, name, stateSelect, stateBox, calendar, close);
+
+    const buttons = el('div', 'cp-head-buttons');
+    buttons.append(unsaved, flash, save, calendar, this.#moreMenu(), close);
+    head.append(nameLabel, name, stateWrap, buttons);
+    const problems = el('div', 'tm-problems text-warning cp-head-problems');
+    problems.id = 'cp-problems';
+    const header = el('div', 'cp-header');
+    header.append(head, problems);
 
     const notes = [];
     if (this.#campaign && this.#campaign.state === 'ACTIVA' && this.#campaign.effectiveState === 'ACABADA')
@@ -261,7 +304,7 @@ export class CampaignsView {
     // «Dades» i «Falques» una al costat de l'altra si hi caben (D-132); a sota, el pla de passis (d'una campanya desada)
     const top = el('div', 'cp-top');
     top.append(this.#generalBox(form, changed), this.#spotsBox(form));
-    box.replaceChildren(head, ...notes, top, ...(this.#campaign ? [this.#planBox()] : []), this.#actionsBar());
+    box.replaceChildren(header, ...notes, top, ...(this.#campaign ? [this.#planBox()] : []));
     this.#updateActions();
   }
 
@@ -320,7 +363,7 @@ export class CampaignsView {
       const table = el('table', 'table table-sm rt-steps cp-spots');
       const hr = el('tr', '');
       const headers = [['', 'Arrossega per canviar l\'ordre (compta per a «Seqüència»)'], ['#', ''], ['Falca', ''],
-        ['Des de', 'Buit: les dates de la campanya'], ['Fins a', 'Buit: les dates de la campanya'], ['Dies', 'Els dies de la setmana en què pot sonar'],
+        ['Dates', 'Buides: les dates de la campanya'],
         ...(weighted ? [['Pes', `De 1 a ${MAX_WEIGHT}: una de pes 2 sona el doble que una de pes 1`]] : []), ['', '']];
       for (const [text, title] of headers) {
         const th = el('th', '', text);
@@ -336,7 +379,7 @@ export class CampaignsView {
       wrap.append(table);
       body.append(wrap);
     }
-    const add = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    const add = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary cp-add-spots'));
     add.type = 'button';
     add.append(icon('bi-plus-lg'), ' Afegeix falques…');
     add.addEventListener('click', () => this.#pickSpots());
@@ -418,10 +461,18 @@ export class CampaignsView {
       i.addEventListener('input', () => { spot[key] = i.value; changed(); });
       return i;
     };
-    cell(date('startDate', 'comença'));
-    cell(date('endDate', 'acaba'));
+    // Les dues dates en una sola columna, una sota l'altra (D-135), perquè la taula càpiga sense desplaçar-se de costat
+    const dates = el('div', 'cp-spot-dates');
+    const dateLine = (/** @type {string} */ label, /** @type {HTMLInputElement} */ input) => {
+      const line = el('label', 'cp-spot-date');
+      line.append(el('span', 'cp-spot-date-label', label), input);
+      return line;
+    };
+    dates.append(dateLine('Des de', date('startDate', 'comença')), dateLine('Fins a', date('endDate', 'acaba')));
+    cell(dates);
 
-    // Dies de la setmana: set botons que s'encenen i s'apaguen (el text sempre hi és; encès, amb color i en negreta)
+    // Dies de la setmana: set botons que s'encenen i s'apaguen (el text sempre hi és; encès, amb color i en negreta).
+    // Van a sota del títol de la falca (D-134), perquè la taula no s'hagi de desplaçar de costat
     const days = el('div', 'cp-days');
     days.setAttribute('role', 'group');
     days.setAttribute('aria-label', `Falca ${index + 1}: dies de la setmana`);
@@ -442,7 +493,9 @@ export class CampaignsView {
       });
       days.append(b);
     }
-    cell(days);
+    const daysRow = el('div', 'cp-spot-days');
+    daysRow.append(el('span', 'cp-spot-days-label', 'Dies:'), days);
+    what.append(daysRow);
 
     if (weighted) {
       const weight = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm cp-weight'));
@@ -570,48 +623,56 @@ export class CampaignsView {
     }
   }
 
-  /** La botonera: «Desa», «Descarta els canvis», l'estat i, a la dreta, «Duplica» i «Esborra». */
-  #actionsBar() {
-    const bar = el('div', 'cp-actions');
-    const actions = el('div', 'tm-actions');
-    const save = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-primary'));
-    save.id = 'cp-save';
-    save.type = 'button';
-    save.append(icon('bi-check-lg'), ' Desa');
-    save.addEventListener('click', () => this.#save());
-    const discard = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
-    discard.id = 'cp-discard';
-    discard.type = 'button';
-    discard.textContent = 'Descarta els canvis';
-    discard.addEventListener('click', () => {
+  /** El menú «Més» de la capçalera (D-133): duplica, descarta els canvis i esborra. */
+  #moreMenu() {
+    const more = el('div', 'ee-more');
+    const toggle = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    toggle.type = 'button';
+    toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.append(icon('bi-three-dots'), ' Més');
+    const menu = el('div', 'ee-menu cp-menu d-none');
+    menu.setAttribute('role', 'menu');
+    const item = (/** @type {string} */ iconName, /** @type {string} */ text, /** @type {() => void} */ run, danger = false) => {
+      const b = /** @type {HTMLButtonElement} */ (el('button', `ee-menu-item${danger ? ' text-danger' : ''}`));
+      b.type = 'button';
+      b.setAttribute('role', 'menuitem');
+      b.append(icon(iconName), ' ', el('span', '', text));
+      b.addEventListener('click', () => {
+        this.#closeMenu();
+        run();
+      });
+      menu.append(b);
+      return b;
+    };
+    if (this.#campaign) item('bi-copy', 'Duplica', () => this.#duplicate()).title = 'Una campanya nova (esborrany) amb les mateixes dades i falques';
+    const discard = item('bi-arrow-counterclockwise', 'Descarta els canvis', () => {
       if (this.#campaign) this.#open(this.#campaign);
       else this.#close();
       this.#renderList();
       this.#renderEditor();
     });
-    const state = el('span', 'tm-dirty');
-    state.id = 'cp-state';
-    actions.append(save, discard, state);
-    if (this.#campaign) {
-      const spacer = el('span', 'ms-auto');
-      const duplicate = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
-      duplicate.type = 'button';
-      duplicate.append(icon('bi-copy'), ' Duplica');
-      duplicate.title = 'Una campanya nova (esborrany) amb les mateixes dades i falques';
-      duplicate.addEventListener('click', () => this.#duplicate());
-      const del = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-danger'));
-      del.type = 'button';
-      del.append(icon('bi-trash'), ' Esborra');
-      del.addEventListener('click', () => this.#delete());
-      actions.append(spacer, duplicate, del);
-    }
-    const problems = el('div', 'tm-problems text-warning');
-    problems.id = 'cp-problems';
-    bar.append(actions, problems);
-    return bar;
+    discard.id = 'cp-discard';
+    if (this.#campaign) item('bi-trash', 'Esborra…', () => this.#delete(), true);
+    toggle.addEventListener('click', () => {
+      const open = menu.classList.contains('d-none');
+      menu.classList.toggle('d-none', !open);
+      toggle.setAttribute('aria-expanded', String(open));
+      if (open) /** @type {HTMLElement | null} */ (menu.querySelector('.ee-menu-item:not(:disabled)'))?.focus();
+    });
+    more.append(toggle, menu);
+    return more;
   }
 
-  /** Activa «Desa» si hi ha canvis i no hi ha problemes; mostra els problemes. */
+  /** Un missatge breu a la capçalera (p. ex. «Desat»), que s'esborra sol. @param {string} text */
+  #flash(text) {
+    const flash = document.getElementById('cp-flash');
+    if (!flash) return;
+    flash.textContent = text;
+    setTimeout(() => { if (flash.textContent === text) flash.textContent = ''; }, 5000);
+  }
+
+  /** Activa «Desa» si hi ha canvis i no hi ha problemes; mostra l'avís de canvis sense desar i els problemes. */
   #updateActions() {
     const form = this.#form;
     const save = /** @type {HTMLButtonElement | null} */ (document.getElementById('cp-save'));
@@ -620,7 +681,8 @@ export class CampaignsView {
     const dirty = this.dirty;
     save.disabled = !dirty || problems.length > 0;
     /** @type {HTMLButtonElement} */ ($('cp-discard')).disabled = !dirty && !!this.#campaign;
-    $('cp-state').textContent = dirty ? 'Canvis sense desar' : '';
+    $('cp-unsaved').classList.toggle('d-none', !dirty);
+    if (dirty) $('cp-flash').textContent = '';
     $('cp-problems').replaceChildren(...(dirty ? problems : []).map((p) => statusLabel('', 'bi-exclamation-triangle-fill', p)));
   }
 }

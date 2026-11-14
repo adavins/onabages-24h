@@ -3413,14 +3413,71 @@ button.pl-chip.is-off {
   flex-basis: 100%;
 }
 
+/* Capçalera de l'editor, fixa a dalt en desplaçar l'editor (D-133). Els marges negatius tapen el farciment de l'editor,
+   perquè no s'hi vegi passar res per sobre */
+.cp-header {
+  position: sticky;
+  top: -0.75rem;
+  z-index: 4;
+  margin: -0.75rem -0.75rem 0.75rem;
+  padding: 0.75rem 0.75rem 0.5rem;
+  background: var(--ob-panel);
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.cp-header .rt-head {
+  margin-bottom: 0;
+}
+
+.cp-head-buttons {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cp-head-problems:not(:empty) {
+  margin-top: 0.4rem;
+}
+
+.cp-unsaved,
+.cp-flash {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+/* El menú «Més» de la capçalera s'obre cap avall i alineat a la dreta */
+.ee-menu.cp-menu {
+  top: calc(100% + 0.3rem);
+  bottom: auto;
+  left: auto;
+  right: 0;
+}
+
+/* L'estat: la icona al davant i el desplegable amb el fons del color de l'estat */
+.cp-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .cp-state-select {
   width: auto;
 }
 
-.cp-state-label {
-  display: inline-flex;
-  align-items: baseline;
-  font-size: 0.85rem;
+.cp-state-select[data-state="ACTIVA"] {
+  background-color: rgba(76, 195, 138, 0.22);
+  border-color: var(--ob-ok);
+}
+
+.cp-state-select[data-state="ACABADA"] {
+  background-color: rgba(240, 180, 76, 0.22);
+  border-color: var(--ob-mix);
+}
+
+.cp-state-select option {
+  background: var(--ob-panel);
 }
 
 /* Dades: dues columnes; l'anunciant, el repartiment i les notes ocupen tota l'amplada */
@@ -3435,15 +3492,90 @@ button.pl-chip.is-off {
   max-width: 29rem;
 }
 
+/* En dues columnes (D-135), «Dades» és més estreta: els camps s'adapten a l'amplada de la columna */
+@container (min-width: 56rem) {
+  .cp-top .cp-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cp-top .cp-grid .cp-wide {
+    max-width: none;
+  }
+}
+
 .cp-grid .form-label {
   margin-bottom: 0.2rem;
   color: var(--ob-muted);
   font-size: 0.82rem;
 }
 
-.cp-spots td:nth-child(3) { min-width: 16rem; }
+/* Falques (D-134): cada falca, amb més aire i una línia entre una i l'altra; el títol pot ocupar diverses línies i els
+   dies van a sota del títol */
+.cp-spots td {
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+  vertical-align: top;
+}
+
+.cp-spots tbody tr + tr td {
+  border-top: 1px solid var(--ob-border);
+}
+
+/* La taula de falques fa servir l'estil de la de passos de les rotacions (.rt-steps), però no les seves amplades per
+   columna: aquí la 5a i la 6a són el pes i el botó de treure, que no han de ser amples */
 .cp-spots td:nth-child(4),
-.cp-spots td:nth-child(5) { width: 9.5rem; }
+.cp-spots td:nth-child(5),
+.cp-spots td:nth-child(6) {
+  min-width: 0;
+  white-space: normal;
+}
+
+.cp-spots td:last-child {
+  width: 1%;
+}
+
+.cp-spots td:nth-child(3) {
+  min-width: 8rem;
+  overflow-wrap: anywhere;
+}
+
+/* Les dues dates, una sota l'altra (D-135) */
+.cp-spot-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.cp-spot-date {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cp-spot-date-label {
+  flex: none;
+  width: 2.9rem;
+  color: var(--ob-muted);
+  font-size: 0.8rem;
+}
+
+.cp-spot-days {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.cp-spot-days-label {
+  color: var(--ob-muted);
+  font-size: 0.8rem;
+}
+
+.cp-add-spots {
+  margin-top: 0.75rem;
+  align-self: flex-start;
+}
 
 .cp-spot-title {
   display: flex;
@@ -3514,11 +3646,12 @@ button.pl-chip.is-off {
   gap: 0.75rem;
 }
 
-/* «Dades» (estreta) i «Falques» (la resta), una al costat de l'altra si hi caben les columnes de les falques */
-@container (min-width: 78rem) {
+/* «Dades» (estreta) i «Falques» (la resta), una al costat de l'altra (D-133: a partir de 56rem; si la taula de les
+   falques no hi cap, es desplaça de costat dins del seu requadre) */
+@container (min-width: 56rem) {
   .cp-top {
     display: grid;
-    grid-template-columns: minmax(0, 31rem) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 25rem) minmax(0, 1fr);
     gap: 0 1rem;
     align-items: start;
   }
@@ -3539,10 +3672,6 @@ button.pl-chip.is-off {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-}
-
-.cp-actions {
-  margin-top: auto;
 }
 
 .cp-pick-type {
