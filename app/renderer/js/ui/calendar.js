@@ -12,7 +12,7 @@ import { typeBadge } from './type-badge.js';
 import { confirmAction } from './confirm.js';
 import { formatDuration } from '../format.js';
 import { modeInfo } from '../schedule.js';
-import { STATES, datesText } from '../campaign-form.js';
+import { STATES, datesText, planSummary } from '../campaign-form.js';
 import { planPanel } from './campaign-plan.js';
 import { todayIso } from '../event-form.js';
 import {
@@ -48,6 +48,10 @@ export class CalendarView {
   #content = null;
   /** El pla de la campanya (campaigns.plan; pas 3d-2), o null. @type {any} */
   #plan = null;
+  /** Calendari d'una campanya: quina pestanya es veu a la columna de la dreta. @type {'plan' | 'content'} */
+  #sideTab = 'plan';
+  /** Calendari d'una campanya: la columna de la dreta plegada (es recorda en aquest ordinador). */
+  #sideCollapsed = readCollapsed();
 
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
@@ -218,30 +222,125 @@ export class CalendarView {
    * @param {HTMLElement} box @param {HTMLElement} head @param {any} cal
    */
   #renderBody(box, head, cal) {
-    // A sota de la capçalera: la graella (amb el seu desplaçament) i, si n'hi ha d'obert, el contingut de l'esdeveniment
-    // en un panell a la dreta (D-114). Es conserva on s'havia baixat (la vista es torna a dibuixar a cada clic).
-    const scroll = box.querySelector('.cal-main')?.scrollTop ?? 0;
+    // A sota de la capçalera: la graella, que és l'única que es desplaça (els dies a dalt i la fila «Passis» a baix
+    // queden fixos), una franja fixa amb els recomptes i, a la dreta, la columna (el contingut o, en una campanya, el
+    // pla de passis; D-114). Es conserva on s'havia baixat (la vista es torna a dibuixar a cada clic).
+    const scroll = box.querySelector('.cal-grid-wrap')?.scrollTop ?? 0;
+    const sideScroll = box.querySelector('.cal-side-body')?.scrollTop ?? 0;
     const main = el('div', 'cal-main');
-    const side = this.#mode === 'all' && this.#content ? this.#contentPanel(this.#content) : null;
-    if (this.#mode === 'track') main.append(this.#trackOnlyTable(cal), this.#counts(cal.counts));
-    else main.append(this.#table(cal), this.#addBlock(), this.#counts(cal.counts));
-    if (cal.campaign && this.#plan) {
-      // El pla (pas 3d-2): quina falca sona a cada passi, el que ja ha sonat i el calendari mensual
-      const section = el('section', 'cal-plan');
-      section.setAttribute('aria-label', 'Pla de passis de la campanya');
-      section.append(el('h3', 'cal-plan-title', 'Pla de passis'), planPanel(this.#plan, cal.campaign, todayIso()));
-      main.append(section);
-    }
-    const body = el('div', `cal-body${side ? ' has-side' : ''}`);
+    const grid = this.#mode === 'track' ? this.#trackOnlyTable(cal) : this.#table(cal);
+    const foot = el('div', 'cal-foot');
+    foot.append(this.#counts(cal.counts));
+    if (this.#mode === 'all') foot.append(this.#addBlock());
+    main.append(grid, foot);
+
+    const side = cal.campaign ? this.#campaignSide(cal) : this.#trackSide();
+    const body = el('div', `cal-body${side ? ` ${side.css}` : ''}`);
     body.append(main);
-    if (side) {
-      const aside = el('aside', 'cal-side');
-      aside.setAttribute('aria-label', 'Contingut de l\'esdeveniment');
-      aside.append(side);
-      body.append(aside);
-    }
+    if (side) body.append(side.element);
     box.replaceChildren(head, body);
-    main.scrollTop = scroll;
+    grid.scrollTop = scroll;
+    const sideBody = body.querySelector('.cal-side-body');
+    if (sideBody) sideBody.scrollTop = sideScroll;
+  }
+
+  /** Calendari d'una pista: a la dreta, només el contingut obert (si n'hi ha). */
+  #trackSide() {
+    if (this.#mode !== 'all' || !this.#content) return null;
+    const aside = el('aside', 'cal-side');
+    aside.setAttribute('aria-label', 'Contingut de l\'esdeveniment');
+    const sideBody = el('div', 'cal-side-body');
+    sideBody.append(this.#contentPanel(this.#content));
+    aside.append(sideBody);
+    return { element: aside, css: 'has-side' };
+  }
+
+  /**
+   * Calendari d'una campanya (pas 3d-2): a la dreta, una columna amb dues pestanyes, «Pla de passis» (per defecte) i
+   * «Contingut» (s'hi canvia en obrir el contingut d'una casella). Es pot plegar: queda una franja estreta amb
+   * «Pla» i, si n'hi ha, els avisos.
+   * @param {any} cal
+   */
+  #campaignSide(cal) {
+    const today = todayIso();
+    const warnings = this.#plan ? planSummary(this.#plan, cal.campaign, today).warnings.length : 0;
+    if (this.#sideCollapsed) {
+      const strip = /** @type {HTMLButtonElement} */ (el('button', 'cal-side-strip'));
+      strip.type = 'button';
+      strip.title = 'Desplega la columna del pla de passis';
+      strip.setAttribute('aria-label', `Desplega el pla de passis${warnings ? ` (${warnings} ${warnings === 1 ? 'avís' : 'avisos'})` : ''}`);
+      strip.append(icon('bi-chevron-double-left'), el('span', 'cal-side-strip-text', 'Pla'));
+      if (warnings) strip.append(statusLabel('text-warning', 'bi-exclamation-triangle-fill', String(warnings)));
+      strip.addEventListener('click', () => this.#setCollapsed(false));
+      return { element: strip, css: 'has-side-collapsed' };
+    }
+
+    const aside = el('aside', 'cal-side');
+    aside.setAttribute('aria-label', 'Pla de passis i contingut');
+    const head = el('div', 'cal-side-head');
+    const tabs = el('div', 'btn-group btn-group-sm');
+    tabs.setAttribute('role', 'group');
+    tabs.setAttribute('aria-label', 'Què es veu a la columna');
+    const tab = (/** @type {'plan' | 'content'} */ which, /** @type {string} */ iconName, /** @type {string} */ text) => {
+      const b = /** @type {HTMLButtonElement} */ (el('button', `btn ${this.#sideTab === which ? 'btn-primary' : 'btn-outline-secondary'}`));
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(this.#sideTab === which));
+      b.append(icon(iconName), ` ${text}`);
+      b.addEventListener('click', () => {
+        this.#sideTab = which;
+        this.#renderEditor();
+      });
+      tabs.append(b);
+    };
+    tab('plan', 'bi-calendar3', 'Pla de passis');
+    tab('content', 'bi-card-list', 'Contingut');
+    if (warnings && this.#sideTab !== 'plan') tabs.firstElementChild?.append(' ', icon('bi-exclamation-triangle-fill'));
+    const collapse = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    collapse.type = 'button';
+    collapse.title = 'Plega la columna (la graella es fa més ampla)';
+    collapse.setAttribute('aria-label', 'Plega la columna');
+    collapse.append(icon('bi-chevron-double-right'));
+    collapse.addEventListener('click', () => this.#setCollapsed(true));
+    head.append(tabs, collapse);
+
+    const sideBody = el('div', 'cal-side-body');
+    if (this.#sideTab === 'content') {
+      sideBody.append(this.#content ? this.#contentPanel(this.#content)
+        : el('p', 'form-text m-0', 'Prem la icona de llista d\'una casella per veure el contingut d\'aquell esdeveniment en ordre d\'emissió.'));
+    } else {
+      sideBody.append(this.#plan ? planPanel(this.#plan, cal.campaign, today)
+        : statusLabel('text-info small', 'bi-hourglass-split', 'Calculant el pla…'));
+    }
+    aside.append(head, sideBody);
+    return { element: aside, css: 'has-side' };
+  }
+
+  /** Plega o desplega la columna de la dreta (es recorda en aquest ordinador). @param {boolean} collapsed */
+  #setCollapsed(collapsed) {
+    this.#sideCollapsed = collapsed;
+    try {
+      localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
+    } catch { /* sense emmagatzematge: només per ara */ }
+    this.#renderEditor();
+  }
+
+  /**
+   * La fila «Passis» del peu de la graella: sota cada dia, quants passis hi ha en una setmana tipus (fixa a baix).
+   * @param {any} counts
+   */
+  #gridFoot(counts) {
+    const tfoot = el('tfoot', '');
+    const tr = el('tr', 'cal-foot-row');
+    const sum = counts.perWeekday.reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0);
+    const th = el('th', 'cal-time', 'Passis');
+    th.title = `Setmana tipus: ${passes(sum)}`;
+    tr.append(th, ...counts.perWeekday.map((/** @type {number} */ n, /** @type {number} */ i) => {
+      const td = el('td', `cal-foot-day${n === 0 ? ' is-zero' : ''}`, String(n));
+      td.title = `${DAY_NAMES[i]}: ${passes(n)} en una setmana tipus`;
+      return td;
+    }));
+    tfoot.append(tr);
+    return tfoot;
   }
 
   /** «Tots els esdeveniments» (per programar) o «Només aquesta pista» (com queda la setmana de la pista, D-105). */
@@ -293,7 +392,7 @@ export class CalendarView {
       });
       tbody.append(tr);
     }
-    table.append(thead, tbody);
+    table.append(thead, tbody, this.#gridFoot(cal.counts));
     const wrap = el('div', 'cal-grid-wrap');
     wrap.append(table);
     return wrap;
@@ -320,7 +419,7 @@ export class CalendarView {
       row.days.forEach((/** @type {any} */ cell, /** @type {number} */ day) => tr.append(this.#cell(cell, day, row.time)));
       tbody.append(tr);
     }
-    table.append(thead, tbody);
+    table.append(thead, tbody, this.#gridFoot(cal.counts));
     const wrap = el('div', 'cal-grid-wrap');
     wrap.append(table);
     return wrap;
@@ -375,6 +474,8 @@ export class CalendarView {
   /** Obre (o tanca, amb null) el contingut d'una casella. @param {{ eventId: number, day: number, time: string } | null} of */
   async #openContent(of) {
     this.#contentOf = of;
+    this.#sideTab = of ? 'content' : 'plan';
+    if (of) this.#sideCollapsed = false; // per veure'l, la columna s'ha de veure (no es desa: és només ara)
     await this.#loadContent();
     this.#renderEditor(); // el panell surt a la dreta (D-114): no cal desplaçar res
   }
@@ -544,13 +645,7 @@ export class CalendarView {
     total.append(el('strong', '', passes(counts.total)), ` ${periodText(counts, this.#word)}`);
     box.append(total);
 
-    // Setmana tipus: per dia de la setmana
-    const week = el('div', 'cal-week');
-    const sum = counts.perWeekday.reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0);
-    week.append(el('span', 'text-body-secondary', `Setmana tipus (${passes(sum)}): `),
-      ...DAY_SHORT.map((d, i) => el('span', 'cal-week-day', `${d} ${counts.perWeekday[i]}`)));
-    box.append(week);
-
+    // La setmana tipus (per dia de la setmana) és a la fila «Passis» del peu de la graella
     if (counts.months.length > 0) {
       box.append(el('div', 'cal-months', `Per mes: ${counts.months.map((/** @type {any} */ m) => `${monthText(m.month)}: ${m.count}`).join(' · ')}`));
     }
@@ -562,5 +657,16 @@ export class CalendarView {
         `${counts.markedInDisabled} ${counts.markedInDisabled === 1 ? 'dia marcat és' : 'dies marcats són'} d'esdeveniments desactivats: no compten (no sonaran fins que s'activin).`));
     }
     return box;
+  }
+}
+
+/** On es recorda si la columna del pla de la campanya està plegada (només una comoditat d'aquest ordinador). */
+const COLLAPSED_KEY = 'ob24.campaignCalendar.sideCollapsed';
+
+function readCollapsed() {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
   }
 }
