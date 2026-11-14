@@ -35,4 +35,10 @@ contextBridge.exposeInMainWorld('onabages', {
 
   /** Obre a l'Explorador la carpeta d'un fitxer, amb el fitxer seleccionat. Retorna 'file', 'folder' o 'missing'. */
   showFile: (filePath) => ipcRenderer.invoke('shell:show-file', filePath),
+
+  /** Diàleg per triar el logotip de l'emissora. Retorna { dataUrl }, { error } o null si es cancel·la (D-138). */
+  chooseImage: () => ipcRenderer.invoke('dialog:choose-image'),
+
+  /** Fa el PDF d'un informe (l'HTML de js/report-html.js) i pregunta on desar-lo. Retorna { path }, { error } o null (D-138). */
+  saveReportPdf: (html, suggestedName) => ipcRenderer.invoke('report:save-pdf', html, suggestedName),
 });

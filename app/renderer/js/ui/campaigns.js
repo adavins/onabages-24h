@@ -33,14 +33,18 @@ export class CampaignsView {
   #openCalendar;
   /** Torna a mostrar l'estat de la capçalera (p. ex. si canvia la data de fi). @type {(() => void) | null} */
   #syncState = null;
+  /** Obre l'informe de programació o el certificat d'una campanya desada (D-138). @type {(kind: 'programming' | 'certificate', campaign: any) => void} */
+  #openReport;
 
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
    * @param {(campaign: { id: number }) => void} openCalendar  obre el calendari d'una campanya desada
+   * @param {(kind: 'programming' | 'certificate', campaign: any) => void} openReport  obre un informe d'una campanya desada
    */
-  constructor(send, openCalendar) {
+  constructor(send, openCalendar, openReport) {
     this.#send = send;
     this.#openCalendar = openCalendar;
+    this.#openReport = openReport;
     $('cp-new').addEventListener('click', () => this.#new());
     $('cp-filter').addEventListener('change', () => this.#renderList());
     $('cp-search').addEventListener('input', () => this.#renderList());
@@ -671,6 +675,12 @@ export class CampaignsView {
       menu.append(b);
       return b;
     };
+    // Els informes (D-138): de la campanya desada (els canvis sense desar no hi compten)
+    const saved = this.#campaign;
+    if (saved) {
+      item('bi-calendar-range', 'Informe de programació…', () => this.#openReport('programming', saved)).title = 'Els passis previstos, en PDF';
+      item('bi-patch-check', 'Certificat d\'emissió…', () => this.#openReport('certificate', saved)).title = 'Les emissions reals (de l\'historial), en PDF';
+    }
     if (this.#campaign) item('bi-copy', 'Duplica', () => this.#duplicate()).title = 'Una campanya nova (esborrany) amb les mateixes dades i falques';
     const discard = item('bi-arrow-counterclockwise', 'Descarta els canvis', () => {
       if (this.#campaign) this.#open(this.#campaign);

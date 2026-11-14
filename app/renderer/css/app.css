@@ -3895,3 +3895,90 @@ button.pl-chip.is-off {
   display: block;
   white-space: nowrap;
 }
+
+/* --- Informes (fase 4, pas 4b; D-138) --- */
+
+/* ⚙ a la capçalera: les dades de l'emissora */
+.topbar-settings {
+  margin-left: auto;
+  padding: 0.15rem 0.4rem;
+  color: var(--ob-muted);
+  font-size: 1.1rem;
+}
+
+.topbar-settings:hover,
+.topbar-settings:focus-visible {
+  color: var(--bs-body-color);
+}
+
+/* Logotip a la finestra de les dades de l'emissora */
+.st-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 5rem;
+  padding: 0.5rem;
+  border: 1px dashed var(--ob-border);
+  border-radius: 0.375rem;
+  background: #fff;
+}
+
+.st-logo .text-body-secondary {
+  color: #666 !important;
+}
+
+.st-logo-img {
+  max-height: 5rem;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+/* La finestra d'un informe: gran, amb la vista prèvia com un full */
+.rp-dialog {
+  width: min(72rem, 96vw);
+  height: 92vh;
+  padding: 1rem;
+}
+
+.rp-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.rp-dialog-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.rp-dialog-date {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.rp-dialog-date input {
+  width: auto;
+}
+
+.rp-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+  border-radius: 0.375rem;
+  background: #5a5f66;
+}
+
+/* Un full A4 (210 mm d'ample) amb els marges del PDF */
+.rp-page {
+  max-width: 210mm;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 15mm;
+  background: #fff;
+  box-shadow: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.4);
+}

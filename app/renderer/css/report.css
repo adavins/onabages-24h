@@ -1,0 +1,136 @@
+/* Ona Bages 24h — informe de programació i certificat d'emissió (fase 4, pas 4b; D-138).
+   El mateix estil a la vista prèvia (dins de la finestra, sobre fons blanc) i al PDF (report-print.html): sempre en clar,
+   com un paper, encara que la interfície sigui fosca. */
+
+.report {
+  color: #1a1a1a;
+  background: #fff;
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 10pt;
+  line-height: 1.35;
+}
+
+.report h1,
+.report h2 {
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.report .rp-header {
+  display: flex;
+  align-items: center;
+  gap: 12pt;
+  padding-bottom: 8pt;
+  border-bottom: 1.5pt solid #1a1a1a;
+}
+
+.report .rp-logo {
+  max-height: 48pt;
+  max-width: 140pt;
+  object-fit: contain;
+}
+
+.report .rp-station-box {
+  flex: 1 1 auto;
+}
+
+.report .rp-station {
+  font-size: 14pt;
+  font-weight: 600;
+}
+
+.report .rp-frequency {
+  color: #555;
+}
+
+.report .rp-date {
+  color: #555;
+  white-space: nowrap;
+}
+
+.report .rp-title {
+  margin: 14pt 0 8pt;
+  font-size: 16pt;
+}
+
+.report h2 {
+  margin: 14pt 0 5pt;
+  font-size: 11.5pt;
+}
+
+.report .rp-facts {
+  border-collapse: collapse;
+  margin-bottom: 6pt;
+}
+
+.report .rp-facts th {
+  padding: 1.5pt 10pt 1.5pt 0;
+  color: #555;
+  font-weight: normal;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.report .rp-facts td {
+  padding: 1.5pt 0;
+  font-weight: 600;
+}
+
+.report .rp-total,
+.report .rp-statement {
+  margin: 8pt 0;
+  font-size: 11pt;
+}
+
+.report .rp-table,
+.report .rp-grid {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.report .rp-table th,
+.report .rp-table td {
+  padding: 2.5pt 5pt;
+  border-bottom: 0.5pt solid #bbb;
+  text-align: left;
+  vertical-align: top;
+}
+
+.report .rp-table thead th {
+  border-bottom: 1pt solid #1a1a1a;
+  font-weight: 600;
+}
+
+.report .rp-num {
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.report .rp-list tr {
+  break-inside: avoid;
+}
+
+/* En imprimir, la capçalera de les taules es repeteix a cada pàgina */
+.report thead {
+  display: table-header-group;
+}
+
+.report .rp-grid {
+  width: auto;
+}
+
+.report .rp-grid th,
+.report .rp-grid td {
+  min-width: 26pt;
+  padding: 2pt 4pt;
+  border: 0.5pt solid #bbb;
+  text-align: center;
+}
+
+.report .rp-grid tbody th {
+  font-weight: normal;
+}
+
+.report .rp-on {
+  font-weight: 600;
+}

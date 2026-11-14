@@ -5,7 +5,7 @@
 // el port i el testimoni a la interfície. Aquí NO hi ha àudio ni base de dades: tot és al motor.
 // Tancar la finestra no atura el motor si l'operador no ho tria al diàleg de tancar (D-035, D-054).
 
-const { app, BrowserWindow, ipcMain, screen, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, dialog, shell, nativeImage } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -270,6 +270,109 @@ ipcMain.handle('shell:show-file', async (_event, filePath) => {
     return error ? 'missing' : 'folder';
   }
   return 'missing';
+});
+
+// ---------------------------------------------------------------------------
+// Informes (fase 4, pas 4b; D-138): el logotip de l'emissora i desar un informe en PDF
+// ---------------------------------------------------------------------------
+
+/**
+ * Mida màxima del logotip un cop preparat. Va dins d'un missatge al motor, que n'accepta com a molt 1 MB (ClientHub), i
+ * en base64 creix un terç: 600 kB de fitxer són uns 800.000 caràcters.
+ */
+const MAX_LOGO_BYTES = 600_000;
+/** Mida màxima del logotip en píxels: n'hi ha prou per a la capçalera d'un informe (com a molt 48 pt d'alt). */
+const LOGO_MAX_WIDTH = 800;
+const LOGO_MAX_HEIGHT = 400;
+
+// Triar el logotip: retorna la imatge com a adreça data: (el motor la desa a la configuració, D-044: res fora de dades),
+// { error } si no es pot fer servir, o null si es cancel·la. Les imatges PNG i JPEG es redueixen (D-140) amb nativeImage
+// d'Electron (sense dependències): una de 3000 píxels d'un fitxer de Google Drive passaria del límit dels missatges.
+ipcMain.handle('dialog:choose-image', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Tria el logotip de l\'emissora',
+    properties: ['openFile'],
+    filters: [{ name: 'Imatges', extensions: ['png', 'jpg', 'jpeg', 'svg'] }],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const file = result.filePaths[0];
+  const ext = path.extname(file).toLowerCase();
+  try {
+    const data = await fs.promises.readFile(file);
+    if (ext === '.svg') {
+      // Un SVG no es redueix (és text i sol ser petit)
+      if (data.length > MAX_LOGO_BYTES) return { error: 'L\'SVG és massa gran (com a molt, 600 kB). Prova\'n una versió en PNG.' };
+      return { dataUrl: `data:image/svg+xml;base64,${data.toString('base64')}` };
+    }
+    if (!['.png', '.jpg', '.jpeg'].includes(ext)) return { error: 'El logotip ha de ser una imatge PNG, JPEG o SVG.' };
+    let image = nativeImage.createFromBuffer(data);
+    if (image.isEmpty()) return { error: 'No s\'ha pogut llegir la imatge (potser no és un PNG o un JPEG de debò).' };
+    const { width, height } = image.getSize();
+    const scale = Math.min(1, LOGO_MAX_WIDTH / width, LOGO_MAX_HEIGHT / height);
+    if (scale < 1) image = image.resize({ width: Math.round(width * scale), height: Math.round(height * scale), quality: 'best' });
+    // PNG (manté la transparència); si encara és massa gran, JPEG
+    let out = image.toPNG();
+    let type = 'image/png';
+    if (out.length > MAX_LOGO_BYTES) {
+      out = image.toJPEG(85);
+      type = 'image/jpeg';
+    }
+    if (out.length > MAX_LOGO_BYTES) return { error: 'La imatge és massa gran fins i tot reduïda. Fes-ne una versió més senzilla.' };
+    return { dataUrl: `data:${type};base64,${out.toString('base64')}` };
+  } catch (err) {
+    return { error: `No s'ha pogut llegir la imatge: ${err instanceof Error ? err.message : String(err)}` };
+  }
+});
+
+/** L'última carpeta on s'ha desat un informe (mentre l'aplicació és oberta). */
+let lastReportFolder = '';
+
+// Desar un informe en PDF: l'HTML de l'informe (js/report-html.js) es posa en una finestra oculta amb report-print.html
+// i s'imprimeix amb printToPDF (text seleccionable, fitxer petit). Després es tria on desar-lo.
+// Retorna { path } si s'ha desat, null si es cancel·la, o { error }.
+ipcMain.handle('report:save-pdf', async (_event, html, suggestedName) => {
+  if (!mainWindow || typeof html !== 'string' || typeof suggestedName !== 'string') return { error: 'Falta l\'informe.' };
+  const printer = new BrowserWindow({
+    show: false,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  let pdf;
+  try {
+    await printer.loadFile(path.join(__dirname, '..', 'renderer', 'report-print.html'));
+    // L'HTML va com a text JSON (no s'interpreta com a codi); s'espera que el logotip s'hagi carregat
+    await printer.webContents.executeJavaScript(`(() => {
+      document.body.innerHTML = ${JSON.stringify(html)};
+      return Promise.all([...document.images].map((i) => i.complete ? 0 : new Promise((r) => { i.onload = i.onerror = r; })));
+    })()`);
+    pdf = await printer.webContents.printToPDF({
+      pageSize: 'A4',
+      printBackground: true,
+      margins: { top: 0.6, bottom: 0.7, left: 0.6, right: 0.6 },
+      displayHeaderFooter: true,
+      headerTemplate: '<span></span>',
+      footerTemplate: '<div style="width:100%;font-size:8px;color:#666;text-align:right;padding:0 12mm;">Pàgina <span class="pageNumber"></span> de <span class="totalPages"></span></div>',
+    });
+  } catch (err) {
+    return { error: `No s'ha pogut fer el PDF: ${err instanceof Error ? err.message : String(err)}` };
+  } finally {
+    printer.destroy();
+  }
+
+  const safeName = suggestedName.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim() || 'Informe.pdf';
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Desa l\'informe en PDF',
+    defaultPath: path.join(lastReportFolder || app.getPath('documents'), safeName),
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+  try {
+    await fs.promises.writeFile(result.filePath, pdf);
+    lastReportFolder = path.dirname(result.filePath);
+    return { path: result.filePath };
+  } catch (err) {
+    return { error: `No s'ha pogut desar el PDF: ${err instanceof Error ? err.message : String(err)}` };
+  }
 });
 
 // ---------------------------------------------------------------------------

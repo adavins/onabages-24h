@@ -93,6 +93,17 @@ public sealed class ReportsTests : IDisposable
     }
 
     [Fact]
+    public void Un_logotip_gran_cap_en_un_missatge_i_un_de_massa_gran_es_rebutja()
+    {
+        // D-140: el logotip va dins d'un missatge (com a molt 1 MB); el motor n'accepta 850.000 caràcters
+        string Logo(int length) => "data:image/png;base64," + new string('A', length - "data:image/png;base64,".Length);
+        Assert.True(CommandRouter.MaxLogoLength + 100 < ClientHub.MaxMessageBytes);
+        Assert.NotNull(Send(new() { ["cmd"] = "station.set", ["logo"] = Logo(CommandRouter.MaxLogoLength) })["result"]);
+        var error = Send(new() { ["cmd"] = "station.set", ["logo"] = Logo(CommandRouter.MaxLogoLength + 1) })["error"]!;
+        Assert.Contains("massa gran", error["message"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void L_informe_d_una_pista_compta_els_passis_previstos_dins_de_les_seves_dates()
     {
         _library.UpdateTrack(_library.GetTrack(_a)! with { ValidFrom = new DateOnly(2026, 11, 1), ValidUntil = new DateOnly(2026, 11, 30) });

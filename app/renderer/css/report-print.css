@@ -1,0 +1,6 @@
+/* Pàgina d'impressió dels informes (report-print.html): blanca i sense marges propis (els posa el PDF). */
+html,
+body {
+  margin: 0;
+  background: #fff;
+}

@@ -58,6 +58,8 @@ export class TrackManagerView {
   #openCalendar;
   /** Obre a l'Explorador la carpeta d'un fitxer (D-112). @type {(path: string) => Promise<'file' | 'folder' | 'missing'>} */
   #showFile;
+  /** Obre l'informe de programació o el certificat d'una pista (D-138). @type {(kind: 'programming' | 'certificate', track: any) => void} */
+  #openReport;
 
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
@@ -65,8 +67,10 @@ export class TrackManagerView {
    * @param {import('./folders.js').FoldersView} folders
    * @param {(track: { id: number, title: string }) => void} openCalendar  obre el calendari de la pista (pestanya Calendari)
    * @param {(path: string) => Promise<'file' | 'folder' | 'missing'>} showFile  obre a l'Explorador la carpeta d'un fitxer
+   * @param {(kind: 'programming' | 'certificate', track: any) => void} openReport  obre un informe de la pista
    */
-  constructor(send, chooseFile, folders, openCalendar, showFile) {
+  constructor(send, chooseFile, folders, openCalendar, showFile, openReport) {
+    this.#openReport = openReport;
     this.#send = send;
     this.#chooseFile = chooseFile;
     this.#folders = folders;
@@ -982,7 +986,19 @@ export class TrackManagerView {
     close.title = 'Tanca la fitxa';
     close.append(icon('bi-x-lg'), ' Tanca');
     close.addEventListener('click', () => this.#closeDetail());
-    headTools.append(cues, calendar, explorer, close);
+    // Els informes de la pista (D-138): els passis previstos i les emissions reals, en PDF
+    const report = (/** @type {'programming' | 'certificate'} */ kind, /** @type {string} */ iconName, /** @type {string} */ text, /** @type {string} */ help) => {
+      const b = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+      b.type = 'button';
+      b.append(icon(iconName), ` ${text}`);
+      b.title = help;
+      b.addEventListener('click', () => this.#openReport(kind, t));
+      return b;
+    };
+    headTools.append(cues, calendar,
+      report('programming', 'bi-calendar-range', 'Programació…', 'Informe de programació d\'aquesta pista: els passis previstos, en PDF'),
+      report('certificate', 'bi-patch-check', 'Certificat…', 'Certificat d\'emissió d\'aquesta pista: les emissions reals (de l\'historial), en PDF'),
+      explorer, close);
     head.append(headTools);
     form.append(head);
 

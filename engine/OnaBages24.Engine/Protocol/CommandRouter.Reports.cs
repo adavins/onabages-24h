@@ -14,8 +14,11 @@ public sealed partial class CommandRouter
     /// <summary>Clau de la configuració amb les dades de l'emissora: <c>{ "name", "frequency", "logo" }</c>.</summary>
     public const string StationSettingKey = "emissora";
 
-    /// <summary>Mida màxima del logotip (com a adreça <c>data:</c>), perquè la configuració no es faci gran.</summary>
-    public const int MaxLogoLength = 1_500_000;
+    /// <summary>
+    /// Mida màxima del logotip (com a adreça <c>data:</c>): ha de cabre en un missatge (<see cref="ClientHub.MaxMessageBytes"/>,
+    /// 1 MB). La interfície el redueix abans d'enviar-lo (D-140).
+    /// </summary>
+    public const int MaxLogoLength = 850_000;
 
     private static readonly string[] LogoPrefixes = ["data:image/png;base64,", "data:image/jpeg;base64,", "data:image/svg+xml;base64,"];
 
@@ -67,7 +70,7 @@ public sealed partial class CommandRouter
                 if (!LogoPrefixes.Any(p => logo.StartsWith(p, StringComparison.Ordinal)))
                     throw new BadParamsException("El logotip ha de ser una imatge PNG, JPEG o SVG.");
                 if (logo.Length > MaxLogoLength)
-                    throw new BadParamsException("El logotip és massa gran (com a molt, uns 1.000 kB). Fes-ne una versió més petita.");
+                    throw new BadParamsException("El logotip és massa gran (com a molt, uns 600 kB). Fes-ne una versió més petita.");
             }
         }
         library.SetSetting(StationSettingKey, new JsonObject { ["name"] = name, ["frequency"] = frequency, ["logo"] = logo }.ToJsonString());

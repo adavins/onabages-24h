@@ -12,7 +12,8 @@ namespace OnaBages24.Engine;
 /// </summary>
 public sealed class ClientHub
 {
-    public const int MaxMessageBytes = 64 * 1024;
+    /// <summary>Mida màxima d'un missatge (D-140: 1 MB, perquè hi càpiga el logotip de l'emissora; abans, 64 KB).</summary>
+    public const int MaxMessageBytes = 1024 * 1024;
 
     private readonly ConcurrentDictionary<Guid, Client> _clients = new();
     private readonly Action<int> _clientsChanged;

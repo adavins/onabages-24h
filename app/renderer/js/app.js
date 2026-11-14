@@ -30,6 +30,8 @@ import { folderWarnings } from './folders-text.js';
 import { setupZoom, applyZoom } from './ui/zoom.js';
 import { setupWindowFrame } from './ui/window-frame.js';
 import { CollapsibleCards } from './ui/collapsible.js';
+import { openStationDialog } from './ui/station-dialog.js';
+import { openReport } from './ui/report-dialog.js';
 
 /**
  * @typedef {{
@@ -41,9 +43,22 @@ import { CollapsibleCards } from './ui/collapsible.js';
  *   chooseAudioFiles: (defaultPath?: string) => Promise<string[] | null>,
  *   chooseFolder:(defaultPath?: string) => Promise<string | null>,
  *   showFile: (filePath: string) => Promise<'file' | 'folder' | 'missing'>,
+ *   chooseImage: () => Promise<{ dataUrl?: string, error?: string } | null>,
+ *   saveReportPdf: (html: string, name: string) => Promise<{ path?: string, error?: string } | null>,
  * }} Bridge
  */
 const bridge = /** @type {Bridge} */ (/** @type {any} */ (window).onabages);
+
+// Informes (fase 4, pas 4b; D-138): les dades de l'emissora (botó ⚙ de la capçalera) i la finestra d'un informe
+const openStation = () => openStationDialog(send, () => bridge.chooseImage());
+/**
+ * @param {'programming' | 'certificate'} kind
+ * @param {{ campaignId: number } | { trackId: number }} target
+ * @param {{ name: string, startDate?: string, endDate?: string, validFrom?: string | null, validUntil?: string | null }} subject
+ */
+const showReport = (kind, target, subject) => openReport({
+  send, savePdf: (html, name) => bridge.saveReportPdf(html, name), openStation, kind, target, subject,
+});
 
 // --- Rellotge (només per mostrar l'hora: la puntualitat és cosa del motor, D-008) ---
 
@@ -142,14 +157,15 @@ const campaignCalendar = new CalendarView(send, () => {
 const campaignsView = new CampaignsView(send, (campaign) => {
   showView('calendari-campanya');
   campaignCalendar.openCampaign(campaign);
-});
+}, (kind, c) => showReport(kind, { campaignId: c.id }, { name: c.name, startDate: c.startDate, endDate: c.endDate }));
 // El calendari d'una pista és part de la pestanya Pistes (D-113): «Torna a les pistes» hi torna, tal com era
 const calendarView = new CalendarView(send, () => showView('biblioteca'));
 // «Calendari…» a la fitxa d'una pista (D-111): obre la pestanya Calendari amb aquella pista
 const trackManager = new TrackManagerView(send, (path) => bridge.chooseAudioFile(path), folders, (track) => {
   showView('calendari');
   calendarView.openTrack(track);
-}, (path) => bridge.showFile(path));
+}, (path) => bridge.showFile(path), (kind, t) => showReport(kind, { trackId: t.id },
+  { name: t.artist ? `${t.artist} - ${t.title}` : t.title, validFrom: t.validFrom, validUntil: t.validUntil }));
 new RerootView(send, (path) => bridge.chooseFolder(path));
 const importView = new ImportView(send, (path) => bridge.chooseFolder(path), (path) => bridge.chooseAudioFiles(path),
   () => trackManager.importContext(), (id) => trackManager.openTrack(id));
@@ -293,6 +309,7 @@ $('nav-planificador').addEventListener('click', () => showView('planificador'));
 $('nav-biblioteca').addEventListener('click', () => showView('biblioteca'));
 $('nav-rotacions').addEventListener('click', () => showView('rotacions'));
 $('nav-campanyes').addEventListener('click', () => showView('campanyes'));
+$('btn-station').addEventListener('click', () => openStation());
 
 // Saltar a la següent: interromp la cançó, per tant demana confirmació
 // «Regenera la cua» (D-034): només canvia les pistes que ha posat l'AutoDJ i no interromp res, per això no demana confirmació
