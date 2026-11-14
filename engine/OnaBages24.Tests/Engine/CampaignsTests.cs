@@ -251,4 +251,22 @@ public sealed class CampaignsTests : IDisposable
         Assert.Contains("del 1/11/2026 al 30/11/2026", action["detail"]!.GetValue<string>());
         Assert.False(action["missing"]!.GetValue<bool>() && DateOnly.FromDateTime(DateTime.Now) <= new DateOnly(2026, 11, 30));
     }
+
+    [Fact]
+    public void El_pla_diu_el_que_ha_sonat_de_l_historial_i_no_els_passis_d_abans_que_no_van_sonar()
+    {
+        long id = Send(Ferreteria())["result"]!["campaign"]!["id"]!.GetValue<long>();
+        // Un passi d'abans al pla que no va sonar (p. ex. d'un esdeveniment esborrat) i una emissió de debò
+        var past = DateTimeOffset.UtcNow.AddHours(-2);
+        _campaigns.ReplacePlanFrom(id, past.AddMinutes(-1), [new CampaignPass(999, past, _a)]);
+        _library.AddHistory(_library.GetTrack(_b)!, DateTimeOffset.UtcNow.AddHours(-1), QueueOrigin.Event, id);
+
+        var plan = Send(new() { ["cmd"] = "campaigns.plan", ["campaignId"] = id })["result"]!;
+        Assert.Empty(plan["passes"]!.AsArray());
+        var played = Assert.Single(plan["played"]!.AsArray())!;
+        Assert.Equal(_b, played["trackId"]!.GetValue<long>());
+        var bySpot = plan["bySpot"]!.AsArray();
+        Assert.Equal([0, 1, 0], bySpot.Select(s => s!["played"]!.GetValue<int>()));
+        Assert.Equal([0, 0, 0], bySpot.Select(s => s!["count"]!.GetValue<int>()));
+    }
 }

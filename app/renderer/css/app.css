@@ -3420,3 +3420,107 @@ button.pl-chip.is-off {
 .cp-pick-type {
   width: auto;
 }
+
+/* --- Pla d'una campanya (fase 4, pas 3d-2): ha sonat i previstos, per falca, i calendari mensual --- */
+
+.cp-plan-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.cp-plan-totals {
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-plan {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ob-border);
+}
+
+.cal-plan-title {
+  font-size: 1rem;
+  margin: 0 0 0.4rem;
+}
+
+.cpm-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  align-items: flex-start;
+  margin-top: 0.4rem;
+}
+
+.cpm-legend {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.cpm {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cpm caption {
+  caption-side: top;
+  padding: 0 0 0.2rem;
+  color: inherit;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.cpm th {
+  color: var(--ob-muted);
+  font-weight: normal;
+  text-align: center;
+  padding: 0 0.15rem;
+}
+
+.cpm td {
+  width: 2.9rem;
+  height: 2.5rem;
+  border: 1px solid var(--ob-border);
+  padding: 0.1rem 0.2rem;
+  vertical-align: top;
+}
+
+.cpm .cpm-blank {
+  border: none;
+}
+
+.cpm .cpm-out {
+  color: var(--ob-muted);
+  opacity: 0.5;
+}
+
+.cpm-day {
+  background: var(--ob-panel);
+}
+
+.cpm-day.is-past {
+  color: var(--ob-muted);
+}
+
+.cpm-day.is-today {
+  outline: 2px solid var(--ob-progress);
+  outline-offset: -2px;
+}
+
+.cpm-day.is-off .cpm-count {
+  color: var(--bs-warning);
+  font-weight: 600;
+}
+
+.cpm-num {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--ob-muted);
+}
+
+.cpm-count {
+  display: block;
+  white-space: nowrap;
+}

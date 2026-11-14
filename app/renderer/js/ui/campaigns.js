@@ -13,8 +13,9 @@ import { todayIso } from '../event-form.js';
 import { DAY_NAMES, DAY_SHORT } from '../calendar-form.js';
 import {
   STATES, SELECTIONS, MAX_WEIGHT, newCampaign, newSpot, campaignFromApi, campaignToApi, campaignChanged, campaignProblems,
-  moveSpot, spotWarnings, datesText, planSummary,
+  moveSpot, spotWarnings, datesText,
 } from '../campaign-form.js';
+import { planPanel } from './campaign-plan.js';
 
 export class CampaignsView {
   #send;
@@ -558,16 +559,7 @@ export class CampaignsView {
     try {
       const plan = await this.#send('campaigns.plan', { campaignId: c.id });
       if (this.#campaign?.id !== c.id) return;
-      const s = planSummary(plan.passes, c.contractedTotal ?? null, c.contractedPerDay ?? null);
-      const parts = [];
-      if (c.effectiveState !== 'ACTIVA') parts.push(statusLabel('text-body-secondary small', 'bi-info-circle', 'Només les campanyes actives tenen passis previstos.'));
-      parts.push(el('div', '', s.total === 0 ? 'El pla no té cap passi.' : `El pla té ${s.total} ${s.total === 1 ? 'passi' : 'passis'} en ${s.days} ${s.days === 1 ? 'dia' : 'dies'}:`));
-      if (s.total > 0) {
-        const list = el('ul', 'cp-events');
-        for (const spot of plan.bySpot) list.append(el('li', '', `${spot.title ?? `Pista ${spot.trackId}`}: ${spot.count}`));
-        parts.push(list);
-      }
-      for (const w of s.warnings) parts.push(statusLabel('text-warning small d-block', 'bi-exclamation-triangle-fill', w));
+      const parts = [planPanel(plan, c, todayIso())];
       if (this.dirty) parts.push(statusLabel('text-warning small d-block', 'bi-info-circle', 'És el pla de la campanya desada: els canvis sense desar no hi compten.'));
       into.replaceChildren(...parts);
     } catch (err) {

@@ -9,6 +9,9 @@ public sealed partial class CommandRouter
     /// <summary>Quan es desa o s'esborra una campanya: les interfícies tornen a demanar el que mostren (<c>campaigns.changed</c>).</summary>
     public event Action? CampaignsChanged;
 
+    /// <summary>El rellotge per separar el que ja ha passat (historial) del que està previst (pla); les proves el canvien.</summary>
+    public Func<DateTimeOffset> CampaignClock { get; set; } = () => DateTimeOffset.UtcNow;
+
     private Campaigns CampaignsOrError() => _campaigns ?? throw new BadParamsException("El motor no té campanyes.");
 
     private static DateOnly Today() => DateOnly.FromDateTime(DateTime.Now);
@@ -75,7 +78,9 @@ public sealed partial class CommandRouter
 
     /// <summary>
     /// El pla de passis d'una campanya (fase 4, pas 3b): `campaignId` i, opcionals, `from` i `to` ('AAAA-MM-DD', dies locals;
-    /// `to` inclòs). Cada passi amb l'esdeveniment, l'hora i la falca (o null si queda buit), i quants en té cada falca.
+    /// `to` inclòs). `passes`: els previstos d'ara endavant, cadascun amb l'esdeveniment, l'hora i la falca (o null si queda
+    /// buit). `played` (pas 3d-2): el que ja ha sonat, de l'historial (un passi d'abans que no va sonar no compta). I, per a
+    /// cada falca, quantes vegades ha sonat i quantes en té previstes.
     /// </summary>
     private JsonObject CampaignsPlan(JsonObject msg)
     {
@@ -83,7 +88,12 @@ public sealed partial class CommandRouter
         long id = RequiredId(msg, "campaignId");
         var campaign = campaigns.Get(id) ?? throw new BadParamsException($"No existeix la campanya {id}.");
         DateTimeOffset? Instant(DateOnly? day) => day is { } d ? new DateTimeOffset(d.ToDateTime(TimeOnly.MinValue), TimeZoneInfo.Local.GetUtcOffset(d.ToDateTime(TimeOnly.MinValue))) : null;
-        var plan = campaigns.Plan(id, Instant(OptionalDate(msg, "from")), Instant(OptionalDate(msg, "to")?.AddDays(1)));
+        var from = Instant(OptionalDate(msg, "from"));
+        var to = Instant(OptionalDate(msg, "to")?.AddDays(1));
+        var now = CampaignClock();
+        // Els passis d'abans d'ara del pla no compten: el que ha passat és el que diu l'historial
+        var plan = campaigns.Plan(id, from is { } fromAt && fromAt > now ? fromAt : now, to);
+        var played = campaigns.Played(id, from, to is { } toAt && toAt < now ? toAt : now);
 
         var names = new Dictionary<long, string?>();
         string? EventName(long eventId) => names.TryGetValue(eventId, out var n) ? n : names[eventId] = _events?.Get(eventId)?.Name;
@@ -99,11 +109,18 @@ public sealed partial class CommandRouter
                 ["trackId"] = p.TrackId,
                 ["title"] = p.TrackId is { } t ? titles.GetValueOrDefault(t) ?? _library?.GetTrack(t)?.Title : null,
             }).ToArray()),
+            ["played"] = new JsonArray(played.Select(p => (JsonNode)new JsonObject
+            {
+                ["at"] = TimeZoneInfo.ConvertTime(p.At, TimeZoneInfo.Local).ToString("O"),
+                ["trackId"] = p.TrackId,
+                ["title"] = p.TrackId is { } t ? titles.GetValueOrDefault(t) ?? _library?.GetTrack(t)?.Title : null,
+            }).ToArray()),
             ["bySpot"] = new JsonArray(campaign.Spots.Select(s => (JsonNode)new JsonObject
             {
                 ["trackId"] = s.TrackId,
                 ["title"] = titles[s.TrackId],
                 ["count"] = plan.Count(p => p.TrackId == s.TrackId),
+                ["played"] = played.Count(p => p.TrackId == s.TrackId),
             }).ToArray()),
             ["empty"] = plan.Count(p => p.TrackId is null),
         };

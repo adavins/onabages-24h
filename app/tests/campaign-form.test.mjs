@@ -72,22 +72,44 @@ test('avisos d\'una falca: fitxer, desactivada i dates de la pista', () => {
   assert.equal(datesText('2026-11-01', '2026-11-30'), 'del 1/11/2026 al 30/11/2026');
 });
 
-test('resum del pla: total, buits i passis contractats', async () => {
+test('resum del pla: el que ha sonat i el que està previst, dia a dia, i els passis contractats', async () => {
   const { planSummary } = await import('../renderer/js/campaign-form.js');
-  const passes = [
-    { at: '2026-11-02T08:30:00.0000000+01:00', trackId: 1 },
-    { at: '2026-11-02T19:30:00.0000000+01:00', trackId: 2 },
-    { at: '2026-11-03T08:30:00.0000000+01:00', trackId: null },
-  ];
-  const s = planSummary(passes, 4, 2);
-  assert.equal(s.total, 3);
-  assert.equal(s.empty, 1);
-  assert.equal(s.days, 2);
-  assert.equal(s.daysOff, 1);
-  assert.deepEqual(s.warnings, [
-    'El pla té 3 passis i se n\'han contractat 4 (1 de menys).',
-    '1 dia no té els 2 passis per dia contractats.',
-    '1 passi queda buit: aquell dia no hi ha cap falca vàlida.',
+  const campaign = { startDate: '2026-11-01', endDate: '2026-11-04', contractedTotal: 8, contractedPerDay: 2 };
+  const plan = {
+    // Ja ha sonat (historial): l'1 dues vegades, el 2 només una (l'altra es va ometre)
+    played: [
+      { at: '2026-11-01T08:30:05.0000000+01:00', trackId: 1, title: 'A' },
+      { at: '2026-11-01T19:30:02.0000000+01:00', trackId: 2, title: 'B' },
+      { at: '2026-11-02T19:30:01.0000000+01:00', trackId: 1, title: 'A' },
+    ],
+    // Previstos: el 3 dos (un de buit) i el 4 cap
+    passes: [
+      { at: '2026-11-03T08:30:00.0000000+01:00', trackId: 2, title: 'B' },
+      { at: '2026-11-03T19:30:00.0000000+01:00', trackId: null, title: null },
+    ],
+  };
+  const s = planSummary(plan, campaign, '2026-11-03');
+  assert.deepEqual([s.played, s.planned, s.total, s.empty, s.pastOff, s.futureOff], [3, 2, 5, 1, 1, 1]);
+  assert.deepEqual(s.byDay.get('2026-11-01')?.items, [
+    { time: '08:30', title: 'A', played: true }, { time: '19:30', title: 'B', played: true },
   ]);
-  assert.deepEqual(planSummary(passes.slice(0, 2), 2, null).warnings, []);
+  assert.equal(s.byDay.get('2026-11-03')?.empty, 1);
+  assert.deepEqual(s.warnings, [
+    'Entre els que han sonat (3) i els previstos (2) en surten 5, i se n\'han contractat 8 (3 de menys).',
+    '1 dia que ja ha passat no va tenir els 2 passis per dia contractats.',
+    '1 dia no tindrà els 2 passis per dia contractats.',
+    '1 passi previst queda buit: aquell dia no hi ha cap falca vàlida.',
+  ]);
+  // Sense passis contractats, només l'avís dels buits
+  assert.deepEqual(planSummary(plan, { startDate: '2026-11-01', endDate: '2026-11-04' }, '2026-11-03').warnings.length, 1);
+});
+
+test('datesBetween i monthWeeks: els dies de la campanya i les setmanes del mes, de dilluns a diumenge', async () => {
+  const { datesBetween, monthWeeks } = await import('../renderer/js/campaign-form.js');
+  assert.deepEqual(datesBetween('2026-10-24', '2026-10-27'), ['2026-10-24', '2026-10-25', '2026-10-26', '2026-10-27']); // canvi d'hora
+  assert.deepEqual(datesBetween('2026-11-05', '2026-11-01'), []);
+  const nov = monthWeeks(2026, 11); // l'1 de novembre de 2026 és diumenge
+  assert.equal(nov.length, 6);
+  assert.deepEqual(nov[0], [null, null, null, null, null, null, '2026-11-01']);
+  assert.deepEqual(nov[5], ['2026-11-30', null, null, null, null, null, null]);
 });

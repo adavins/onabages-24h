@@ -280,6 +280,28 @@ public sealed class Campaigns(Database database)
     }
 
     /// <summary>Quantes vegades ha sonat una falca d'aquesta campanya (historial).</summary>
+    /// <summary>
+    /// Les emissions de la campanya que han sonat de debò (historial amb <c>campanya_id</c>; fase 4, pas 3d-2), en ordre,
+    /// fins a <paramref name="to"/> (no inclòs). Un passi del pla que no va sonar (omès, esdeveniment esborrat…) no hi és.
+    /// <see cref="CampaignPass.EventId"/> és 0: l'historial no guarda l'esdeveniment.
+    /// </summary>
+    public IReadOnlyList<CampaignPass> Played(long campaignId, DateTimeOffset? from = null, DateTimeOffset? to = null)
+    {
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT inici, pista_id FROM historial WHERE campanya_id = $id " +
+                "AND ($from IS NULL OR inici >= $from) AND ($to IS NULL OR inici < $to) ORDER BY inici, id;");
+            command.Parameters.AddWithValue("$id", campaignId);
+            command.Parameters.AddWithValue("$from", from is { } f ? DbTime.ToText(f) : DBNull.Value);
+            command.Parameters.AddWithValue("$to", to is { } t ? DbTime.ToText(t) : DBNull.Value);
+            using var r = command.ExecuteReader();
+            var list = new List<CampaignPass>();
+            while (r.Read()) list.Add(new CampaignPass(0, DbTime.ParseInstant(r.GetString(0)), r.IsDBNull(1) ? null : r.GetInt64(1)));
+            return list;
+        }
+    }
+
     public int PlayCount(long campaignId)
     {
         lock (database.Sync)

@@ -167,8 +167,9 @@ public sealed class CampaignPlanTests : IDisposable
         Assert.Equal(30, plans.RecalculateAll());
         var before = _campaigns.Plan(c.Id);
 
-        // Al cap de 5 dies i mig s'afegeix una falca: els 6 passis fets es mantenen; la nova recupera passis
+        // Al cap de 5 dies i mig s'afegeix una falca: els 6 passis fets (han sonat: historial) es mantenen; la nova recupera passis
         _now = new DateTimeOffset(2026, 11, 6, 12, 0, 0, TimeSpan.Zero);
+        foreach (var p in before.Take(6)) _library.AddHistory(_library.GetTrack(p.TrackId!.Value)!, p.At, QueueOrigin.Event, c.Id);
         _campaigns.Save(c with { Spots = [.. c.Spots, new CampaignSpot { TrackId = _c }] }, _now);
         Assert.Equal(24, plans.RecalculateAll());
         var after = _campaigns.Plan(c.Id);
@@ -178,6 +179,25 @@ public sealed class CampaignPlanTests : IDisposable
         Assert.Equal(10, after.Count(p => p.TrackId == _a));
         Assert.Equal(10, after.Count(p => p.TrackId == _b));
         Assert.Equal(10, after.Count(p => p.TrackId == _c));
+    }
+
+    [Fact]
+    public void Un_passi_d_abans_que_no_va_sonar_no_compta_per_a_l_equilibri()
+    {
+        var c = Campaign(CampaignSelection.Alternate, new CampaignSpot { TrackId = _a }, new CampaignSpot { TrackId = _b });
+        Event(c.Id, new TimeOnly(10, 0));
+        var plans = Plans();
+        plans.RecalculateAll(); // A, B, A, B…
+
+        // Han passat tres dies (A, B, A) sense que soni res (p. ex. el motor estava aturat): torna a començar per A
+        _now = new DateTimeOffset(2026, 11, 3, 12, 0, 0, TimeSpan.Zero);
+        plans.RecalculateAll();
+        Assert.Equal(_a, _campaigns.Plan(c.Id, from: _now)[0].TrackId);
+
+        // Si sí que van sonar, la següent és B
+        foreach (var p in _campaigns.Plan(c.Id, to: _now)) _library.AddHistory(_library.GetTrack(p.TrackId!.Value)!, p.At, QueueOrigin.Event, c.Id);
+        plans.RecalculateAll();
+        Assert.Equal(_b, _campaigns.Plan(c.Id, from: _now)[0].TrackId);
     }
 
     [Fact]
@@ -266,7 +286,7 @@ public sealed class CampaignPlanTests : IDisposable
         var c = Campaign(CampaignSelection.Alternate, new CampaignSpot { TrackId = _a }, new CampaignSpot { TrackId = _b });
         Event(c.Id, new TimeOnly(10, 0));
         Plans().RecalculateAll();
-        var router = new CommandRouter(new EngineState(), () => { }, _library, events: _events, campaigns: _campaigns);
+        var router = new CommandRouter(new EngineState(), () => { }, _library, events: _events, campaigns: _campaigns) { CampaignClock = () => _now };
 
         var msg = new JsonObject { ["v"] = 1, ["id"] = 1, ["cmd"] = "campaigns.plan", ["campaignId"] = c.Id };
         var result = router.Handle(msg.ToJsonString())["result"]!;

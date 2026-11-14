@@ -154,25 +154,106 @@ export function datesText(start, end) {
 }
 
 /**
- * Resum del pla de passis (campaigns.plan) per a l'editor: quants n'hi ha, quants queden buits i si quadren amb els
- * contractats (en total i per dia). `days`: quants dies tenen passis; `daysOff`: quants dies en tenen més o menys dels
- * contractats per dia.
- * @param {{ at: string, trackId: number | null }[]} passes @param {number | null} contractedTotal @param {number | null} contractedPerDay
+ * Els dies del calendari de <start> a <end> (tots dos inclosos), 'AAAA-MM-DD'; com a molt 400.
+ * @param {string} start @param {string} end
  */
-export function planSummary(passes, contractedTotal, contractedPerDay) {
-  const total = passes.length;
-  const empty = passes.filter((p) => p.trackId == null).length;
-  /** @type {Map<string, number>} */
-  const perDay = new Map();
-  for (const p of passes) perDay.set(p.at.slice(0, 10), (perDay.get(p.at.slice(0, 10)) ?? 0) + 1); // hora local: el dia és el del text
-  const daysOff = contractedPerDay == null ? 0 : [...perDay.values()].filter((n) => n !== contractedPerDay).length;
+export function datesBetween(start, end) {
+  /** @type {string[]} */
+  const days = [];
+  if (!start || !end || end < start) return days;
+  const d = new Date(`${start}T00:00:00Z`); // en UTC: sense canvis d'hora
+  for (let i = 0; i <= 400; i++) {
+    const iso = d.toISOString().slice(0, 10);
+    if (iso > end) break;
+    days.push(iso);
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return days;
+}
+
+/**
+ * Les setmanes d'un mes, de dilluns a diumenge: cada setmana, 7 dies 'AAAA-MM-DD' o null (fora del mes).
+ * @param {number} year @param {number} month 1–12
+ */
+export function monthWeeks(year, month) {
+  const first = new Date(Date.UTC(year, month - 1, 1));
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const offset = (first.getUTCDay() + 6) % 7; // 0 = dilluns
+  /** @type {(string | null)[][]} */
+  const weeks = [];
+  let week = /** @type {(string | null)[]} */ (Array(offset).fill(null));
+  for (let day = 1; day <= daysInMonth; day++) {
+    week.push(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+    if (week.length === 7) {
+      weeks.push(week);
+      week = [];
+    }
+  }
+  if (week.length > 0) weeks.push([...week, ...Array(7 - week.length).fill(null)]);
+  return weeks;
+}
+
+/**
+ * Resum del pla d'una campanya (campaigns.plan; pas 3d-2): el que **ja ha sonat** (de l'historial: un passi d'abans que
+ * no va sonar no compta) i el que **està previst** (el pla d'ara endavant), dia a dia, i si quadra amb els passis
+ * contractats (en total i per dia, dins de les dates de la campanya).
+ * - `byDay`: per a cada dia amb alguna cosa, quants n'han sonat, quants en són previstos, quants queden buits i quins
+ *   (hora, títol i si ha sonat), en ordre.
+ * - `pastOff` / `futureOff`: dies de la campanya (ja passats / d'avui en endavant) que no tenen els passis per dia contractats.
+ * @param {{ passes: { at: string, trackId: number | null, title?: string | null }[], played?: { at: string, trackId: number | null, title?: string | null }[] }} plan
+ * @param {{ startDate: string, endDate: string, contractedTotal?: number | null, contractedPerDay?: number | null }} campaign
+ * @param {string} today  'AAAA-MM-DD'
+ */
+export function planSummary(plan, campaign, today) {
+  const played = plan.played ?? [];
+  const planned = plan.passes;
+  const empty = planned.filter((p) => p.trackId == null).length;
+  /** @type {Map<string, { played: number, planned: number, empty: number, items: { time: string, title: string | null, played: boolean }[] }>} */
+  const byDay = new Map();
+  const day = (/** @type {string} */ at) => {
+    const key = at.slice(0, 10); // hora local: el dia és el del text
+    let d = byDay.get(key);
+    if (!d) byDay.set(key, d = { played: 0, planned: 0, empty: 0, items: [] });
+    return d;
+  };
+  for (const p of played) {
+    const d = day(p.at);
+    d.played++;
+    d.items.push({ time: p.at.slice(11, 16), title: p.title ?? null, played: true });
+  }
+  for (const p of planned) {
+    const d = day(p.at);
+    d.planned++;
+    if (p.trackId == null) d.empty++;
+    d.items.push({ time: p.at.slice(11, 16), title: p.trackId == null ? null : p.title ?? null, played: false });
+  }
+  for (const d of byDay.values()) d.items.sort((a, b) => a.time.localeCompare(b.time));
+
+  const total = played.length + planned.length;
+  const perDay = campaign.contractedPerDay ?? null;
+  let pastOff = 0;
+  let futureOff = 0;
+  if (perDay != null) {
+    for (const date of datesBetween(campaign.startDate, campaign.endDate)) {
+      const d = byDay.get(date);
+      if ((d ? d.played + d.planned : 0) === perDay) continue;
+      if (date < today) pastOff++;
+      else futureOff++;
+    }
+  }
+
   /** @type {string[]} */
   const warnings = [];
-  if (contractedTotal != null && total !== contractedTotal)
-    warnings.push(`El pla té ${total} ${total === 1 ? 'passi' : 'passis'} i se n'han contractat ${contractedTotal} (${total > contractedTotal ? `${total - contractedTotal} de més` : `${contractedTotal - total} de menys`}).`);
-  if (daysOff > 0)
-    warnings.push(`${daysOff} ${daysOff === 1 ? 'dia no té' : 'dies no tenen'} els ${contractedPerDay} passis per dia contractats.`);
+  const contracted = campaign.contractedTotal ?? null;
+  if (contracted != null && total !== contracted) {
+    const diff = total > contracted ? `${total - contracted} de més` : `${contracted - total} de menys`;
+    warnings.push(`Entre els que han sonat (${played.length}) i els previstos (${planned.length}) en surten ${total}, i se n'han contractat ${contracted} (${diff}).`);
+  }
+  if (pastOff > 0)
+    warnings.push(`${pastOff} ${pastOff === 1 ? 'dia que ja ha passat no va tenir' : 'dies que ja han passat no van tenir'} els ${perDay} passis per dia contractats.`);
+  if (futureOff > 0)
+    warnings.push(`${futureOff} ${futureOff === 1 ? 'dia no tindrà' : 'dies no tindran'} els ${perDay} passis per dia contractats.`);
   if (empty > 0)
-    warnings.push(`${empty} ${empty === 1 ? 'passi queda buit' : 'passis queden buits'}: aquell dia no hi ha cap falca vàlida.`);
-  return { total, empty, days: perDay.size, daysOff, warnings };
+    warnings.push(`${empty} ${empty === 1 ? 'passi previst queda buit' : 'passis previstos queden buits'}: aquell dia no hi ha cap falca vàlida.`);
+  return { played: played.length, planned: planned.length, total, empty, byDay, days: byDay.size, pastOff, futureOff, warnings };
 }

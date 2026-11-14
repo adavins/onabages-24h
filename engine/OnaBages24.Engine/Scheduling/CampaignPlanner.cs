@@ -55,7 +55,7 @@ public static class CampaignPlanner
 
     /// <summary>
     /// El pla a partir de <paramref name="from"/> (inclòs) fins al final de la campanya (com a molt <see cref="MaxDays"/> dies),
-    /// en ordre d'hora. <paramref name="past"/>: els passis d'abans, per a l'equilibri.
+    /// en ordre d'hora. <paramref name="past"/>: el que ja ha sonat (historial), per a l'equilibri.
     /// </summary>
     public static IReadOnlyList<CampaignPass> Compute(Campaign campaign, IEnumerable<ScheduledEvent> events, Func<long, Track?> getTrack,
         IReadOnlyList<CampaignPass> past, DateTimeOffset from, TimeZoneInfo zone)
@@ -179,7 +179,8 @@ public sealed class CampaignPlans(Campaigns campaigns, Events events, Library li
         IReadOnlyList<CampaignPass> plan = [];
         if (campaign.State == CampaignState.Active)
         {
-            var past = campaigns.Plan(campaign.Id, to: now);
+            // L'equilibri compta el que ha sonat de debò (historial), no el pla d'abans: un passi omès no compta (pas 3d-2)
+            var past = campaigns.Played(campaign.Id, to: now);
             plan = CampaignPlanner.Compute(campaign, all, library.GetTrack, past, now, _zone);
         }
         campaigns.ReplacePlanFrom(campaign.Id, now, plan);

@@ -13,6 +13,8 @@ import { confirmAction } from './confirm.js';
 import { formatDuration } from '../format.js';
 import { modeInfo } from '../schedule.js';
 import { STATES, datesText } from '../campaign-form.js';
+import { planPanel } from './campaign-plan.js';
+import { todayIso } from '../event-form.js';
 import {
   DAY_SHORT, DAY_NAMES, cellWarnings, cellTitle, blockTimeProblem, normalizeBlockTime, dateText, monthText, passes, periodText,
   withExtraRows, trackOnlyRows, contentTimes,
@@ -44,6 +46,8 @@ export class CalendarView {
   #contentOf = null;
   /** @type {any} */
   #content = null;
+  /** El pla de la campanya (campaigns.plan; pas 3d-2), o null. @type {any} */
+  #plan = null;
 
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
@@ -92,8 +96,23 @@ export class CalendarView {
     }
     if (subject !== this.#subject) return; // mentrestant se n'ha triat una altra (p. ex. des de la fitxa): no la trepitja
     this.#calendar = calendar;
-    await this.#loadContent();
+    await Promise.all([this.#loadContent(), this.#loadPlan()]);
     this.#renderEditor();
+  }
+
+  /** Torna a demanar el pla de la campanya (si és el calendari d'una campanya): els passis canvien a cada casella. */
+  async #loadPlan() {
+    const s = this.#subject;
+    if (s?.kind !== 'campaign') {
+      this.#plan = null;
+      return;
+    }
+    try {
+      const plan = await this.#send('campaigns.plan', { campaignId: s.id });
+      if (s === this.#subject) this.#plan = plan;
+    } catch {
+      this.#plan = null;
+    }
   }
 
   /** Torna a demanar el contingut obert (si n'hi ha): p. ex. després de posar-hi o treure'n la pista. */
@@ -134,6 +153,7 @@ export class CalendarView {
     }
     this.#subject = { kind, id };
     this.#calendar = null;
+    this.#plan = null;
     this.#renderEditor(); // de seguida: el botó de tornar es veu mentre es carrega
     await this.refresh();
   }
@@ -205,6 +225,13 @@ export class CalendarView {
     const side = this.#mode === 'all' && this.#content ? this.#contentPanel(this.#content) : null;
     if (this.#mode === 'track') main.append(this.#trackOnlyTable(cal), this.#counts(cal.counts));
     else main.append(this.#table(cal), this.#addBlock(), this.#counts(cal.counts));
+    if (cal.campaign && this.#plan) {
+      // El pla (pas 3d-2): quina falca sona a cada passi, el que ja ha sonat i el calendari mensual
+      const section = el('section', 'cal-plan');
+      section.setAttribute('aria-label', 'Pla de passis de la campanya');
+      section.append(el('h3', 'cal-plan-title', 'Pla de passis'), planPanel(this.#plan, cal.campaign, todayIso()));
+      main.append(section);
+    }
     const body = el('div', `cal-body${side ? ' has-side' : ''}`);
     body.append(main);
     if (side) {
@@ -476,7 +503,7 @@ export class CalendarView {
     } finally {
       this.#busy = false;
     }
-    await this.#loadContent(); // el contingut obert pot haver canviat (o el bloc s'ha esborrat)
+    await Promise.all([this.#loadContent(), this.#loadPlan()]); // el contingut obert pot haver canviat (o el bloc s'ha esborrat), i el pla
     this.#renderEditor();
   }
 
