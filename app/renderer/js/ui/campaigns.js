@@ -13,7 +13,7 @@ import { todayIso } from '../event-form.js';
 import { DAY_NAMES, DAY_SHORT } from '../calendar-form.js';
 import {
   STATES, SELECTIONS, MAX_WEIGHT, newCampaign, newSpot, campaignFromApi, campaignToApi, campaignChanged, campaignProblems,
-  moveSpot, spotWarnings, datesText,
+  moveSpot, spotWarnings, datesText, effectiveState,
 } from '../campaign-form.js';
 import { planPanel } from './campaign-plan.js';
 
@@ -31,6 +31,8 @@ export class CampaignsView {
   #dragFrom = null;
   /** Obre el calendari de la campanya (fase 4, pas 3d). @type {(campaign: { id: number }) => void} */
   #openCalendar;
+  /** Torna a mostrar l'estat de la capçalera (p. ex. si canvia la data de fi). @type {(() => void) | null} */
+  #syncState = null;
 
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
@@ -247,15 +249,21 @@ export class CampaignsView {
     const stateSelect = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm cp-state-select'));
     stateSelect.setAttribute('aria-label', 'Estat de la campanya');
     for (const [value, st] of Object.entries(STATES)) stateSelect.append(option(value, st.text));
-    stateSelect.value = form.state;
+    // Es mostra l'estat que compta (D-136): una activa amb la data de fi passada surt com a «Acabada» (en àmbar), encara
+    // que el desat continuï sent «Activa»; si s'allarga la data de fi, torna a sortir com a activa
     const showState = () => {
-      const st = STATES[/** @type {keyof typeof STATES} */ (form.state)] ?? STATES.ESBORRANY;
-      stateSelect.dataset.state = form.state;
-      stateSelect.title = st.help; // l'explicació, en passar-hi el ratolí
+      const shown = effectiveState(form.state, form.endDate, todayIso());
+      const st = STATES[/** @type {keyof typeof STATES} */ (shown)] ?? STATES.ESBORRANY;
+      stateSelect.value = shown;
+      stateSelect.dataset.state = shown;
+      stateSelect.title = shown !== form.state
+        ? 'Ha passat la data de fi: compta com a acabada i ja no sona. Per allargar-la, canvia la data de fi.'
+        : st.help; // l'explicació, en passar-hi el ratolí
       stateIcon.className = `cp-state-icon ${st.css}`;
       stateIcon.replaceChildren(icon(st.icon));
     };
     showState();
+    this.#syncState = showState;
     stateSelect.addEventListener('change', () => { form.state = stateSelect.value; showState(); changed(); });
     const stateWrap = el('span', 'cp-state');
     stateWrap.append(stateIcon, stateSelect);
@@ -298,8 +306,8 @@ export class CampaignsView {
     header.append(head, problems);
 
     const notes = [];
-    if (this.#campaign && this.#campaign.state === 'ACTIVA' && this.#campaign.effectiveState === 'ACABADA')
-      notes.push(statusLabel('text-secondary small', 'bi-info-circle', 'Ha passat la data de fi: compta com a acabada i ja no sona.'));
+    if (form.state === 'ACTIVA' && effectiveState(form.state, form.endDate, todayIso()) === 'ACABADA')
+      notes.push(statusLabel('text-secondary small', 'bi-info-circle', 'Ha passat la data de fi: compta com a acabada i ja no sona. Per allargar-la, canvia la data de fi.'));
 
     // «Dades» i «Falques» una al costat de l'altra si hi caben (D-132); a sota, el pla de passis (d'una campanya desada)
     const top = el('div', 'cp-top');
@@ -677,6 +685,7 @@ export class CampaignsView {
     const form = this.#form;
     const save = /** @type {HTMLButtonElement | null} */ (document.getElementById('cp-save'));
     if (!form || !save) return;
+    this.#syncState?.(); // la data de fi pot haver canviat l'estat que compta
     const problems = campaignProblems(form);
     const dirty = this.dirty;
     save.disabled = !dirty || problems.length > 0;

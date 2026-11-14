@@ -148,6 +148,15 @@ export function dmy(iso) {
   return `${Number(d)}/${Number(m)}/${y}`;
 }
 
+/**
+ * L'estat que compta (D-136; com `effectiveState` del motor, D-122): una campanya activa amb la data de fi passada ja
+ * està acabada, encara que l'estat desat continuï sent «Activa». Si se li allarga la data de fi, torna a ser activa.
+ * @param {string} state  l'estat desat (o el del formulari) @param {string} endDate 'AAAA-MM-DD' @param {string} today 'AAAA-MM-DD'
+ */
+export function effectiveState(state, endDate, today) {
+  return state === 'ACTIVA' && endDate && endDate < today ? 'ACABADA' : state;
+}
+
 /** «del 1/11/2026 al 30/11/2026». @param {string} start @param {string} end */
 export function datesText(start, end) {
   return start && end ? `del ${dmy(start)} al ${dmy(end)}` : '';

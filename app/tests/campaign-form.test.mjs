@@ -113,3 +113,11 @@ test('datesBetween i monthWeeks: els dies de la campanya i les setmanes del mes,
   assert.deepEqual(nov[0], [null, null, null, null, null, null, '2026-11-01']);
   assert.deepEqual(nov[5], ['2026-11-30', null, null, null, null, null, null]);
 });
+
+test('effectiveState: una activa amb la data de fi passada compta com a acabada (D-136)', async () => {
+  const { effectiveState } = await import('../renderer/js/campaign-form.js');
+  assert.equal(effectiveState('ACTIVA', '2026-11-13', '2026-11-14'), 'ACABADA');
+  assert.equal(effectiveState('ACTIVA', '2026-11-14', '2026-11-14'), 'ACTIVA'); // l'últim dia encara sona
+  assert.equal(effectiveState('ESBORRANY', '2026-11-01', '2026-11-14'), 'ESBORRANY');
+  assert.equal(effectiveState('ACABADA', '2026-12-31', '2026-11-14'), 'ACABADA');
+});
