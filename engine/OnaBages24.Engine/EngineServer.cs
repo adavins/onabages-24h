@@ -256,6 +256,8 @@ public static class EngineServer
             RecalculatePlans();
             Broadcast(Messages.Event("campaigns.changed"));
         };
+        // Dades de l'emissora (fase 4, pas 4a): per a la capçalera dels informes
+        router.StationChanged += () => Broadcast(Messages.Event("station.changed"));
         // Bosses amb nom (fase 3, pas 8c): també quan les canvia l'acció BOSSA d'un esdeveniment
         autoDj.BagsChanged += () =>
         {

@@ -861,6 +861,29 @@ public sealed partial class Library(Database database)
     }
 
     /// <summary>
+    /// Historial d'una pista (<paramref name="trackId"/>) o d'una campanya (<paramref name="campaignId"/>, totes les seves
+    /// falques) entre dues hores (des d'inclosa, fins a exclosa), en ordre: per al certificat d'emissió (fase 4, pas 4).
+    /// </summary>
+    public IReadOnlyList<HistoryEntry> HistoryFor(long? trackId, long? campaignId, DateTimeOffset from, DateTimeOffset to)
+    {
+        if (trackId is null == campaignId is null) throw new ArgumentException("Cal una pista o una campanya (només una).");
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT id, pista_id, inici, durada_ms, sencera, origen, artista, titol, ruta FROM historial " +
+                "WHERE inici >= $from AND inici < $to AND " + (trackId is not null ? "pista_id = $id " : "campanya_id = $id ") +
+                "ORDER BY inici, id;");
+            command.Parameters.AddWithValue("$from", DbTime.ToText(from));
+            command.Parameters.AddWithValue("$to", DbTime.ToText(to));
+            command.Parameters.AddWithValue("$id", trackId ?? campaignId!.Value);
+            using var reader = command.ExecuteReader();
+            var list = new List<HistoryEntry>();
+            while (reader.Read()) list.Add(ReadHistoryEntry(reader));
+            return list;
+        }
+    }
+
+    /// <summary>
     /// Cerca a l'historial (fase 1, pas 9): les entrades més recents primer, com a molt <paramref name="limit"/>.
     /// <paramref name="from"/> (inclosa) i <paramref name="to"/> (exclosa) són opcionals; <paramref name="text"/>, si n'hi ha,
     /// ha de ser a l'artista o al títol (sense distingir majúscules; els accents sí que compten).
