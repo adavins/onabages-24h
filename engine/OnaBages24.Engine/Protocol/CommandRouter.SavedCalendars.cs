@@ -43,11 +43,7 @@ public sealed partial class CommandRouter
     {
         var saved = SavedCalendarsOrError();
         var subject = CalendarSubjectOf(msg).Subject;
-        var rows = TrackCalendar.Build(EventsOrError().List(), subject, Today());
-        var slots = rows
-            .Select(r => new SavedSlot(r.Time, Enumerable.Range(0, 7).Where(d => r.Days[d]?.Marked == true).Aggregate(0, (mask, d) => mask | (1 << d))))
-            .Where(s => s.DaysMask != 0)
-            .ToList();
+        var slots = MarkedSlots(subject);
         if (slots.Count == 0) throw new BadParamsException("No hi ha cap casella marcada: no hi ha res per desar.");
         long id = msg["calendarId"] is null ? 0 : RequiredId(msg, "calendarId");
         if (id != 0 && saved.Get(id) is null) throw new BadParamsException($"No existeix el calendari desat {id}.");
@@ -79,13 +75,33 @@ public sealed partial class CommandRouter
         string mode = ReadString(msg["mode"]) ?? "add";
         if (mode is not ("add" or "replace")) throw new BadParamsException("El camp 'mode' ha de ser \"add\" o \"replace\".");
         var subject = CalendarSubjectOf(msg).Subject;
-        var wanted = calendar.Slots
+        var applied = ApplySlots(library, events, subject, calendar.Slots, mode == "replace");
+        var result = CalendarGet(msg);
+        result["applied"] = applied;
+        return result;
+    }
+
+    /// <summary>Les caselles marcades ara al calendari d'una pista o d'una campanya, com a franges (hora i dies).</summary>
+    private List<SavedSlot> MarkedSlots(CalendarSubject subject) =>
+        TrackCalendar.Build(EventsOrError().List(), subject, Today())
+            .Select(r => new SavedSlot(r.Time, Enumerable.Range(0, 7).Where(d => r.Days[d]?.Marked == true).Aggregate(0, (mask, d) => mask | (1 << d))))
+            .Where(s => s.DaysMask != 0)
+            .ToList();
+
+    /// <summary>
+    /// Marca les caselles d'unes franges al calendari d'una pista o d'una campanya, com si es cliquessin (si en aquella hora
+    /// no hi ha esdeveniment, el bloc de falques, D-105). Amb <paramref name="replace"/>, abans es desmarquen les que no hi
+    /// són. Retorna <c>{ marked, already, removed, failed }</c>. Esborra els blocs buits i avisa el planificador.
+    /// </summary>
+    private JsonObject ApplySlots(Library library, Events events, CalendarSubject subject, IEnumerable<SavedSlot> slots, bool replace)
+    {
+        var wanted = slots
             .SelectMany(s => Enumerable.Range(0, 7).Where(d => (s.DaysMask & (1 << d)) != 0).Select(d => (s.Time, Day: d)))
             .ToHashSet();
 
         int removed = 0, marked = 0, already = 0;
         var failed = new JsonArray();
-        if (mode == "replace")
+        if (replace)
         {
             var current = TrackCalendar.Build(events.List(), subject, Today())
                 .SelectMany(r => Enumerable.Range(0, 7).Where(d => r.Days[d]?.Marked == true).Select(d => (r.Time, Day: d)))
@@ -118,10 +134,7 @@ public sealed partial class CommandRouter
         }
         foreach (var empty in events.List().Where(TrackCalendar.IsEmptyBlock)) events.Delete(empty.Id);
         _scheduler?.Reload();
-
-        var result = CalendarGet(msg);
-        result["applied"] = new JsonObject { ["marked"] = marked, ["already"] = already, ["removed"] = removed, ["failed"] = failed };
-        return result;
+        return new JsonObject { ["marked"] = marked, ["already"] = already, ["removed"] = removed, ["failed"] = failed };
     }
 
     // --- Temporada ---

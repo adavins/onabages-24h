@@ -196,6 +196,8 @@ public sealed partial class CommandRouter
                 "campaigns.save" => CampaignsSave(msg),
                 "campaigns.delete" => CampaignsDelete(msg),
                 "campaigns.plan" => CampaignsPlan(msg),
+                "campaigns.exportPackage" => CampaignsExportPackage(msg),
+                "campaigns.importPackage" => CampaignsImportPackage(msg),
                 "savedCalendars.list" => SavedCalendarsList(),
                 "savedCalendars.save" => SavedCalendarsSave(msg),
                 "savedCalendars.delete" => SavedCalendarsDelete(msg),
