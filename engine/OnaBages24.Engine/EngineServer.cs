@@ -247,7 +247,7 @@ public static class EngineServer
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
             events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher,
-            campaigns: campaigns, savedCalendars: new SavedCalendars(database));
+            campaigns: campaigns, savedCalendars: new SavedCalendars(database), backups: backups);
         // Editor de rotacions (fase 3, pas 8a): les interfícies tornen a demanar les rotacions
         router.RotationsChanged += () => Broadcast(Messages.Event("rotations.changed"));
         // Calendaris desats (fase 4, pas 6a): les interfícies tornen a demanar la llista
@@ -273,6 +273,40 @@ public static class EngineServer
             var ev = Messages.Event("library.changed");
             ev["trackId"] = trackId;
             Broadcast(ev);
+        };
+        // Restauració d'una còpia (fase 4, pas 7b; D-152): la base de dades ha canviat sencera. Es torna a llegir el que el motor
+        // té en memòria, sense aturar l'emissió, i s'avisa les interfícies perquè tornin a demanar el que mostren. La sortida
+        // d'àudio no canvia (la restauració manté la d'ara).
+        router.DatabaseRestored += () =>
+        {
+            log.LogWarning("S'ha restaurat una còpia de la base de dades: es torna a llegir la configuració");
+            // L'AutoDJ: la rotació desada, sense canviar si està actiu o aturat
+            long? rotationId = null;
+            try
+            {
+                if (library.GetSetting(CommandRouter.AutoDjSettingKey) is { } json)
+                    rotationId = System.Text.Json.Nodes.JsonNode.Parse(json)?["rotationId"]?.GetValue<long?>();
+            }
+            catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or FormatException) { }
+            if (!autoDj.Configure(autoDj.Enabled, rotationId, "en restaurar una còpia")) autoDj.Configure(autoDj.Enabled, null, "en restaurar una còpia");
+            autoDj.Separation = CommandRouter.ReadSeparation(library);
+            autoDj.Reserve = CommandRouter.ReadReserve(library);
+            ConfigureSweepers(autoDj, library, log);
+            var ducking = CommandRouter.ReadDucking(library);
+            aux.DefaultDuckingDb = ducking.Aux;
+            sweepers.DuckingDb = ducking.Sweepers;
+            ConfigureProcessor(processor, library, log);
+            nowPlaying.Configure(ReadNowPlayingSettings(library, log));
+            // Els esdeveniments i el pla de les campanyes (scheduler.changed)
+            scheduler.Reload();
+            foreach (string name in new[] { "rotations.changed", "bags.changed", "campaigns.changed", "savedCalendars.changed", "station.changed" })
+                Broadcast(Messages.Event(name));
+            var changed = Messages.Event("library.changed");
+            changed["trackId"] = null;
+            Broadcast(changed);
+            var notes = Messages.Event("notes.changed");
+            notes["text"] = library.GetSetting(CommandRouter.NotesSettingKey) ?? "";
+            Broadcast(notes);
         };
         // Notes (fase 3, pas 4a): quan algú les desa, les altres interfícies connectades les reben
         router.NotesChanged += text =>

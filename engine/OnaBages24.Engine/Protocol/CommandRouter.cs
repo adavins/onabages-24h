@@ -32,6 +32,7 @@ public sealed partial class CommandRouter
     private readonly Rotations? _rotations;
     private readonly NowPlaying? _nowPlaying;
     private readonly Events? _events;
+    private readonly Backups? _backups;
     private readonly Scheduler? _scheduler;
     private readonly AuxPlayers? _aux;
     private readonly SweeperOverlay? _sweepers;
@@ -57,8 +58,10 @@ public sealed partial class CommandRouter
         QueuePlayer? queue = null, OutputManager? outputs = null, AutoDj? autoDj = null, Rotations? rotations = null,
         NowPlaying? nowPlaying = null, Events? events = null, Scheduler? scheduler = null, AuxPlayers? aux = null,
         SweeperOverlay? sweepers = null, OutputProcessor? processor = null, LibraryTools.LibraryImporter? importer = null,
-        LibraryTools.FolderWatcher? watcher = null, Campaigns? campaigns = null, SavedCalendars? savedCalendars = null)
+        LibraryTools.FolderWatcher? watcher = null, Campaigns? campaigns = null, SavedCalendars? savedCalendars = null,
+        Backups? backups = null)
     {
+        _backups = backups;
         _campaigns = campaigns;
         _savedCalendars = savedCalendars;
         _importer = importer;
@@ -203,6 +206,10 @@ public sealed partial class CommandRouter
                 "savedCalendars.delete" => SavedCalendarsDelete(msg),
                 "savedCalendars.apply" => SavedCalendarsApply(msg),
                 "season.get" => SeasonGet(),
+                "backups.list" => BackupsList(),
+                "backups.create" => BackupsCreate(),
+                "backups.inspect" => BackupsInspect(msg),
+                "backups.restore" => BackupsRestore(msg),
                 "validity.list" => ValidityList(),
                 "validity.removeFromEvents" => ValidityRemove(msg),
                 "season.set" => SeasonSet(msg),

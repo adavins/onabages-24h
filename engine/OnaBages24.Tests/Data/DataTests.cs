@@ -281,6 +281,43 @@ public class BackupTests : IDisposable
     }
 
     [Fact]
+    public void En_restaurar_es_conserva_l_historial_posterior_i_la_sortida_d_aquest_ordinador()
+    {
+        // D-152: el que s'ha emès després de la còpia no es perd (certificats, D-011), i la sortida d'àudio és la d'ara
+        var before = _library.GetTrack(_library.AddTrack(new Track { Path = @"D:EMISSIOalca.mp3", Title = "Falca" }))!;
+        _library.AddHistory(before, new DateTimeOffset(2026, 11, 9, 1, 0, 0, TimeSpan.Zero), QueueOrigin.AutoDj);
+        _library.SetSetting("sortida", "{\"id\":\"vella\"}");
+        _library.SetSetting("emissora", "{\"name\":\"Abans\"}");
+        string copy = _backups.Create(new DateTime(2026, 11, 9, 3, 0, 0));
+
+        long later = _library.AddHistory(before, new DateTimeOffset(2026, 11, 10, 9, 0, 0, TimeSpan.Zero), QueueOrigin.Event);
+        _library.SetSetting("sortida", "{\"id\":\"nova\"}");
+        _library.SetSetting("emissora", "{\"name\":\"Després\"}");
+
+        var result = _backups.Restore(copy, new RestoreOptions { KeepHistory = true, KeepSettings = ["sortida"] }, new DateTime(2026, 11, 10, 12, 0, 0));
+
+        Assert.Equal((1, 0), (result.KeptHistory, result.KeptExecutions));
+        var history = _library.HistoryFor(before.Id, null, DateTimeOffset.MinValue, DateTimeOffset.MaxValue);
+        Assert.Equal(2, history.Count);
+        Assert.Contains(history, h => h.Id == later && h.Origin == QueueOrigin.Event); // el mateix id: el motor el pot tenir obert
+        Assert.Equal("{\"id\":\"nova\"}", _library.GetSetting("sortida"));
+        Assert.Equal("{\"name\":\"Abans\"}", _library.GetSetting("emissora")); // la resta, la de la còpia
+    }
+
+    [Fact]
+    public void Es_pot_veure_que_hi_ha_en_una_copia_abans_de_restaurar_la()
+    {
+        _library.AddTrack(new Track { Path = @"D:EMISSIOa.mp3" });
+        _library.AddTrack(new Track { Path = @"D:EMISSIO.mp3" });
+        var info = Backups.Inspect(_backups.Create(new DateTime(2026, 11, 9, 3, 0, 0)));
+        Assert.Equal((Database.LatestVersion, (string?)null, 2, 0), (info.Version, info.Problem, info.Tracks, info.Events));
+
+        string future = _temp.File("futura.db");
+        DatabaseTests.SetVersion(future, Database.LatestVersion + 1);
+        Assert.Contains("més nova", Backups.Inspect(future).Problem);
+    }
+
+    [Fact]
     public void Una_copia_d_una_versio_mes_nova_es_rebutja_sense_tocar_res()
     {
         _library.AddTrack(new Track { Path = @"D:\EMISSIO\a.mp3" });
