@@ -2,6 +2,8 @@
 // Fitxa d'una pista al gestor de pistes (fase 3, pas 7a; D-087): què ha canviat respecte del que diu el motor (per
 // enviar només això amb library.update) i si els valors tenen sentit. Sense res de la pantalla: es prova amb «npm test».
 
+import { recurrenceText, daysText, shortTime } from './schedule.js';
+
 /** Tipus de pista, en l'ordre en què surten al desplegable (docs/protocol.md, 4.4). */
 export const TRACK_TYPES = ['music', 'sweeper', 'stationId', 'promo', 'commercial', 'program', 'news', 'timeAnnouncement', 'timeSignal', 'stream', 'other'];
 
@@ -158,10 +160,9 @@ export function datesText(from, until) {
   return 'sense límit de dates';
 }
 
-/** «Validesa»: les dates i en quants esdeveniments és. @param {{ validFrom: string, validUntil: string }} values @param {number} events */
-export function validitySummary(values, events) {
-  const where = events === 0 ? 'cap esdeveniment' : events === 1 ? '1 esdeveniment' : `${events} esdeveniments`;
-  return `${datesText(values.validFrom, values.validUntil)} · ${where}`;
+/** «Validesa»: les dates. @param {{ validFrom: string, validUntil: string }} values */
+export function validitySummary(values) {
+  return datesText(values.validFrom, values.validUntil);
 }
 
 /**
@@ -171,4 +172,50 @@ export function validitySummary(values, events) {
 export function otherSummary(values, playCount, duration = '') {
   const played = !playCount ? 'no ha sonat mai' : playCount === 1 ? 'ha sonat 1 vegada' : `ha sonat ${playCount} vegades`;
   return [duration, values.album.trim(), values.year.trim(), played].filter(Boolean).join(' · ');
+}
+
+// --- Requadre «Programació» de la fitxa: els esdeveniments que fan sonar la pista (D-148) ---
+
+/** Tipus d'acció que fan sonar una pista (docs/protocol.md, 4.7). */
+const TRACK_ACTIONS = ['PISTA', 'AUXILIAR', 'STREAM'];
+
+/**
+ * @typedef {{ id: number, name: string, time: string, mode: string, enabled: boolean, template: boolean,
+ *   when: string, onlyDays: string | null, aux: boolean }} ProgrammingRow
+ */
+
+/**
+ * Les files del requadre, per hora (les plantilles, al final): l'hora, el mode, quan sona, si està activat i, si la pista
+ * només hi és alguns dies (dies propis de l'acció, D-028), quins.
+ * @param {{ id: number, name: string, event?: any }[]} uses  `usedBy` de library.get
+ * @param {number} trackId
+ * @returns {ProgrammingRow[]}
+ */
+export function programmingRows(uses, trackId) {
+  const rows = uses.map((u) => {
+    const ev = u.event;
+    if (!ev) return { id: u.id, name: u.name, time: '', mode: '', enabled: true, template: false, when: '', onlyDays: null, aux: false };
+    const actions = (ev.actions ?? []).filter((/** @type {any} */ a) => TRACK_ACTIONS.includes(a.type) && Number(a.params?.songId) === trackId);
+    // Els dies propis: si totes les accions en tenen, i no cobreixen tots els dies de l'esdeveniment
+    let onlyDays = null;
+    if (actions.length > 0 && actions.every((/** @type {any} */ a) => a.daysMask != null)) {
+      const mask = actions.reduce((/** @type {number} */ m, /** @type {any} */ a) => m | a.daysMask, 0);
+      const eventDays = ev.recurrence === 'SETMANAL' || ev.recurrence === 'CADA_N_SETMANES' || ev.recurrence === 'MENSUAL_ORDINAL' ? ev.daysMask : 0b111_1111;
+      if ((mask & eventDays) !== eventDays) onlyDays = `només ${daysText(mask & eventDays)}`;
+    }
+    return {
+      id: u.id, name: ev.name ?? u.name, time: shortTime(ev.startTime ?? ''), mode: ev.mode, enabled: ev.enabled !== false,
+      template: !!ev.isTemplate, when: ev.isTemplate ? 'Plantilla (sona quan la fa servir un altre esdeveniment)' : recurrenceText(ev),
+      onlyDays, aux: actions.length > 0 && actions.every((/** @type {any} */ a) => a.type === 'AUXILIAR'),
+    };
+  });
+  return rows.sort((a, b) => (Number(a.template) - Number(b.template)) || a.time.localeCompare(b.time) || a.name.localeCompare(b.name, 'ca'));
+}
+
+/** Plegat, el resum: «3 esdeveniments · 09:00, 12:00, 19:00». @param {ProgrammingRow[]} rows */
+export function programmingSummary(rows) {
+  if (rows.length === 0) return 'cap esdeveniment';
+  const times = [...new Set(rows.filter((r) => !r.template && r.time).map((r) => r.time))];
+  const shown = times.length > 4 ? `${times.slice(0, 4).join(', ')}…` : times.join(', ');
+  return [rows.length === 1 ? '1 esdeveniment' : `${rows.length} esdeveniments`, shown].filter(Boolean).join(' · ');
 }

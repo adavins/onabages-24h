@@ -198,6 +198,11 @@ const warnings = new WarningsView(send, {
 });
 trackManager.validityBox = (subject, id) => warnings.box(subject, id);
 campaignsView.validityBox = (subject, id) => warnings.box(subject, id);
+// El requadre «Programació» de la fitxa (D-148): un clic a un esdeveniment l'obre al Planificador
+trackManager.openEvent = (id) => {
+  showView('planificador');
+  planner.openEvent(id, todayIso());
+};
 const importView = new ImportView(send, (path) => bridge.chooseFolder(path), (path) => bridge.chooseAudioFiles(path),
   () => trackManager.importContext(), (id) => trackManager.openTrack(id));
 
@@ -515,6 +520,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   });
   client.addEventListener('ev:scheduler.changed', () => {
     warnings.refresh();
+    trackManager.eventsChanged(); // el requadre «Programació» de la fitxa oberta (D-148)
     planner.refresh();
     upcoming.refresh();
     calendarView.refresh(); // només si es mostra (p. ex. s'ha canviat un esdeveniment al Planificador)

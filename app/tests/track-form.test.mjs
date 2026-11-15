@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseTags, trackChanges, trackProblems, guessType, parseSeconds, formatSeconds, cueProblems,
-  dataSummary, classSummary, datesText, validitySummary, otherSummary,
+  dataSummary, classSummary, datesText, validitySummary, otherSummary, programmingRows, programmingSummary,
 } from '../renderer/js/track-form.js';
 
 test('parseSeconds i formatSeconds: segons amb coma i minuts', () => {
@@ -86,9 +86,28 @@ test('resums dels requadres de la fitxa, plegats (D-147)', () => {
   assert.equal(datesText('2026-12-01', '2026-12-31'), 'del 1/12/2026 al 31/12/2026');
   assert.equal(datesText('2026-12-01', ''), 'des del 1/12/2026');
   assert.equal(datesText('', '2026-12-31'), 'fins al 31/12/2026');
-  assert.equal(validitySummary({ validFrom: '', validUntil: '' }, 0), 'sense límit de dates · cap esdeveniment');
-  assert.equal(validitySummary({ validFrom: '', validUntil: '2026-12-31' }, 3), 'fins al 31/12/2026 · 3 esdeveniments');
+  assert.equal(validitySummary({ validFrom: '', validUntil: '' }), 'sense límit de dates');
+  assert.equal(validitySummary({ validFrom: '', validUntil: '2026-12-31' }), 'fins al 31/12/2026');
   assert.equal(otherSummary({ album: 'Disc', year: '1990' }, 1), 'Disc · 1990 · ha sonat 1 vegada');
   assert.equal(otherSummary({ album: '', year: '' }, 0), 'no ha sonat mai');
   assert.equal(otherSummary({ album: '', year: '' }, 2, '3:25'), '3:25 · ha sonat 2 vegades');
+});
+
+test('requadre «Programació»: per hora, amb els dies propis i les plantilles al final (D-148)', () => {
+  const ev = (/** @type {object} */ o) => ({ mode: 'ENCUA', recurrence: 'SETMANAL', daysMask: 0b111_1111, enabled: true, isTemplate: false, ...o });
+  const pista = (/** @type {number | null} */ daysMask, type = 'PISTA') => ({ type, params: { songId: 7 }, daysMask });
+  const rows = programmingRows([
+    { id: 1, name: 'Bloc de les 12', event: ev({ name: 'Bloc de les 12', startTime: '12:00:00', actions: [pista(0b101)] }) },
+    { id: 2, name: 'Plantilla', event: ev({ name: 'Plantilla', startTime: '00:00:00', isTemplate: true, actions: [pista(null)] }) },
+    { id: 3, name: 'Tall de les 9', event: ev({ name: 'Tall de les 9', mode: 'TALLA', startTime: '09:00:00', daysMask: 0b11111, enabled: false, actions: [pista(null)] }) },
+    { id: 4, name: 'Senyal', event: ev({ name: 'Senyal', mode: 'SUPERPOSA', startTime: '19:00:30', actions: [pista(null, 'AUXILIAR')] }) },
+  ], 7);
+  assert.deepEqual(rows.map((r) => r.id), [3, 1, 4, 2]);
+  assert.deepEqual([rows[0].time, rows[0].enabled, rows[0].onlyDays], ['09:00', false, null]);
+  assert.equal(rows[1].onlyDays, 'només dl, dc');
+  assert.equal(rows[2].aux, true);
+  assert.equal(rows[2].time, '19:00:30');
+  assert.equal(rows[3].template, true);
+  assert.equal(programmingSummary(rows), '4 esdeveniments · 09:00, 12:00, 19:00:30');
+  assert.equal(programmingSummary([]), 'cap esdeveniment');
 });

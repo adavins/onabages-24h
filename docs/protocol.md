@@ -269,7 +269,7 @@ El `message` és en català i es pot mostrar a l'operador.
   "usedBy": [ { "id": 12, "name": "Senyal de les 12" } ] }
 ```
 
-- `usedBy`: els esdeveniments que la fan servir (accions PISTA o AUXILIAR). Mentre n'hi hagi, no es pot esborrar.
+- `usedBy`: els esdeveniments que la fan servir (accions PISTA, AUXILIAR o STREAM). Mentre n'hi hagi, no es pot esborrar. Cada element porta també `event`, l'esdeveniment sencer (4.7, com `scheduler.get`), per al requadre «Programació» de la fitxa (D-148).
 
 ### 4.5. AutoDJ i rotacions (D-049)
 

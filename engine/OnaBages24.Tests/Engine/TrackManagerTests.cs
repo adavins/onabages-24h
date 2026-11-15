@@ -156,6 +156,10 @@ public sealed class TrackManagerTests : IDisposable
 
         var detail = Result(Send($$"""{ "v": 1, "id": 1, "cmd": "library.get", "trackId": {{used}} }"""))["track"]!;
         Assert.Equal("Senyal de les 12", detail["usedBy"]![0]!["name"]!.GetValue<string>());
+        // L'esdeveniment sencer, per al requadre «Programació» de la fitxa (D-148)
+        var ev = detail["usedBy"]![0]!["event"]!;
+        Assert.Equal(("12:00:00", "SUPERPOSA"), (ev["startTime"]!.GetValue<string>(), ev["mode"]!.GetValue<string>()));
+        Assert.Single(ev["actions"]!.AsArray());
 
         var refused = Send($$"""{ "v": 1, "id": 2, "cmd": "library.delete", "trackId": {{used}} }""");
         Assert.Equal("database_error", Error(refused));

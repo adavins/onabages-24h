@@ -677,6 +677,9 @@ export class CampaignsView {
     toggle.append(icon('bi-three-dots'), ' Més');
     const menu = el('div', 'ee-menu cp-menu d-none');
     menu.setAttribute('role', 'menu');
+    // Grups separats per una línia (D-147): group() fa que la pròxima opció en comenci un de nou
+    let newGroup = false;
+    const group = () => { newGroup = true; };
     const item = (/** @type {string} */ iconName, /** @type {string} */ text, /** @type {() => void} */ run, danger = false) => {
       const b = /** @type {HTMLButtonElement} */ (el('button', `ee-menu-item${danger ? ' text-danger' : ''}`));
       b.type = 'button';
@@ -686,16 +689,16 @@ export class CampaignsView {
         this.#closeMenu();
         run();
       });
+      if (newGroup && menu.childElementCount > 0) {
+        const line = el('div', 'ee-menu-sep');
+        line.setAttribute('role', 'separator');
+        menu.append(line);
+      }
+      newGroup = false;
       menu.append(b);
       return b;
     };
-    // Els informes (D-138): de la campanya desada (els canvis sense desar no hi compten)
-    const saved = this.#campaign;
-    if (saved) {
-      item('bi-calendar-range', 'Informe de programació…', () => this.#openReport('programming', saved)).title = 'Els passis previstos, en PDF';
-      item('bi-patch-check', 'Certificat d\'emissió…', () => this.#openReport('certificate', saved)).title = 'Les emissions reals (de l\'historial), en PDF';
-    }
-    if (this.#campaign) item('bi-copy', 'Duplica', () => this.#duplicate()).title = 'Una campanya nova (esborrany) amb les mateixes dades i falques';
+    // Els canvis d'aquesta campanya
     const discard = item('bi-arrow-counterclockwise', 'Descarta els canvis', () => {
       if (this.#campaign) this.#open(this.#campaign);
       else this.#close();
@@ -703,6 +706,17 @@ export class CampaignsView {
       this.#renderEditor();
     });
     discard.id = 'cp-discard';
+    // Els informes (D-138): de la campanya desada (els canvis sense desar no hi compten)
+    group();
+    const saved = this.#campaign;
+    if (saved) {
+      item('bi-calendar-range', 'Informe de programació…', () => this.#openReport('programming', saved)).title = 'Els passis previstos, en PDF';
+      item('bi-patch-check', 'Certificat d\'emissió…', () => this.#openReport('certificate', saved)).title = 'Les emissions reals (de l\'historial), en PDF';
+    }
+    group();
+    if (this.#campaign) item('bi-copy', 'Duplica', () => this.#duplicate()).title = 'Una campanya nova (esborrany) amb les mateixes dades i falques';
+    // Esborrar, sol i al final
+    group();
     if (this.#campaign) item('bi-trash', 'Esborra…', () => this.#delete(), true);
     toggle.addEventListener('click', () => {
       const open = menu.classList.contains('d-none');

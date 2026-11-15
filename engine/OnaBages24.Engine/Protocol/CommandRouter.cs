@@ -491,12 +491,24 @@ public sealed partial class CommandRouter
     private Track TrackOrError(Library library, long id) =>
         library.GetTrack(id) ?? throw new BadParamsException($"No existeix la pista {id}.");
 
-    /// <summary>La fitxa sencera d'una pista, amb les etiquetes, la subcategoria i els esdeveniments que la fan servir.</summary>
-    private JsonObject TrackDetail(Library library, Track track) => new()
+    /// <summary>
+    /// La fitxa sencera d'una pista, amb les etiquetes, la subcategoria i els esdeveniments que la fan servir. Cada
+    /// esdeveniment porta també l'esdeveniment sencer (`event`, com `scheduler.get`), per al requadre «Programació» de la
+    /// fitxa (D-148): l'hora, els dies, el mode, si està activat i els dies propis de l'acció.
+    /// </summary>
+    private JsonObject TrackDetail(Library library, Track track)
     {
-        ["track"] = QueueJson.TrackDetail(track, library.GetTags(track.Id),
-            track.SubcategoryId is { } sub ? library.GetSubcategory(sub) : null, library.EventsUsingTrack(track.Id)),
-    };
+        var json = QueueJson.TrackDetail(track, library.GetTags(track.Id),
+            track.SubcategoryId is { } sub ? library.GetSubcategory(sub) : null, library.EventsUsingTrack(track.Id));
+        if (_events is not null && json["usedBy"] is JsonArray uses)
+        {
+            foreach (var use in uses.OfType<JsonObject>())
+            {
+                if (_events.Get(use["id"]!.GetValue<long>()) is { } ev) use["event"] = EventJson.Event(ev);
+            }
+        }
+        return new JsonObject { ["track"] = json };
+    }
 
     private JsonObject LibraryGet(JsonObject msg)
     {

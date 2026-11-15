@@ -11,7 +11,10 @@ import { seasonButton } from './season.js';
 import { askText } from './ask-text.js';
 import { formDialog, dialogField } from './form-dialog.js';
 import { formatDuration, typeName, playedAgo } from '../format.js';
-import { TRACK_TYPES, trackChanges, trackProblems, dataSummary, classSummary, validitySummary, otherSummary } from '../track-form.js';
+import {
+  TRACK_TYPES, trackChanges, trackProblems, dataSummary, classSummary, validitySummary, otherSummary, programmingRows, programmingSummary,
+} from '../track-form.js';
+import { modeInfo } from '../schedule.js';
 import { CueEditor } from './cue-editor.js';
 import {
   defaultFilters, filtersToParams, filterChips, withoutFilter, isFiltered, sortBy, trackStates, dateCell, totalText,
@@ -87,7 +90,10 @@ export class TrackManagerView {
   validityBox = () => document.createElement('div');
 
   /** Els requadres de la fitxa que estan oberts (D-147); es manté en canviar de pista. */
-  #openSections = new Set(['data', 'class', 'validity']);
+  #openSections = new Set(['data', 'class', 'validity', 'programming']);
+
+  /** Obre un esdeveniment al Planificador (requadre «Programació», D-148). Ho posa app.js. @type {(eventId: number) => void} */
+  openEvent = () => {};
 
   constructor(send, chooseFile, folders, openCalendar, showFile, openReport, openHistory) {
     this.#openReport = openReport;
@@ -198,6 +204,14 @@ export class TrackManagerView {
     // Categories noves o una importació acabada: la llista també pot haver canviat
     if (trackId == null) await this.#search();
     if (trackId != null && this.#track?.id === trackId && !this.dirty) await this.#open(trackId, false);
+  }
+
+  /**
+   * Han canviat els esdeveniments: la fitxa oberta es torna a llegir, perquè el requadre «Programació» (D-148) digui el
+   * que hi ha ara. Si té canvis sense desar, no es toca.
+   */
+  async eventsChanged() {
+    if (this.#track && !this.dirty) await this.#open(this.#track.id, false);
   }
 
   // --- Requadre «Categories» (D-111): les accions actuen sobre la categoria i la subcategoria que s'hi trien ---
@@ -1082,7 +1096,7 @@ export class TrackManagerView {
 
     const values = () => readForm();
     const subcategoryName = () => (subcategory.value === '' ? null : subcategory.selectedOptions[0]?.textContent ?? null);
-    const usedBy = t.usedBy ?? [];
+    const programming = programmingRows(t.usedBy ?? [], t.id);
     const sections = [
       this.#section('data', 'Dades de la pista', () => dataSummary(values()), [field('Artista', artist), field('Títol', title)]),
       this.#section('class', 'Classificació', () => classSummary(values(), subcategoryName(), typeName), [
@@ -1091,11 +1105,11 @@ export class TrackManagerView {
         tags.chips,
         variable.wrap,
       ]),
-      this.#section('validity', 'Validesa', () => validitySummary(values(), usedBy.length), [
+      this.#section('validity', 'Validesa', () => validitySummary(values()), [
         pair(field('Sona des del dia', validFrom), field('Fins al dia', validUntil)),
         seasonLine(seasonButton(this.#send, validFrom, validUntil), 'Fora d\'aquestes dates no sona. Buit = sense límit.'),
-        this.#usedBy(usedBy),
       ]),
+      this.#section('programming', 'Programació', () => programmingSummary(programming), [this.#programming(t, programming)]),
       this.#section('other', 'Altres', () => otherSummary(values(), t.playCount, formatDuration(t.durationMs)), [
         pair(field('Àlbum', album), field('Any', year)),
         field('Notes', notes),
@@ -1143,17 +1157,48 @@ export class TrackManagerView {
     return box;
   }
 
-  /** Els esdeveniments que fan sonar la pista (a «Validesa»). @param {any[]} usedBy */
-  #usedBy(usedBy) {
-    const wrap = el('div', 'tm-used-box');
-    if (usedBy.length === 0) {
-      wrap.append(el('div', 'form-text m-0', 'Cap esdeveniment la fa sonar.'));
-      return wrap;
+  /**
+   * Requadre «Programació» (D-148): els esdeveniments que fan sonar la pista, per hora, amb el mode, quan sonen i si
+   * estan desactivats o la pista només hi és alguns dies. Un clic obre l'esdeveniment al Planificador. Si n'hi ha
+   * molts, els primers i el calendari de la pista, que ho mostra tot en una graella.
+   * @param {any} t @param {import('../track-form.js').ProgrammingRow[]} rows
+   */
+  #programming(t, rows) {
+    const MAX = 8;
+    const wrap = el('div', 'tm-prog');
+    if (rows.length === 0) wrap.append(el('div', 'form-text m-0', 'Cap esdeveniment la fa sonar. Per programar-la, obre el calendari.'));
+    const list = el('div', 'tm-prog-list');
+    for (const row of rows.slice(0, MAX)) {
+      const b = /** @type {HTMLButtonElement} */ (el('button', `tm-prog-row${row.enabled ? '' : ' is-disabled'}`));
+      b.type = 'button';
+      b.title = 'Obre l\'esdeveniment al Planificador';
+      const line = el('div', 'tm-prog-line');
+      if (row.time && !row.template) line.append(el('span', 'tm-prog-time', row.time));
+      if (row.mode) {
+        const info = modeInfo(row.mode);
+        const tag = el('span', `cal-mode-tag ${info.css}`);
+        tag.append(icon(info.icon), ` ${info.label}`);
+        line.append(tag);
+      }
+      line.append(el('span', 'tm-prog-name', row.name));
+      b.append(line);
+      const details = el('div', 'tm-prog-details');
+      details.append([row.when, row.onlyDays, row.aux ? 'en un reproductor auxiliar' : null].filter(Boolean).join(' · '));
+      if (!row.enabled) details.append(' ', statusLabel('text-body-secondary', 'bi-slash-circle', 'Desactivat'));
+      b.append(details);
+      b.addEventListener('click', () => this.openEvent(row.id));
+      list.append(b);
     }
-    wrap.append(el('div', 'form-label mb-1', usedBy.length === 1 ? 'La fa sonar l\'esdeveniment:' : `La fan sonar ${usedBy.length} esdeveniments:`));
-    const list = el('ul', 'tm-used');
-    list.append(...usedBy.map((/** @type {any} */ e) => el('li', '', e.name)));
     wrap.append(list);
+    const foot = el('div', 'tm-prog-foot');
+    if (rows.length > MAX) foot.append(el('span', 'form-text m-0', `i ${rows.length - MAX} més`));
+    const calendar = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    calendar.type = 'button';
+    calendar.append(icon('bi-calendar-check'), ' Calendari…');
+    calendar.title = 'Obre el calendari d\'aquesta pista: la graella de la setmana, on sona i quants passis fa';
+    calendar.addEventListener('click', () => this.#openCalendar({ id: t.id, title: t.title }));
+    foot.append(calendar);
+    wrap.append(foot);
     return wrap;
   }
 
@@ -1171,6 +1216,9 @@ export class TrackManagerView {
     toggle.append(icon('bi-three-dots'), ' Més');
     const menu = el('div', 'ee-menu cp-menu d-none');
     menu.setAttribute('role', 'menu');
+    // Grups separats per una línia (D-147): group() fa que la pròxima opció en comenci un de nou
+    let newGroup = false;
+    const group = () => { newGroup = true; };
     const item = (/** @type {string} */ iconName, /** @type {string} */ label, /** @type {string} */ help, /** @type {() => void} */ run, danger = false) => {
       const b = /** @type {HTMLButtonElement} */ (el('button', `ee-menu-item${danger ? ' text-danger' : ''}`));
       b.type = 'button';
@@ -1181,30 +1229,44 @@ export class TrackManagerView {
         this.#closeMenu();
         run();
       });
+      if (newGroup && menu.childElementCount > 0) {
+        const line = el('div', 'ee-menu-sep');
+        line.setAttribute('role', 'separator');
+        menu.append(line);
+      }
+      newGroup = false;
       menu.append(b);
       return b;
     };
     const isStream = t.type === 'stream' || String(t.path ?? '').includes('://'); // un stream és una adreça, no un fitxer
 
+    // Els canvis d'aquesta fitxa
+    const discard = item('bi-arrow-counterclockwise', 'Descarta els canvis', 'Torna als valors desats', () => this.#renderDetail());
+    // El fitxer d'àudio
+    group();
     const cues = item('bi-soundwave', 'Punts…', 'Editor de punts: forma d\'ona, inici, mescla i final', () => this.#editCues());
     if (t.fileState === 'missing' || t.type === 'stream') {
       cues.disabled = true;
       cues.title = 'Sense fitxer (o un stream) no hi ha forma d\'ona per editar';
     }
-    item('bi-calendar-check', 'Calendari…', 'Obre el calendari d\'aquesta pista: on sona i quants passis fa', () => this.#openCalendar({ id: t.id, title: t.title }));
-    item('bi-clock-history', 'Historial…', 'Quan ha sonat aquesta pista (pestanya Historial)', () => this.#openHistory(t));
-    // Els informes de la pista (D-138): els passis previstos i les emissions reals, en PDF
-    item('bi-calendar-range', 'Informe de programació…', 'Els passis previstos d\'aquesta pista, en PDF', () => this.#openReport('programming', t));
-    item('bi-patch-check', 'Certificat d\'emissió…', 'Les emissions reals d\'aquesta pista (de l\'historial), en PDF', () => this.#openReport('certificate', t));
+    const relink = item('bi-file-earmark-music', 'Canvia el fitxer…',
+      'Fes que aquesta pista apunti a un altre fitxer (si s\'ha mogut o falta). Es conserven la fitxa i l\'historial.', () => this.#relink());
+    if (t.fileState === 'missing') relink.classList.add('text-warning');
     const explorer = item('bi-folder2-open', 'Obre la carpeta…', 'Obre a l\'Explorador de Windows la carpeta del fitxer, amb el fitxer seleccionat', () => this.#openFolder(t.path));
     if (isStream) {
       explorer.disabled = true;
       explorer.title = 'És una adreça d\'internet, no un fitxer';
     }
-    const relink = item('bi-file-earmark-music', 'Canvia el fitxer…',
-      'Fes que aquesta pista apunti a un altre fitxer (si s\'ha mogut o falta). Es conserven la fitxa i l\'historial.', () => this.#relink());
-    if (t.fileState === 'missing') relink.classList.add('text-warning');
-    const discard = item('bi-arrow-counterclockwise', 'Descarta els canvis', 'Torna als valors desats', () => this.#renderDetail());
+    // On i quan sona
+    group();
+    item('bi-calendar-check', 'Calendari…', 'Obre el calendari d\'aquesta pista: on sona i quants passis fa', () => this.#openCalendar({ id: t.id, title: t.title }));
+    item('bi-clock-history', 'Historial…', 'Quan ha sonat aquesta pista (pestanya Historial)', () => this.#openHistory(t));
+    // Els informes de la pista (D-138): els passis previstos i les emissions reals, en PDF
+    group();
+    item('bi-calendar-range', 'Informe de programació…', 'Els passis previstos d\'aquesta pista, en PDF', () => this.#openReport('programming', t));
+    item('bi-patch-check', 'Certificat d\'emissió…', 'Les emissions reals d\'aquesta pista (de l\'historial), en PDF', () => this.#openReport('certificate', t));
+    // Esborrar, sol i al final
+    group();
     const remove = item('bi-trash', 'Esborra de la biblioteca…', 'Treu la pista de la biblioteca. El fitxer no s\'esborra i l\'historial la conserva.', () => this.#delete(), true);
     if ((t.usedBy ?? []).length > 0) {
       remove.disabled = true;
