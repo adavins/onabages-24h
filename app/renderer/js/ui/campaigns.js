@@ -16,6 +16,7 @@ import {
   moveSpot, spotWarnings, datesText, effectiveState,
 } from '../campaign-form.js';
 import { planPanel } from './campaign-plan.js';
+import { seasonButton } from './season.js';
 
 export class CampaignsView {
   #send;
@@ -361,8 +362,14 @@ export class CampaignsView {
       return i;
     };
     field('Anunciant', input('text', form.advertiser, (v) => { form.advertiser = v; }, { maxlength: 100 }), 'cp-wide');
-    field('Comença', input('date', form.startDate, (v) => { form.startDate = v; }));
-    field('Acaba', input('date', form.endDate, (v) => { form.endDate = v; }));
+    const start = input('date', form.startDate, (v) => { form.startDate = v; });
+    const end = input('date', form.endDate, (v) => { form.endDate = v; });
+    field('Comença', start);
+    field('Acaba', end);
+    // «Temporada» (D-145): les dates de la temporada de la configuració
+    const seasonWrap = el('div', 'cp-wide season-line');
+    seasonWrap.append(seasonButton(this.#send, start, end));
+    body.append(seasonWrap);
     const selection = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
     for (const [value, text] of SELECTIONS) selection.append(option(value, text));
     selection.value = form.selection;

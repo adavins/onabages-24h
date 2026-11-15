@@ -15,6 +15,8 @@ import { modeInfo } from '../schedule.js';
 import { STATES, datesText, planSummary } from '../campaign-form.js';
 import { planPanel } from './campaign-plan.js';
 import { todayIso } from '../event-form.js';
+import { saveCalendarDialog, applyCalendarDialog } from './saved-calendars.js';
+import { appliedText } from '../saved-calendar-form.js';
 import {
   DAY_SHORT, DAY_NAMES, cellWarnings, cellTitle, blockTimeProblem, normalizeBlockTime, dateText, monthText, passes, periodText,
   withExtraRows, trackOnlyRows, contentTimes,
@@ -178,8 +180,53 @@ export class CalendarView {
       return;
     }
     const head = el('div', 'cal-head');
-    head.append(back, cal.campaign ? this.#campaignInfo(cal.campaign) : this.#trackInfo(cal.track), this.#modeSwitch());
+    head.append(back, cal.campaign ? this.#campaignInfo(cal.campaign) : this.#trackInfo(cal.track), this.#savedTools(cal), this.#modeSwitch());
     this.#renderBody(box, head, cal);
+  }
+
+  /**
+   * Calendaris desats (fase 4, pas 6a; D-145): «Desa com a calendari…» (les caselles marcades ara) i «Aplica un
+   * calendari desat…».
+   * @param {any} cal
+   */
+  #savedTools(cal) {
+    const group = el('div', 'cal-saved');
+    const save = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    save.type = 'button';
+    save.append(icon('bi-bookmark-plus'), ' Desa com a calendari…');
+    save.title = `Desa les caselles marcades d'aquesta ${this.#word}, per aplicar-les a una altra pista o campanya`;
+    save.addEventListener('click', async () => {
+      const cells = trackOnlyRows(cal.rows).reduce((n, r) => n + r.days.filter(Boolean).length, 0);
+      const name = cal.campaign ? cal.campaign.name : (cal.track.title || '');
+      const saved = await saveCalendarDialog(this.#send, /** @type {any} */ (this.#param()), cells, name);
+      if (saved) {
+        await confirmAction({ title: 'Calendari desat', message: `S'ha desat «${saved.name}» (${saved.cells} ${saved.cells === 1 ? 'casella' : 'caselles'}).`, confirm: 'D\'acord', info: true });
+      }
+    });
+    const apply = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    apply.type = 'button';
+    apply.append(icon('bi-bookmark-check'), ' Aplica un calendari desat…');
+    apply.title = `Marca en aquesta ${this.#word} les caselles d'un calendari desat`;
+    apply.addEventListener('click', () => this.#applySaved());
+    group.append(save, apply);
+    return group;
+  }
+
+  /** Aplica un calendari desat i en diu el resultat. */
+  async #applySaved() {
+    if (this.#busy || this.#subject == null) return;
+    const subject = this.#subject;
+    const result = await applyCalendarDialog(this.#send, /** @type {any} */ (this.#param()), this.#word);
+    if (!result || subject !== this.#subject) return;
+    this.#calendar = result;
+    await Promise.all([this.#loadContent(), this.#loadPlan()]);
+    this.#renderEditor();
+    const { summary, problems } = appliedText(result.applied);
+    await confirmAction({
+      title: problems.length > 0 ? 'Calendari aplicat, amb caselles que no s\'han pogut marcar' : 'Calendari aplicat',
+      message: problems.length > 0 ? `${summary}\n\n${problems.join('\n')}` : summary,
+      confirm: 'D\'acord', info: true,
+    });
   }
 
   /** Capçalera d'una pista: el títol, el tipus, la durada i les dates. @param {any} t */

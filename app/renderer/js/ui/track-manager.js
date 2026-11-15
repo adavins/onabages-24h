@@ -7,6 +7,7 @@
 import { $, el, icon, statusLabel } from './dom.js';
 import { typeBadge } from './type-badge.js';
 import { confirmAction } from './confirm.js';
+import { seasonButton } from './season.js';
 import { askText } from './ask-text.js';
 import { formDialog, dialogField } from './form-dialog.js';
 import { formatDuration, typeName, playedAgo } from '../format.js';
@@ -20,6 +21,13 @@ import { todayIso } from '../event-form.js';
 
 const PAGE = 100;
 const SEARCH_DELAY_MS = 250;
+
+/** Sota les dates de la fitxa: el botó «Temporada» i l'explicació (D-145). @param {HTMLElement} button @param {string} help */
+function seasonLine(button, help) {
+  const line = el('div', 'season-line mt-n1 mb-2');
+  line.append(button, el('span', 'form-text m-0', help));
+  return line;
+}
 
 export class TrackManagerView {
   #send;
@@ -1080,7 +1088,7 @@ export class TrackManagerView {
       field('Etiquetes', tags.input, 'Escriu-ne una i prem Retorn (o una coma). Les que ja existeixen surten com a suggeriment.'),
       tags.chips,
       pair(field('Sona des del dia', validFrom), field('Fins al dia', validUntil)),
-      el('div', 'form-text mt-n1 mb-2', 'Fora d\'aquestes dates, l\'AutoDJ no la tria. Buit = sense límit.'),
+      seasonLine(seasonButton(this.#send, validFrom, validUntil), 'Fora d\'aquestes dates, l\'AutoDJ no la tria. Buit = sense límit.'),
       enabled.wrap, variable.wrap,
       field('Notes', notes),
     );

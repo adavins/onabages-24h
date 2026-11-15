@@ -4106,3 +4106,30 @@ button.pl-chip.is-off {
 .hs-export-state {
   overflow-wrap: anywhere;
 }
+
+/* Calendaris desats (fase 4, pas 6a; D-145): els dos botons de la capçalera del calendari */
+.cal-saved {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.cal-saved + .cal-mode {
+  margin-left: 0;
+}
+
+/* Botó «Temporada» (fase 4, pas 6a; D-145) */
+.season-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.6rem;
+}
+
+/* Configuració: les dues dates de la temporada, de costat */
+.st-season {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 0.75rem;
+}
