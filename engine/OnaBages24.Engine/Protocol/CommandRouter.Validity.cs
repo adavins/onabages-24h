@@ -40,7 +40,8 @@ public sealed partial class CommandRouter
 
     /// <summary>
     /// Treu una pista (<c>trackId</c>: accions PISTA, AUXILIAR i STREAM) o una campanya (<c>campaignId</c>: accions CAMPANYA)
-    /// dels esdeveniments actius (els mateixos de <c>validity.list</c>). Un bloc de falques que es queda buit s'esborra (D-105);
+    /// dels esdeveniments actius (els mateixos de <c>validity.list</c>) o, amb <c>all</c>, de tots (també els desactivats i els
+    /// acabats; botó del calendari, D-151). Un bloc de falques que es queda buit s'esborra (D-105);
     /// un altre esdeveniment que es quedaria sense cap acció no es toca i es diu. L'historial i les campanyes no es toquen.
     /// </summary>
     private JsonObject ValidityRemove(JsonObject msg)
@@ -53,9 +54,10 @@ public sealed partial class CommandRouter
             : ValidityWarnings.TrackIdOf(a) == id;
 
         var today = ValidityToday();
+        bool all = msg["all"] is JsonValue av && av.TryGetValue(out bool allValue) && allValue;
         int changed = 0, deleted = 0;
         var kept = new JsonArray();
-        foreach (var ev in events.List().Where(e => e.Enabled && !(e.EndDate is { } end && end < today) && e.Actions.Any(Matches)))
+        foreach (var ev in events.List().Where(e => (all || (e.Enabled && !(e.EndDate is { } end && end < today))) && e.Actions.Any(Matches)))
         {
             var actions = ev.Actions.Where(a => !Matches(a)).ToList();
             if (actions.Count == 0)

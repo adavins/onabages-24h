@@ -17,6 +17,7 @@ import { planPanel } from './campaign-plan.js';
 import { todayIso } from '../event-form.js';
 import { saveCalendarDialog, applyCalendarDialog } from './saved-calendars.js';
 import { appliedText } from '../saved-calendar-form.js';
+import { removeFromEvents } from './remove-from-events.js';
 import {
   DAY_SHORT, DAY_NAMES, cellWarnings, cellTitle, blockTimeProblem, normalizeBlockTime, dateText, monthText, passes, periodText,
   withExtraRows, trackOnlyRows, contentTimes,
@@ -180,22 +181,49 @@ export class CalendarView {
       return;
     }
     const head = el('div', 'cal-head');
-    head.append(back, cal.campaign ? this.#campaignInfo(cal.campaign) : this.#trackInfo(cal.track), this.#savedTools(cal), this.#modeSwitch());
+    head.append(back, cal.campaign ? this.#campaignInfo(cal.campaign) : this.#trackInfo(cal.track), this.#modeSwitch(), this.#moreMenu(cal));
     this.#renderBody(box, head, cal);
   }
 
   /**
-   * Calendaris desats (fase 4, pas 6a; D-145): «Desa com a calendari…» (les caselles marcades ara) i «Aplica un
-   * calendari desat…».
+   * El menú «Més» de la capçalera del calendari: els calendaris desats (D-145), «Desa com a calendari…» (les caselles
+   * marcades ara) i «Aplica un calendari desat…», i, separat, «Treu-la de tots els esdeveniments…» (D-151).
    * @param {any} cal
    */
-  #savedTools(cal) {
-    const group = el('div', 'cal-saved');
-    const save = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
-    save.type = 'button';
-    save.append(icon('bi-bookmark-plus'), ' Desa com a calendari…');
-    save.title = `Desa les caselles marcades d'aquesta ${this.#word}, per aplicar-les a una altra pista o campanya`;
-    save.addEventListener('click', async () => {
+  #moreMenu(cal) {
+    const more = el('div', 'ee-more');
+    const toggle = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    toggle.type = 'button';
+    toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.append(icon('bi-three-dots'), ' Més');
+    const menu = el('div', 'ee-menu cp-menu d-none'); // s'obre cap avall, alineat a la dreta
+    menu.setAttribute('role', 'menu');
+    const close = () => {
+      menu.classList.add('d-none');
+      toggle.setAttribute('aria-expanded', 'false');
+    };
+    const item = (/** @type {string} */ iconName, /** @type {string} */ label, /** @type {string} */ help, /** @type {() => void} */ run, danger = false) => {
+      const b = /** @type {HTMLButtonElement} */ (el('button', `ee-menu-item${danger ? ' text-danger' : ''}`));
+      b.type = 'button';
+      b.setAttribute('role', 'menuitem');
+      b.title = help;
+      b.append(icon(iconName), ' ', el('span', '', label));
+      b.addEventListener('click', () => {
+        close();
+        run();
+      });
+      menu.append(b);
+      return b;
+    };
+    const separator = () => {
+      const line = el('div', 'ee-menu-sep');
+      line.setAttribute('role', 'separator');
+      menu.append(line);
+    };
+
+    // Calendaris desats (D-145)
+    item('bi-bookmark-plus', 'Desa com a calendari…', `Desa les caselles marcades d'aquesta ${this.#word}, per aplicar-les a una altra pista o campanya`, async () => {
       const cells = trackOnlyRows(cal.rows).reduce((n, r) => n + r.days.filter(Boolean).length, 0);
       const name = cal.campaign ? cal.campaign.name : (cal.track.title || '');
       const saved = await saveCalendarDialog(this.#send, /** @type {any} */ (this.#param()), cells, name);
@@ -203,13 +231,40 @@ export class CalendarView {
         await confirmAction({ title: 'Calendari desat', message: `S'ha desat «${saved.name}» (${saved.cells} ${saved.cells === 1 ? 'casella' : 'caselles'}).`, confirm: 'D\'acord', info: true });
       }
     });
-    const apply = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
-    apply.type = 'button';
-    apply.append(icon('bi-bookmark-check'), ' Aplica un calendari desat…');
-    apply.title = `Marca en aquesta ${this.#word} les caselles d'un calendari desat`;
-    apply.addEventListener('click', () => this.#applySaved());
-    group.append(save, apply);
-    return group;
+    item('bi-bookmark-check', 'Aplica un calendari desat…', `Marca en aquesta ${this.#word} les caselles d'un calendari desat`, () => this.#applySaved());
+    // Desprogramar-la de tot (D-151): les accions d'aquesta pista o campanya, de tots els esdeveniments (també dels desactivats)
+    separator();
+    item('bi-calendar-x', 'Treu-la de tots els esdeveniments…',
+      `Treu aquesta ${this.#word} de tots els esdeveniments on és (també dels desactivats). Els blocs de falques que es quedin buits s'esborren`,
+      () => this.#clearAll(cal), true);
+
+    toggle.addEventListener('click', () => {
+      const open = menu.classList.contains('d-none');
+      menu.classList.toggle('d-none', !open);
+      toggle.setAttribute('aria-expanded', String(open));
+      if (open) /** @type {HTMLElement | null} */ (menu.querySelector('.ee-menu-item'))?.focus();
+    });
+    // Es tanca en clicar fora o amb Esc (el menú es torna a fer cada vegada que es pinta la capçalera)
+    const outside = (/** @type {MouseEvent} */ e) => {
+      if (!more.isConnected) document.removeEventListener('click', outside);
+      else if (!more.contains(/** @type {Node} */ (e.target))) close();
+    };
+    document.addEventListener('click', outside);
+    more.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    more.append(toggle, menu);
+    return more;
+  }
+
+  /** «Treu-la de tots els esdeveniments…» (D-151): amb confirmació; després, el calendari tal com queda. @param {any} cal */
+  async #clearAll(cal) {
+    if (this.#busy || this.#subject == null) return;
+    const subject = this.#subject;
+    const name = cal.campaign ? cal.campaign.name : (cal.track.title || cal.track.artist || '(sense títol)');
+    const done = await removeFromEvents(this.#send, {
+      subject: subject.kind === 'campaign' ? 'campaign' : 'track', id: subject.id, name,
+      where: 'tots els esdeveniments on és (també dels desactivats)', all: true,
+    });
+    if (done && subject === this.#subject) await this.refresh();
   }
 
   /** Aplica un calendari desat i en diu el resultat. */

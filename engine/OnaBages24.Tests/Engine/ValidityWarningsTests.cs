@@ -132,6 +132,11 @@ public sealed class ValidityWarningsTests : IDisposable
         Assert.Single(_events.Get(alone)!.Actions);
         Assert.Equal(2, _events.Get(disabled)!.Actions.Count); // els desactivats no es toquen
         Assert.Equal(["CADUCADA track Caducada"], Warnings()); // queda el que no s'ha pogut treure
+
+        // Amb «all» (el botó del calendari, D-151), també dels desactivats
+        var all = Send(new() { ["cmd"] = "validity.removeFromEvents", ["trackId"] = expired, ["all"] = true });
+        Assert.Equal(1, all["changed"]!.GetValue<int>());
+        Assert.Single(_events.Get(disabled)!.Actions);
     }
 
     [Fact]

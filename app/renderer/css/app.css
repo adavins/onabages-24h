@@ -4107,18 +4107,6 @@ button.pl-chip.is-off {
   overflow-wrap: anywhere;
 }
 
-/* Calendaris desats (fase 4, pas 6a; D-145): els dos botons de la capçalera del calendari */
-.cal-saved {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-left: auto;
-}
-
-.cal-saved + .cal-mode {
-  margin-left: 0;
-}
-
 /* Botó «Temporada» (fase 4, pas 6a; D-145) */
 .season-line {
   display: flex;
@@ -4308,4 +4296,33 @@ button.pl-chip.is-off {
   justify-content: flex-end;
   gap: 0.75rem;
   margin-top: 0.5rem;
+}
+
+/* Importar un paquet de campanya (fase 4, pas 7a; D-150): l'informe */
+.pk-spots {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.pk-spot {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.375rem;
+}
+
+.pk-spot-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.6rem;
+}
+
+.pk-spot-file {
+  color: var(--ob-muted);
+  font-family: var(--ob-mono);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
 }

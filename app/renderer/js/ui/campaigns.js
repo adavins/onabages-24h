@@ -17,6 +17,7 @@ import {
 } from '../campaign-form.js';
 import { planPanel } from './campaign-plan.js';
 import { seasonButton } from './season.js';
+import { exportPackage, importPackage } from './campaign-package.js';
 
 export class CampaignsView {
   #send;
@@ -48,11 +49,18 @@ export class CampaignsView {
    */
   validityBox = () => document.createElement('div');
 
+  /** Paquet de campanya (D-150): els diàlegs de Windows per desar-lo i per obrir-lo. Ho posa app.js. */
+  packageFiles = {
+    /** @type {(suggestedName: string) => Promise<string | null>} */ chooseSave: async () => null,
+    /** @type {() => Promise<string | null>} */ chooseOpen: async () => null,
+  };
+
   constructor(send, openCalendar, openReport) {
     this.#send = send;
     this.#openCalendar = openCalendar;
     this.#openReport = openReport;
     $('cp-new').addEventListener('click', () => this.#new());
+    $('cp-import').addEventListener('click', () => this.#importPackage());
     $('cp-filter').addEventListener('change', () => this.#renderList());
     $('cp-search').addEventListener('input', () => this.#renderList());
     document.addEventListener('click', (e) => {
@@ -95,6 +103,14 @@ export class CampaignsView {
     const filter = /** @type {HTMLSelectElement} */ ($('cp-filter'));
     if (c.effectiveState === 'ACABADA' && filter.value === 'current') filter.value = 'all';
     await this.#select(c);
+  }
+
+  /** «Importa un paquet…» (D-150): si es crea la campanya, s'obre. */
+  async #importPackage() {
+    const id = await importPackage(this.#send, this.packageFiles.chooseOpen);
+    if (id == null) return;
+    await this.refresh();
+    await this.openById(id);
   }
 
   /** Hi ha canvis sense desar. */
@@ -714,6 +730,10 @@ export class CampaignsView {
       item('bi-patch-check', 'Certificat d\'emissió…', () => this.#openReport('certificate', saved)).title = 'Les emissions reals (de l\'historial), en PDF';
     }
     group();
+    if (saved) {
+      item('bi-box-arrow-up', 'Exporta el paquet…', () => exportPackage(this.#send, this.packageFiles.chooseSave, saved, this.dirty)).title =
+        'Un fitxer per passar la campanya a una altra emissora: desa\'l a la carpeta compartida, al costat de les falques';
+    }
     if (this.#campaign) item('bi-copy', 'Duplica', () => this.#duplicate()).title = 'Una campanya nova (esborrany) amb les mateixes dades i falques';
     // Esborrar, sol i al final
     group();

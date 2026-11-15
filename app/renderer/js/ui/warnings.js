@@ -5,9 +5,9 @@
 // motor (validity.list) i surten també a la fitxa de la pista i a l'editor de la campanya.
 
 import { $, el, icon, statusLabel } from './dom.js';
-import { confirmAction } from './confirm.js';
 import { formDialog } from './form-dialog.js';
-import { kindInfo, levelInfo, subjectText, allWarnings, barState, warningsFor, removedText } from '../warnings-form.js';
+import { kindInfo, levelInfo, subjectText, allWarnings, barState, warningsFor } from '../warnings-form.js';
+import { removeFromEvents } from './remove-from-events.js';
 
 /**
  * @typedef {import('../warnings-form.js').ValidityWarning} ValidityWarning
@@ -195,59 +195,10 @@ export class WarningsView {
     return button;
   }
 
-  /**
-   * Treu-la dels esdeveniments. Els que es quedarien buits (només la feien sonar a ella) no es poden deixar sense cap
-   * acció: es pregunta si es volen esborrar.
-   * @param {ValidityWarning} w
-   */
+  /** Treu-la dels esdeveniments actius (D-146) i torna a demanar els avisos. @param {ValidityWarning} w */
   async #remove(w) {
-    const what = w.subject === 'campaign' ? `la campanya «${w.name}»` : `la pista «${w.name}»`;
     const where = w.events.length === 1 ? `l'esdeveniment «${w.events[0].name}»` : `${w.events.length} esdeveniments actius`;
-    const ok = await confirmAction({
-      title: 'Treure-la dels esdeveniments?',
-      message: `Es traurà ${what} de ${where}. Els blocs de falques que es quedin buits s'esborraran. ` +
-        'L\'historial i la fitxa no es toquen, i no es pot desfer.',
-      confirm: 'Treu-la',
-    });
-    if (!ok) return;
-    let message;
-    try {
-      const result = await this.#send('validity.removeFromEvents', w.subject === 'campaign' ? { campaignId: w.id } : { trackId: w.id });
-      /** @type {{ deleted: string[], failed: { name: string, message: string }[] } | undefined} */
-      let events;
-      if (result.kept.length > 0) events = await this.#deleteKept(result.kept, what);
-      message = removedText(result, events);
-    } catch (err) {
-      message = `No s'ha pogut treure: ${/** @type {Error} */ (err).message}`;
-    }
-    await confirmAction({ title: 'Treure-la dels esdeveniments', message, confirm: 'D\'acord', info: true });
+    await removeFromEvents(this.#send, { subject: w.subject, id: w.id, name: w.name, where });
     this.refresh();
-  }
-
-  /**
-   * Els esdeveniments que només la feien sonar a ella: es pregunta si s'esborren (scheduler.delete). Si no, undefined.
-   * @param {{ id: number, name: string }[]} kept @param {string} what
-   */
-  async #deleteKept(kept, what) {
-    const one = kept.length === 1;
-    const names = kept.map((e) => `«${e.name}»`).join(', ');
-    const ok = await confirmAction({
-      title: one ? 'Esborrar també l\'esdeveniment?' : 'Esborrar també aquests esdeveniments?',
-      message: `${one ? 'L\'esdeveniment' : 'Els esdeveniments'} ${names} només ${one ? 'fa' : 'fan'} sonar ${what}, i un esdeveniment no es pot quedar sense res. ` +
-        `Si ${one ? 'l\'esborres' : 'els esborres'}, a aquella hora no passarà res (la cua i l'AutoDJ continuen). Si no, ${one ? 'queda' : 'queden'} tal com ${one ? 'era' : 'eren'} i el pots canviar al Planificador. No es pot desfer.`,
-      confirm: one ? 'Esborra l\'esdeveniment' : 'Esborra els esdeveniments',
-    });
-    if (!ok) return undefined;
-    /** @type {{ deleted: string[], failed: { name: string, message: string }[] }} */
-    const events = { deleted: [], failed: [] };
-    for (const ev of kept) {
-      try {
-        await this.#send('scheduler.delete', { eventId: ev.id });
-        events.deleted.push(ev.name);
-      } catch (err) {
-        events.failed.push({ name: ev.name, message: /** @type {Error} */ (err).message });
-      }
-    }
-    return events;
   }
 }

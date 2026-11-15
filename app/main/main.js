@@ -397,6 +397,36 @@ ipcMain.handle('report:save-csv', async (_event, text, suggestedName) => {
   }
 });
 
+// Paquet de campanya (fase 4, pas 7a; D-150): triar on es desa i quin s'obre. El fitxer l'escriu i el llegeix el motor.
+// Es recorda l'última carpeta (normalment la del Google Drive) mentre l'aplicació és oberta.
+let lastPackageFolder = '';
+
+ipcMain.handle('dialog:choose-package-save', async (_event, suggestedName) => {
+  if (!mainWindow) return null;
+  const safeName = (typeof suggestedName === 'string' ? suggestedName : '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim() || 'Campanya.json';
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Desa el paquet de la campanya (a la carpeta de les falques)',
+    defaultPath: path.join(lastPackageFolder || app.getPath('documents'), safeName),
+    filters: [{ name: 'Paquet de campanya', extensions: ['json'] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+  lastPackageFolder = path.dirname(result.filePath);
+  return result.filePath;
+});
+
+ipcMain.handle('dialog:choose-package-open', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Tria el paquet de campanya',
+    defaultPath: lastPackageFolder || undefined,
+    properties: ['openFile'],
+    filters: [{ name: 'Paquet de campanya', extensions: ['json'] }],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  lastPackageFolder = path.dirname(result.filePaths[0]);
+  return result.filePaths[0];
+});
+
 // ---------------------------------------------------------------------------
 // Zoom i capçalera com a barra de títol
 // ---------------------------------------------------------------------------

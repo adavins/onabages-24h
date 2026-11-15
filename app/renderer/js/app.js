@@ -49,6 +49,8 @@ import { HistorySearchView } from './ui/history-search.js';
  *   chooseImage: () => Promise<{ dataUrl?: string, error?: string } | null>,
  *   saveReportPdf: (html: string, name: string) => Promise<{ path?: string, error?: string } | null>,
  *   saveCsv: (text: string, name: string) => Promise<{ path?: string, error?: string } | null>,
+ *   choosePackageSave: (suggestedName: string) => Promise<string | null>,
+ *   choosePackageOpen: () => Promise<string | null>,
  * }} Bridge
  */
 const bridge = /** @type {Bridge} */ (/** @type {any} */ (window).onabages);
@@ -198,6 +200,11 @@ const warnings = new WarningsView(send, {
 });
 trackManager.validityBox = (subject, id) => warnings.box(subject, id);
 campaignsView.validityBox = (subject, id) => warnings.box(subject, id);
+// Paquet de campanya (D-150): els diàlegs de Windows per triar on es desa i quin s'obre
+campaignsView.packageFiles = {
+  chooseSave: (name) => bridge.choosePackageSave(name),
+  chooseOpen: () => bridge.choosePackageOpen(),
+};
 // El requadre «Programació» de la fitxa (D-148): un clic a un esdeveniment l'obre al Planificador
 trackManager.openEvent = (id) => {
   showView('planificador');
