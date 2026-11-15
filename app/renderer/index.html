@@ -20,6 +20,7 @@
       <button id="nav-biblioteca" class="section" type="button"><i class="bi bi-collection-play" aria-hidden="true"></i> Pistes</button>
       <button id="nav-rotacions" class="section" type="button"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Rotacions</button>
       <button id="nav-campanyes" class="section" type="button"><i class="bi bi-megaphone" aria-hidden="true"></i> Campanyes</button>
+      <button id="nav-historial" class="section" type="button"><i class="bi bi-clock-history" aria-hidden="true"></i> Historial</button>
     </nav>
     <button id="btn-station" class="btn btn-sm btn-link topbar-settings" type="button" title="Dades de l'emissora (per als informes)"><i class="bi bi-gear" aria-hidden="true"></i><span class="visually-hidden">Dades de l'emissora</span></button>
     <span id="zoom-indicator" class="zoom-indicator" aria-live="polite"></span>
@@ -149,6 +150,7 @@
       <section class="card ob-card ob-card-fill history-card" data-collapse="history">
         <div class="card-header ob-card-header">
           <button class="collapse-toggle" type="button"><i class="bi bi-chevron-down" aria-hidden="true"></i> <strong>Últimes pistes</strong></button>
+          <button id="btn-history-all" class="btn btn-sm btn-link ms-auto history-all" type="button" title="Obre la pestanya Historial: la cerca a tot el que ha sonat"><i class="bi bi-clock-history" aria-hidden="true"></i> Tot l'historial…</button>
         </div>
         <div class="card-scroll">
           <ul id="history-list" class="list-group list-group-flush"></ul>
@@ -424,6 +426,66 @@
   <!-- Calendari d'una pista (D-104): forma part de la pestanya Pistes (s'hi arriba des de la fitxa; D-113) -->
   <div id="view-calendari" class="view d-none">
     <section id="cal-editor" class="cal-page" aria-label="Calendari de la pista"></section>
+  </div>
+
+  <!-- Historial (fase 4, pas 5b; D-143): què ha sonat i quan -->
+  <div id="view-historial" class="view d-none">
+    <div class="hs-page">
+      <div class="hs-filters" role="search" aria-label="Filtres de l'historial">
+        <label class="hs-field"><span>Des de</span><input id="hs-from" class="form-control form-control-sm" type="date"></label>
+        <label class="hs-field"><span>Fins a</span><input id="hs-to" class="form-control form-control-sm" type="date"></label>
+        <button id="hs-today" class="btn btn-sm btn-outline-secondary" type="button" title="Només el que ha sonat avui">Avui</button>
+        <button id="hs-all-dates" class="btn btn-sm btn-outline-secondary" type="button" title="Sense límit de dates">Totes les dates</button>
+        <input id="hs-search" class="form-control form-control-sm hs-search" type="search" placeholder="Artista o títol" aria-label="Cerca per artista o títol">
+        <select id="hs-type" class="form-select form-select-sm hs-select" aria-label="Tipus de pista">
+          <option value="">Tots els tipus</option>
+          <option value="music">Música</option>
+          <option value="commercial">Falca</option>
+          <option value="program">Programa</option>
+          <option value="promo">Promo</option>
+          <option value="stationId">ID emissora</option>
+          <option value="sweeper">Sweeper</option>
+          <option value="news">Informatiu</option>
+          <option value="timeAnnouncement">Locució horària</option>
+          <option value="timeSignal">Senyal horari</option>
+          <option value="stream">Stream</option>
+          <option value="other">Altres</option>
+        </select>
+        <select id="hs-origin" class="form-select form-select-sm hs-select" aria-label="D'on ve">
+          <option value="">Tots els orígens</option>
+          <option value="autodj">AutoDJ</option>
+          <option value="manual">Manual</option>
+          <option value="event">Esdeveniment</option>
+        </select>
+        <button id="hs-refresh" class="btn btn-sm btn-outline-secondary" type="button" title="Torna a buscar"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Actualitza</button>
+      </div>
+      <div class="hs-status">
+        <span id="hs-track" class="hs-track d-none"></span>
+        <span id="hs-summary" class="hs-summary" aria-live="polite"></span>
+      </div>
+      <div class="hs-scroll">
+        <table class="tm-table hs-table">
+          <thead>
+            <tr>
+              <th class="hs-c-date">Data</th>
+              <th class="hs-c-time">Hora</th>
+              <th class="hs-c-artist">Artista</th>
+              <th class="hs-c-title">Títol</th>
+              <th class="hs-c-type">Tipus</th>
+              <th class="hs-c-origin">Origen</th>
+              <th class="hs-c-campaign">Campanya</th>
+              <th class="hs-c-played">Ha sonat</th>
+              <th class="hs-c-complete">Sencera</th>
+            </tr>
+          </thead>
+          <tbody id="hs-rows"></tbody>
+        </table>
+        <div id="hs-empty" class="empty-note d-none">No ha sonat res amb aquests filtres.</div>
+        <div id="hs-more-box" class="hs-more d-none">
+          <button id="hs-more" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-chevron-double-down" aria-hidden="true"></i> Carrega'n més</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <footer class="statusbar">

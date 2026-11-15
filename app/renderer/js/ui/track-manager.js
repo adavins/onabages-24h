@@ -60,6 +60,8 @@ export class TrackManagerView {
   #showFile;
   /** Obre l'informe de programació o el certificat d'una pista (D-138). @type {(kind: 'programming' | 'certificate', track: any) => void} */
   #openReport;
+  /** Obre la pestanya Historial amb el que ha sonat d'una pista (D-143). @type {(track: any) => void} */
+  #openHistory;
 
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
@@ -68,9 +70,11 @@ export class TrackManagerView {
    * @param {(track: { id: number, title: string }) => void} openCalendar  obre el calendari de la pista (pestanya Calendari)
    * @param {(path: string) => Promise<'file' | 'folder' | 'missing'>} showFile  obre a l'Explorador la carpeta d'un fitxer
    * @param {(kind: 'programming' | 'certificate', track: any) => void} openReport  obre un informe de la pista
+   * @param {(track: any) => void} openHistory  obre la pestanya Historial amb aquesta pista
    */
-  constructor(send, chooseFile, folders, openCalendar, showFile, openReport) {
+  constructor(send, chooseFile, folders, openCalendar, showFile, openReport, openHistory) {
     this.#openReport = openReport;
+    this.#openHistory = openHistory;
     this.#send = send;
     this.#chooseFile = chooseFile;
     this.#folders = folders;
@@ -995,7 +999,13 @@ export class TrackManagerView {
       b.addEventListener('click', () => this.#openReport(kind, t));
       return b;
     };
-    headTools.append(cues, calendar,
+    // Quan ha sonat (D-143): la pestanya Historial amb aquesta pista
+    const history = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    history.type = 'button';
+    history.append(icon('bi-clock-history'), ' Historial…');
+    history.title = 'Quan ha sonat aquesta pista (pestanya Historial)';
+    history.addEventListener('click', () => this.#openHistory(t));
+    headTools.append(cues, calendar, history,
       report('programming', 'bi-calendar-range', 'Programació…', 'Informe de programació d\'aquesta pista: els passis previstos, en PDF'),
       report('certificate', 'bi-patch-check', 'Certificat…', 'Certificat d\'emissió d\'aquesta pista: les emissions reals (de l\'historial), en PDF'),
       explorer, close);

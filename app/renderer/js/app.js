@@ -32,6 +32,7 @@ import { setupWindowFrame } from './ui/window-frame.js';
 import { CollapsibleCards } from './ui/collapsible.js';
 import { openStationDialog } from './ui/station-dialog.js';
 import { openReport } from './ui/report-dialog.js';
+import { HistorySearchView } from './ui/history-search.js';
 
 /**
  * @typedef {{
@@ -165,8 +166,17 @@ const trackManager = new TrackManagerView(send, (path) => bridge.chooseAudioFile
   showView('calendari');
   calendarView.openTrack(track);
 }, (path) => bridge.showFile(path), (kind, t) => showReport(kind, { trackId: t.id },
-  { name: t.artist ? `${t.artist} - ${t.title}` : t.title, validFrom: t.validFrom, validUntil: t.validUntil }));
+  { name: t.artist ? `${t.artist} - ${t.title}` : t.title, validFrom: t.validFrom, validUntil: t.validUntil }), (t) => {
+  // «Historial…» a la fitxa: tot el que ha sonat d'aquesta pista (D-143)
+  showView('historial');
+  historySearch.openTrack({ id: t.id, name: t.artist ? `${t.artist} - ${t.title}` : t.title });
+});
 new RerootView(send, (path) => bridge.chooseFolder(path));
+// La pestanya Historial (fase 4, pas 5b; D-143): un clic a una fila obre la fitxa de la pista a la pestanya Pistes
+const historySearch = new HistorySearchView(send, (trackId) => {
+  showView('biblioteca');
+  trackManager.openTrack(trackId);
+});
 const importView = new ImportView(send, (path) => bridge.chooseFolder(path), (path) => bridge.chooseAudioFiles(path),
   () => trackManager.importContext(), (id) => trackManager.openTrack(id));
 
@@ -278,9 +288,9 @@ async function refreshNowPlayingStatus() {
 
 // --- Pantalles: Emissió i Planificador (fase 2, pas 8a). L'emissió continua igual, es mostri la que es mostri. ---
 
-/** @param {'emissio' | 'planificador' | 'biblioteca' | 'rotacions' | 'campanyes' | 'calendari' | 'calendari-campanya'} name */
+/** @param {'emissio' | 'planificador' | 'biblioteca' | 'rotacions' | 'campanyes' | 'historial' | 'calendari' | 'calendari-campanya'} name */
 function showView(name) {
-  for (const view of /** @type {const} */ (['emissio', 'planificador', 'biblioteca', 'rotacions', 'campanyes', 'calendari', 'calendari-campanya'])) {
+  for (const view of /** @type {const} */ (['emissio', 'planificador', 'biblioteca', 'rotacions', 'campanyes', 'historial', 'calendari', 'calendari-campanya'])) {
     const active = view === name;
     $(`view-${view}`).classList.toggle('d-none', !active);
     // Els calendaris no tenen pestanya: són part de Pistes (D-113) i de Campanyes (pas 3d), que continuen marcades
@@ -303,12 +313,19 @@ function showView(name) {
   else calendarView.hide();
   if (name === 'calendari-campanya') campaignCalendar.show();
   else campaignCalendar.hide();
+  if (name === 'historial') historySearch.show();
+  else historySearch.hide();
 }
 $('nav-emissio').addEventListener('click', () => showView('emissio'));
 $('nav-planificador').addEventListener('click', () => showView('planificador'));
 $('nav-biblioteca').addEventListener('click', () => showView('biblioteca'));
 $('nav-rotacions').addEventListener('click', () => showView('rotacions'));
 $('nav-campanyes').addEventListener('click', () => showView('campanyes'));
+$('nav-historial').addEventListener('click', () => showView('historial'));
+$('btn-history-all').addEventListener('click', (ev) => {
+  ev.stopPropagation(); // no plega el requadre
+  showView('historial');
+});
 $('btn-station').addEventListener('click', () => openStation());
 
 // Saltar a la següent: interromp la cançó, per tant demana confirmació
@@ -458,9 +475,13 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   client.addEventListener('ev:output.changed', (e) => showOutput(detail(e).output));
   client.addEventListener('ev:player.trackStarted', () => {
     historyView.refresh();
+    historySearch.refresh();
     setTimeout(refreshNowPlayingStatus, 500); // el fitxer s'escriu en un fil a part
   });
-  client.addEventListener('ev:player.trackEnded', () => historyView.refresh());
+  client.addEventListener('ev:player.trackEnded', () => {
+    historyView.refresh();
+    historySearch.refresh();
+  });
   client.addEventListener('ev:scheduler.changed', () => {
     planner.refresh();
     upcoming.refresh();

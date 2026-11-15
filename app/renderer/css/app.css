@@ -3986,3 +3986,114 @@ button.pl-chip.is-off {
   background: #fff;
   box-shadow: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.4);
 }
+
+/* --- Historial (fase 4, pas 5b; D-143) --- */
+
+.hs-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.hs-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.6rem;
+}
+
+.hs-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.hs-field input {
+  width: auto;
+}
+
+.hs-search {
+  flex: 1 1 12rem;
+  max-width: 22rem;
+}
+
+.hs-select {
+  width: auto;
+}
+
+.hs-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  min-height: 1.6rem;
+  font-size: 0.9rem;
+}
+
+.hs-track {
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.375rem;
+}
+
+.hs-track-remove {
+  line-height: 1;
+  vertical-align: baseline;
+}
+
+.hs-summary {
+  color: var(--ob-muted);
+}
+
+/* La taula ocupa la resta de l'alçada i és l'única part que es desplaça */
+.hs-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.375rem;
+}
+
+.hs-c-date { width: 6.5rem; }
+.hs-c-time { width: 5rem; }
+.hs-c-artist { width: 22%; }
+.hs-c-title { width: 28%; }
+.hs-c-type { width: 7.5rem; }
+.hs-c-origin { width: 8.5rem; }
+.hs-c-campaign { width: 10rem; }
+.hs-c-played { width: 5rem; }
+.hs-c-complete { width: 6.5rem; }
+
+.hs-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.hs-row-link {
+  cursor: pointer;
+}
+
+.hs-row-link:hover td {
+  background: #1f2328;
+}
+
+.hs-row-link:focus-visible {
+  outline: 2px solid var(--bs-info);
+  outline-offset: -2px;
+}
+
+.hs-more {
+  display: flex;
+  justify-content: center;
+  padding: 0.6rem;
+}
+
+/* «Tot l'historial…» a la capçalera de «Últimes pistes» */
+.history-all {
+  padding: 0;
+  font-size: 0.85rem;
+  text-decoration: none;
+}
