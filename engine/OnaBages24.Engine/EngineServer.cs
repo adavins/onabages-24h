@@ -247,9 +247,11 @@ public static class EngineServer
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
             events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher,
-            campaigns: campaigns);
+            campaigns: campaigns, savedCalendars: new SavedCalendars(database));
         // Editor de rotacions (fase 3, pas 8a): les interfícies tornen a demanar les rotacions
         router.RotationsChanged += () => Broadcast(Messages.Event("rotations.changed"));
+        // Calendaris desats (fase 4, pas 6a): les interfícies tornen a demanar la llista
+        router.SavedCalendarsChanged += () => Broadcast(Messages.Event("savedCalendars.changed"));
         // Campanyes (fase 4, pas 3a): les interfícies tornen a demanar-les
         router.CampaignsChanged += () =>
         {

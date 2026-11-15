@@ -39,6 +39,7 @@ public sealed partial class CommandRouter
     private readonly LibraryTools.LibraryImporter? _importer;
     private readonly LibraryTools.FolderWatcher? _watcher;
     private readonly Campaigns? _campaigns;
+    private readonly SavedCalendars? _savedCalendars;
 
     /// <param name="state">Estat del motor.</param>
     /// <param name="requestShutdown">Atura el motor (s'executa després de respondre).</param>
@@ -56,9 +57,10 @@ public sealed partial class CommandRouter
         QueuePlayer? queue = null, OutputManager? outputs = null, AutoDj? autoDj = null, Rotations? rotations = null,
         NowPlaying? nowPlaying = null, Events? events = null, Scheduler? scheduler = null, AuxPlayers? aux = null,
         SweeperOverlay? sweepers = null, OutputProcessor? processor = null, LibraryTools.LibraryImporter? importer = null,
-        LibraryTools.FolderWatcher? watcher = null, Campaigns? campaigns = null)
+        LibraryTools.FolderWatcher? watcher = null, Campaigns? campaigns = null, SavedCalendars? savedCalendars = null)
     {
         _campaigns = campaigns;
+        _savedCalendars = savedCalendars;
         _importer = importer;
         _watcher = watcher;
         _sweepers = sweepers;
@@ -194,6 +196,12 @@ public sealed partial class CommandRouter
                 "campaigns.save" => CampaignsSave(msg),
                 "campaigns.delete" => CampaignsDelete(msg),
                 "campaigns.plan" => CampaignsPlan(msg),
+                "savedCalendars.list" => SavedCalendarsList(),
+                "savedCalendars.save" => SavedCalendarsSave(msg),
+                "savedCalendars.delete" => SavedCalendarsDelete(msg),
+                "savedCalendars.apply" => SavedCalendarsApply(msg),
+                "season.get" => SeasonGet(),
+                "season.set" => SeasonSet(msg),
                 "station.get" => StationGet(),
                 "station.set" => StationSet(msg),
                 "reports.programming" => ReportsProgramming(msg),
@@ -1649,13 +1657,26 @@ public sealed partial class CommandRouter
         if (day is < 0 or > 6) throw new BadParamsException("El dia ha de ser de 0 (dilluns) a 6 (diumenge).");
         if (msg["marked"] is not JsonValue mv || !mv.TryGetValue(out bool marked)) throw new BadParamsException("Falta 'marked' (true o false).");
 
+        SetCalendarCell(library, events, subject, time, day, marked);
+        // Els blocs de falques buits (p. ex. d'abans, o si s'han buidat des del Planificador) s'esborren (D-105)
+        foreach (var empty in events.List().Where(TrackCalendar.IsEmptyBlock)) events.Delete(empty.Id);
+        _scheduler?.Reload();
+        return CalendarGet(msg);
+    }
+
+    /// <summary>
+    /// Marca o desmarca una casella del calendari (com un clic): l'esdeveniment d'aquella hora i dia; si no n'hi ha cap,
+    /// el bloc de falques d'aquella hora (un de nou si no n'hi ha, D-105). No esborra els blocs buits ni avisa el
+    /// planificador: ho fa qui la crida, un cop per a totes les caselles.
+    /// </summary>
+    private static void SetCalendarCell(Library library, Events events, CalendarSubject subject, TimeOnly time, int day, bool marked)
+    {
         var today = DateOnly.FromDateTime(DateTime.Today);
         var all = events.List();
-        // L'esdeveniment de la casella; si no n'hi ha cap, el bloc de falques d'aquella hora (un de nou si no n'hi ha)
         var ev = TrackCalendar.CellAt(TrackCalendar.Build(all, subject, today), time, day)?.Event;
         if (ev is null)
         {
-            if (!marked) return CalendarGet(msg); // treure-la d'on no hi és: res a fer
+            if (!marked) return; // treure-la d'on no hi és: res a fer
             ev = all.FirstOrDefault(e => e.CommercialBlock && !e.IsTemplate && e.StartTime == time) ?? TrackCalendar.NewBlock(time);
         }
         try
@@ -1668,10 +1689,6 @@ public sealed partial class CommandRouter
         {
             throw new BadParamsException(ex.Message);
         }
-        // Els blocs de falques buits (p. ex. d'abans, o si s'han buidat des del Planificador) s'esborren (D-105)
-        foreach (var empty in events.List().Where(TrackCalendar.IsEmptyBlock)) events.Delete(empty.Id);
-        _scheduler?.Reload();
-        return CalendarGet(msg);
     }
 
     /// <summary>L'esdeveniment d'una casella (<c>eventId</c>) i el dia (<c>day</c>, 0 = dilluns), comprovats.</summary>
