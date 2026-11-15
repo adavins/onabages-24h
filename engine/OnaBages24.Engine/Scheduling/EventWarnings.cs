@@ -13,7 +13,8 @@ public sealed record EventWarning(string Text, IReadOnlyList<DateOnly> Dates);
 /// <param name="Missing">La pista no existeix o el fitxer falta.</param>
 /// <param name="ValidFrom">Data d'inici de la pista (abans no sona; D-110).</param>
 /// <param name="ValidUntil">Data de fi de la pista (després no sona; D-110).</param>
-public sealed record TrackFacts(string Title, long? DurationMs, bool Missing, DateOnly? ValidFrom = null, DateOnly? ValidUntil = null)
+/// <param name="Disabled">Desactivada: no sona mai (D-146).</param>
+public sealed record TrackFacts(string Title, long? DurationMs, bool Missing, DateOnly? ValidFrom = null, DateOnly? ValidUntil = null, bool Disabled = false)
 {
     public bool ValidOn(DateOnly date) => (ValidFrom is not { } from || date >= from) && (ValidUntil is not { } until || date <= until);
 }
@@ -65,6 +66,7 @@ public static class EventWarnings
         {
             var facts = track(id);
             if (facts is null) warnings.Add(($"La pista {id} no existeix a la biblioteca: no sonarà.", null));
+            else if (facts.Disabled) warnings.Add(($"«{facts.Title}» no sonarà: està desactivada.", null));
             else if (facts.Missing) warnings.Add(($"«{facts.Title}» no sonarà en aquest ordinador: el fitxer falta.", null));
             else if (facts.DurationMs is null && subject.Mode is EventMode.Cut or EventMode.Queue)
                 warnings.Add(($"No se sap quant dura «{facts.Title}»: els càlculs de sota no la compten.", null));
@@ -187,7 +189,7 @@ public static class EventWarnings
             // També les pistes amb el fitxer que falta: és per planificar (a l'ordinador d'emissió hi seran), i el fitxer
             // que falta ja té el seu propi avís
             if (action.Type == EventActionType.Track && SongId(action) is { } id && track(id) is { DurationMs: { } ms } facts
-                && facts.ValidOn(o.Date)) // fora de les seves dates, no sona (D-110)
+                && facts.ValidOn(o.Date) && !facts.Disabled) // fora de les seves dates (D-110) o desactivada (D-146), no sona
                 total += ms;
             if (action.Type == EventActionType.Stream && Long(action, "durada_seg") is { } seconds)
                 total += seconds * 1000;

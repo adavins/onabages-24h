@@ -9,7 +9,7 @@ public enum ValidityKind
 {
     /// <summary>CADUCADA: la pista o la campanya ja s'ha acabat i encara és als esdeveniments.</summary>
     Expired,
-    /// <summary>NO_SONARA: és als esdeveniments però no sonarà (fitxer que falta, esborrany, falques que no poden sonar…).</summary>
+    /// <summary>NO_SONARA: és als esdeveniments però no sonarà (desactivada, fitxer que falta, esborrany, falques que no poden sonar…).</summary>
     WontPlay,
     /// <summary>DATES_INCORRECTES: les dates no quadren (fi abans de l'inici, la pista no cobreix la falca…).</summary>
     BadDates,
@@ -95,7 +95,9 @@ public static class ValidityWarnings
         else if (track.ValidFrom is { } start && start > today && start <= today.AddDays(SoonDays))
             Warn(ValidityKind.StartsSoon, $"Comença a sonar el {Day(start)} ({InDays(start, today)}). És a {where}.");
 
-        if (track.FileState == FileState.Missing)
+        if (!track.Enabled)
+            Warn(ValidityKind.WontPlay, $"Està desactivada: no sonarà. És a {where}.");
+        else if (track.FileState == FileState.Missing)
             Warn(ValidityKind.WontPlay, $"El fitxer falta: no sonarà. És a {where}.");
     }
 

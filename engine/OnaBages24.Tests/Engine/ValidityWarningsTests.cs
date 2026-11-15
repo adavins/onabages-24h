@@ -72,13 +72,14 @@ public sealed class ValidityWarningsTests : IDisposable
         long soon = AddTrack("Comença demà", from: _today.AddDays(1));
         long later = AddTrack("Comença d'aquí a un mes", from: _today.AddDays(30));
         long missing = AddTrack("Sense fitxer", file: FileState.Missing);
+        long off = AddTrack("Desactivada", enabled: false);
         long disabledEventOnly = AddTrack("Només en un esdeveniment desactivat", until: _today.AddDays(-5));
         AddTrack("En cap esdeveniment", until: _today.AddDays(-5));
-        AddEvent("Tall de les 9", block: false, enabled: true, Track(expired), Track(soon), Track(later), Track(missing));
+        AddEvent("Tall de les 9", block: false, enabled: true, Track(expired), Track(soon), Track(later), Track(missing), Track(off));
         AddEvent("Bloc de les 10", block: true, enabled: true, Track(expired));
         AddEvent("Desactivat", block: false, enabled: false, Track(disabledEventOnly));
 
-        Assert.Equal(["CADUCADA track Caducada", "NO_SONARA track Sense fitxer", "COMENCA_AVIAT track Comença demà"], Warnings());
+        Assert.Equal(["CADUCADA track Caducada", "NO_SONARA track Desactivada", "NO_SONARA track Sense fitxer", "COMENCA_AVIAT track Comença demà"], Warnings());
         var first = Send(new() { ["cmd"] = "validity.list" })["warnings"]![0]!;
         Assert.True(first["canRemove"]!.GetValue<bool>());
         Assert.Equal(2, first["events"]!.AsArray().Count);

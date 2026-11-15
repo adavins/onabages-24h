@@ -137,6 +137,11 @@ public sealed class EventExecutor
                 warnings.Add(OutOfDates(track));
                 continue;
             }
+            if (!track.Enabled) // desactivada: no sona mai, ni a l'AutoDJ ni als esdeveniments (D-146)
+            {
+                warnings.Add(DisabledText(track));
+                continue;
+            }
             items.Add(QueueItem.FromTrack(track, QueueOrigin.Event, ev.Name) with { EventId = ev.Id, EventAt = occurrence.At });
         }
 
@@ -173,6 +178,10 @@ public sealed class EventExecutor
         return track is null ? null
             : QueueItem.FromTrack(track, QueueOrigin.Event, ev.Name) with { EventId = ev.Id, EventAt = occurrence.At, CampaignId = id };
     }
+
+    /// <summary>««Ferreteria» no ha sonat: està desactivada.» (D-146)</summary>
+    private static string DisabledText(Track track) =>
+        $"«{(string.IsNullOrWhiteSpace(track.Title) ? Path.GetFileNameWithoutExtension(track.Path) : track.Title)}» no ha sonat: està desactivada.";
 
     /// <summary>««Ferreteria» no ha sonat: és fora de les seves dates (del 1/11/2026 al 30/11/2026).» (D-110)</summary>
     private static string OutOfDates(Track track)
@@ -229,6 +238,11 @@ public sealed class EventExecutor
             if (!track.ValidOn(occurrence.Date))
             {
                 warnings.Add(OutOfDates(track));
+                continue;
+            }
+            if (!track.Enabled) // desactivada: no sona mai, ni a l'AutoDJ ni als esdeveniments (D-146)
+            {
+                warnings.Add(DisabledText(track));
                 continue;
             }
             // L'atenuació de l'acció té prioritat sobre la de l'esdeveniment (D-064); si cap no en diu, la de la configuració

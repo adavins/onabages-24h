@@ -260,6 +260,21 @@ public sealed class SchedulerTests : IDisposable
     }
 
     [Fact]
+    public void Una_pista_desactivada_no_sona_i_queda_anotat()
+    {
+        // D-146: desactivada no sona mai, tampoc als esdeveniments
+        long off = _library.AddTrack(new Track { Path = _temp.File("apagada.mp3"), Title = "Falca apagada", Type = TrackType.Commercial,
+            DurationMs = 20_000, Enabled = false });
+        Save("Bloc", 9, 30, actions: [Pista(off), Pista(Track("Vigent"))]);
+        var scheduler = NewScheduler();
+
+        RunUntil(scheduler, At(9, 30));
+
+        Assert.Equal(["Vigent"], _queue.Upcoming.Select(i => i.Title));
+        Assert.Contains("«Falca apagada» no ha sonat: està desactivada", Log()[0].Detail);
+    }
+
+    [Fact]
     public void Els_desactivats_i_les_plantilles_no_es_disparen()
     {
         Save("Desactivat", 9, 30, change: e => e with { Enabled = false }, actions: [Pista(Track("A"))]);
