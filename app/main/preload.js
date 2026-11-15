@@ -41,4 +41,5 @@ contextBridge.exposeInMainWorld('onabages', {
 
   /** Fa el PDF d'un informe (l'HTML de js/report-html.js) i pregunta on desar-lo. Retorna { path }, { error } o null (D-138). */
   saveReportPdf: (html, suggestedName) => ipcRenderer.invoke('report:save-pdf', html, suggestedName),
+  saveCsv: (text, suggestedName) => ipcRenderer.invoke('report:save-csv', text, suggestedName),
 });

@@ -1,7 +1,10 @@
 // Proves de la cerca a l'historial (fase 4, pas 5b; D-143): app/renderer/js/history-form.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { historyParams, periodProblem, localDateTime, completeState, summaryText, PAGE_SIZE } from '../renderer/js/history-form.js';
+import {
+  historyParams, periodProblem, localDateTime, completeState, summaryText, PAGE_SIZE, filtersText, historyFileName, historyCsv,
+} from '../renderer/js/history-form.js';
+import { typeName, originName, formatDuration } from '../renderer/js/format.js';
 
 const none = { from: '', to: '', text: '', type: '', origin: '', track: null };
 
@@ -37,4 +40,26 @@ test('summaryText', () => {
   assert.equal(summaryText(1, 1), '1 emissió');
   assert.equal(summaryText(3, null), '3 emissions');
   assert.equal(summaryText(200, 350), 'Se\'n mostren 200 de 350 emissions');
+});
+
+test('filtersText i historyFileName (pas 5c)', () => {
+  const f = { from: '2026-11-01', to: '2026-11-15', text: ' fira ', type: 'commercial', origin: 'manual', track: { id: 1, name: 'Ferreteria: Falca/1' } };
+  assert.equal(filtersText(f, typeName, originName), 'Del 1/11/2026 al 15/11/2026 · Pista: Ferreteria: Falca/1 · Text: «fira» · Tipus: Falca · Origen: Manual');
+  assert.equal(filtersText({ ...none, from: '2026-11-15', to: '2026-11-15' }, typeName, originName), 'El 15/11/2026');
+  assert.equal(filtersText(none, typeName, originName), 'Totes les dates');
+  assert.equal(historyFileName(f, 'csv'), 'Historial - Ferreteria Falca1 - del 2026-11-01 al 2026-11-15.csv');
+  assert.equal(historyFileName(none, 'pdf'), 'Historial - totes les dates.pdf');
+});
+
+test('historyCsv: punt i coma, cometes quan cal i salts de línia de Windows', () => {
+  const at = new Date(2026, 10, 5, 9, 4, 7).toISOString();
+  const csv = historyCsv([
+    { startedAt: at, artist: 'Sopa; de Cabra', title: 'L\'"Empordà"', type: 'music', origin: 'autodj', campaignName: null, playedMs: 214_350, complete: true, path: 'O:\\m.mp3' },
+    { startedAt: at, artist: 'Ferreteria', title: 'Falca', type: 'commercial', origin: 'event', campaignName: 'Nadal', playedMs: null, complete: null, path: '' },
+  ], typeName, originName, formatDuration);
+  const lines = csv.split('\r\n');
+  assert.equal(lines[0], 'Data;Hora;Artista;Títol;Tipus;Origen;Campanya;Ha sonat;Segons;Sencera;Fitxer');
+  assert.equal(lines[1], `5/11/2026;09:04:07;"Sopa; de Cabra";"L'""Empordà""";Música;AutoDJ;;${formatDuration(214_350)};214;Sí;O:\\m.mp3`);
+  assert.equal(lines[2], '5/11/2026;09:04:07;Ferreteria;Falca;Falca;Esdeveniment;Nadal;;;Sonant;');
+  assert.equal(lines[3], ''); // acaba amb un salt de línia
 });

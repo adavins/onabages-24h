@@ -140,3 +140,13 @@
   width: auto;
   min-width: 50%;
 }
+
+/* La llista de l'historial (D-143): moltes columnes, lletra més petita */
+.report .rp-small {
+  font-size: 8.5pt;
+}
+
+.report .rp-small th,
+.report .rp-small td {
+  padding: 1.5pt 3pt;
+}

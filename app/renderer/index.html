@@ -458,10 +458,15 @@
           <option value="event">Esdeveniment</option>
         </select>
         <button id="hs-refresh" class="btn btn-sm btn-outline-secondary" type="button" title="Torna a buscar"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Actualitza</button>
+        <span class="hs-export ms-auto">
+          <button id="hs-pdf" class="btn btn-sm btn-outline-secondary" type="button" title="Desa la llista d'aquests filtres en PDF, amb la capçalera de l'emissora" disabled><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> Desa en PDF…</button>
+          <button id="hs-csv" class="btn btn-sm btn-outline-secondary" type="button" title="Desa la llista d'aquests filtres en CSV, per obrir-la amb un full de càlcul" disabled><i class="bi bi-filetype-csv" aria-hidden="true"></i> Desa en CSV…</button>
+        </span>
       </div>
       <div class="hs-status">
         <span id="hs-track" class="hs-track d-none"></span>
         <span id="hs-summary" class="hs-summary" aria-live="polite"></span>
+        <span id="hs-export-state" class="hs-export-state ms-auto" aria-live="polite"></span>
       </div>
       <div class="hs-scroll">
         <table class="tm-table hs-table">

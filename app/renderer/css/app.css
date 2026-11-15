@@ -4097,3 +4097,12 @@ button.pl-chip.is-off {
   font-size: 0.85rem;
   text-decoration: none;
 }
+
+.hs-export {
+  display: inline-flex;
+  gap: 0.5rem;
+}
+
+.hs-export-state {
+  overflow-wrap: anywhere;
+}

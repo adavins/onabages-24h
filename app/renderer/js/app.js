@@ -46,6 +46,7 @@ import { HistorySearchView } from './ui/history-search.js';
  *   showFile: (filePath: string) => Promise<'file' | 'folder' | 'missing'>,
  *   chooseImage: () => Promise<{ dataUrl?: string, error?: string } | null>,
  *   saveReportPdf: (html: string, name: string) => Promise<{ path?: string, error?: string } | null>,
+ *   saveCsv: (text: string, name: string) => Promise<{ path?: string, error?: string } | null>,
  * }} Bridge
  */
 const bridge = /** @type {Bridge} */ (/** @type {any} */ (window).onabages);
@@ -176,7 +177,7 @@ new RerootView(send, (path) => bridge.chooseFolder(path));
 const historySearch = new HistorySearchView(send, (trackId) => {
   showView('biblioteca');
   trackManager.openTrack(trackId);
-});
+}, { savePdf: (html, name) => bridge.saveReportPdf(html, name), saveCsv: (text, name) => bridge.saveCsv(text, name) });
 const importView = new ImportView(send, (path) => bridge.chooseFolder(path), (path) => bridge.chooseAudioFiles(path),
   () => trackManager.importContext(), (id) => trackManager.openTrack(id));
 

@@ -1,7 +1,7 @@
 // Proves de l'HTML dels informes (fase 4, pas 4b; D-138): app/renderer/js/report-html.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { esc, programmingHtml, certificateHtml, suggestedName, defaultPeriod } from '../renderer/js/report-html.js';
+import { esc, programmingHtml, certificateHtml, suggestedName, defaultPeriod, historyHtml } from '../renderer/js/report-html.js';
 
 const station = { name: 'Ona Bages', frequency: '90.2 FM', logo: null };
 const campaign = {
@@ -83,4 +83,15 @@ test('suggestedName i defaultPeriod', () => {
   assert.deepEqual(defaultPeriod('certificate', { startDate: '2026-12-01', endDate: '2026-12-31' }, '2026-11-14'), { from: '2026-12-01', to: '2026-12-01' });
   assert.deepEqual(defaultPeriod('programming', { validFrom: null, validUntil: null }, '2026-11-14'), { from: '2026-11-14', to: '2026-12-11' });
   assert.deepEqual(defaultPeriod('certificate', { validFrom: null, validUntil: null }, '2026-11-14'), { from: '2026-10-16', to: '2026-11-14' });
+});
+
+test('historial en PDF: els filtres, el total i cada emissió (D-143)', () => {
+  const at = new Date(2026, 10, 5, 9, 4, 7).toISOString();
+  const entries = [{ startedAt: at, artist: 'Macy <Gray>', title: 'Still', type: 'music', origin: 'manual', campaignName: null, playedMs: 12_000, complete: false }];
+  const html = historyHtml(entries, 'El 5/11/2026', 1, station, '2026-11-15');
+  assert.match(html, /Historial d&#39;emissió/);
+  assert.match(html, /<th>Filtres<\/th><td>El 5\/11\/2026<\/td>/);
+  assert.match(html, /<td>5\/11\/2026<\/td><td>09:04:07<\/td><td>Macy &lt;Gray&gt;<\/td><td>Still<\/td><td>Música<\/td><td>Manual<\/td><td><\/td><td class="rp-num">0:12<\/td><td>No<\/td>/);
+  assert.match(historyHtml(entries, 'x', 30_000, station, '2026-11-15'), /1 \(de 30000: la llista s'ha tallat\)/);
+  assert.match(historyHtml([], 'x', 0, station, '2026-11-15'), /No ha sonat res/);
 });

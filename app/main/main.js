@@ -375,6 +375,28 @@ ipcMain.handle('report:save-pdf', async (_event, html, suggestedName) => {
   }
 });
 
+// Desar una llista en CSV (l'historial, fase 4, pas 5c; D-143): el text el fa la interfície (js/history-form.js); aquí
+// es tria on desar-lo i s'hi posa la marca UTF-8 perquè l'Excel en vegi bé els accents.
+// Retorna { path } si s'ha desat, null si es cancel·la, o { error }.
+ipcMain.handle('report:save-csv', async (_event, text, suggestedName) => {
+  if (!mainWindow || typeof text !== 'string' || typeof suggestedName !== 'string') return { error: 'Falta la llista.' };
+  if (text.length > 50_000_000) return { error: 'La llista és massa gran.' };
+  const safeName = suggestedName.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim() || 'Llista.csv';
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Desa la llista en CSV',
+    defaultPath: path.join(lastReportFolder || app.getPath('documents'), safeName),
+    filters: [{ name: 'CSV (full de càlcul)', extensions: ['csv'] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+  try {
+    await fs.promises.writeFile(result.filePath, `﻿${text}`, 'utf8');
+    lastReportFolder = path.dirname(result.filePath);
+    return { path: result.filePath };
+  } catch (err) {
+    return { error: `No s'ha pogut desar el CSV: ${err instanceof Error ? err.message : String(err)}` };
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Zoom i capçalera com a barra de títol
 // ---------------------------------------------------------------------------

@@ -5,7 +5,8 @@
 // l'estil de css/report.css. Tots els textos que vénen de les dades passen per esc().
 
 import { DAY_SHORT, DAY_NAMES } from './calendar-form.js';
-import { formatDuration } from './format.js';
+import { formatDuration, typeName, originName } from './format.js';
+import { localDateTime, completeState } from './history-form.js';
 import { dmy } from './campaign-form.js';
 
 /** Escapa un text per posar-lo dins de l'HTML. @param {unknown} value */
@@ -190,6 +191,34 @@ export function certificateHtml(data, station, today) {
         const complete = e.complete == null ? '' : e.complete ? 'Sí' : 'No';
         const planned = compared ? `<td>${e.planned ? 'Sí' : 'No'}</td>` : '';
         return `<tr><td class="rp-num">${i + 1}</td><td>${esc(dmy(date))}</td><td>${esc(time)}</td><td>${esc(e.artist)}</td><td>${esc(e.title)}</td><td>${complete}</td>${planned}</tr>`;
+      }).join('')
+      + '</tbody></table>');
+  }
+  return `<article class="report">${parts.join('')}</article>`;
+}
+
+/**
+ * La llista de l'historial (fase 4, pas 5c; D-143): la capçalera de l'emissora, els filtres i cada emissió, com a la
+ * pestanya «Historial».
+ * @param {any[]} entries  de history.list
+ * @param {string} filters  els filtres en una frase (filtersText)
+ * @param {number} total  quantes n'hi ha amb aquests filtres
+ * @param {{ name: string, frequency: string, logo: string | null }} station
+ * @param {string} today  'AAAA-MM-DD'
+ */
+export function historyHtml(entries, filters, total, station, today) {
+  const parts = [header(station, 'Historial d\'emissió', today)];
+  parts.push(`<table class="rp-facts"><tbody><tr><th>Filtres</th><td>${esc(filters)}</td></tr>`
+    + `<tr><th>Emissions</th><td>${entries.length < total ? `${entries.length} (de ${total}: la llista s'ha tallat)` : total}</td></tr></tbody></table>`);
+  if (entries.length === 0) parts.push('<p>No ha sonat res amb aquests filtres.</p>');
+  else {
+    parts.push('<table class="rp-table rp-list rp-small"><thead><tr><th>Data</th><th>Hora</th><th>Artista</th><th>Títol</th><th>Tipus</th><th>Origen</th><th>Campanya</th><th class="rp-num">Ha sonat</th><th>Sencera</th></tr></thead><tbody>'
+      + entries.map((e) => {
+        const { date, time } = localDateTime(e.startedAt);
+        const played = e.playedMs == null ? '' : formatDuration(e.playedMs);
+        return `<tr><td>${esc(date)}</td><td>${esc(time)}</td><td>${esc(e.artist)}</td><td>${esc(e.title)}</td>`
+          + `<td>${esc(e.type ? typeName(e.type) : '')}</td><td>${esc(originName(e.origin))}</td><td>${esc(e.campaignName ?? '')}</td>`
+          + `<td class="rp-num">${esc(played)}</td><td>${esc(completeState(e).text)}</td></tr>`;
       }).join('')
       + '</tbody></table>');
   }

@@ -2,11 +2,17 @@
 // Pestanya «Historial» (fase 4, pas 5b; D-143): què ha sonat i quan. Filtres de període, text, tipus i origen (i, des
 // de la fitxa d'una pista, només aquella pista); la llista, les més recents primer, per pàgines («Carrega'n més»). Un
 // clic a una fila obre la fitxa de la pista. Les dades les dona el motor (history.list): aquí només es mostren.
+// La llista d'aquests filtres es pot desar en PDF o en CSV (pas 5c); el fitxer el desa el procés principal.
 
 import { $, el, icon, statusLabel } from './dom.js';
 import { formatDuration, typeName, originName } from '../format.js';
 import { todayIso } from '../event-form.js';
-import { historyParams, periodProblem, localDateTime, completeState, summaryText, PAGE_SIZE } from '../history-form.js';
+import {
+  historyParams, periodProblem, localDateTime, completeState, summaryText, PAGE_SIZE, EXPORT_LIMIT, filtersText, historyFileName, historyCsv,
+} from '../history-form.js';
+import { historyHtml } from '../report-html.js';
+
+/** @typedef {(content: string, name: string) => Promise<{ path?: string, error?: string } | null>} SaveFile */
 
 /** D'on ve cada emissió: icona i text (mai només el color). */
 const ORIGIN_ICONS = /** @type {Record<string, string>} */ ({ autodj: 'bi-shuffle', manual: 'bi-hand-index', event: 'bi-calendar-event' });
@@ -31,14 +37,19 @@ export class HistorySearchView {
   #token = 0;
   /** @type {number | undefined} */
   #timer;
+  /** @type {{ savePdf: SaveFile, saveCsv: SaveFile }} */
+  #files;
+  #exporting = false;
 
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
    * @param {(trackId: number) => void} openTrack  obre la fitxa de la pista (a la pestanya Pistes)
+   * @param {{ savePdf: SaveFile, saveCsv: SaveFile }} files  desen un PDF (de l'HTML) o un CSV (del text)
    */
-  constructor(send, openTrack) {
+  constructor(send, openTrack, files) {
     this.#send = send;
     this.#openTrack = openTrack;
+    this.#files = files;
     const today = todayIso();
     this.#f = { from: today, to: today, text: '', type: '', origin: '', track: null };
     this.#syncControls();
@@ -59,6 +70,8 @@ export class HistorySearchView {
     $('hs-all-dates').addEventListener('click', () => this.#set({ from: '', to: '' }));
     $('hs-refresh').addEventListener('click', () => this.#load());
     $('hs-more').addEventListener('click', () => this.#loadMore());
+    $('hs-pdf').addEventListener('click', () => this.#export('pdf'));
+    $('hs-csv').addEventListener('click', () => this.#export('csv'));
   }
 
   show() {
@@ -165,7 +178,61 @@ export class HistorySearchView {
     }
   }
 
+  /**
+   * Desa en PDF o en CSV tota la llista d'aquests filtres (no només el que es veu): es demana al motor de 2.000 en
+   * 2.000, com a molt EXPORT_LIMIT files.
+   * @param {'pdf' | 'csv'} kind
+   */
+  async #export(kind) {
+    if (this.#exporting || periodProblem(this.#f)) return;
+    const filters = { ...this.#f };
+    const state = $('hs-export-state');
+    this.#exporting = true;
+    this.#syncExportButtons();
+    state.replaceChildren(statusLabel('text-info', 'bi-hourglass-split', kind === 'pdf' ? 'Fent el PDF…' : 'Preparant el CSV…'));
+    try {
+      /** @type {any[]} */
+      const entries = [];
+      let total = 0;
+      let before = null;
+      for (;;) {
+        const result = await this.#send('history.list', { ...historyParams(filters, before), limit: 2000 });
+        if (before == null) total = result.total ?? 0;
+        entries.push(...result.entries);
+        if (!result.more || entries.length >= EXPORT_LIMIT || result.entries.length === 0) break;
+        before = result.entries.at(-1).id;
+      }
+      entries.splice(EXPORT_LIMIT);
+      total = Math.max(total, entries.length);
+
+      const saved = kind === 'pdf'
+        ? await this.#files.savePdf(
+          historyHtml(entries, filtersText(filters, typeName, originName), total, (await this.#send('station.get')).station, todayIso()),
+          historyFileName(filters, 'pdf'))
+        : await this.#files.saveCsv(historyCsv(entries, typeName, originName, formatDuration), historyFileName(filters, 'csv'));
+      if (!saved) state.textContent = 'No s\'ha desat (cancel·lat).';
+      else if (saved.error) state.replaceChildren(statusLabel('text-danger', 'bi-x-circle', saved.error));
+      else {
+        const cut = entries.length < total ? ` (només les ${entries.length} més recents de ${total})` : '';
+        state.replaceChildren(statusLabel(cut ? 'text-warning' : 'text-success', cut ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill', `Desat${cut}: ${saved.path}`));
+      }
+    } catch (err) {
+      state.replaceChildren(statusLabel('text-danger', 'bi-x-circle', `No s'ha pogut desar: ${/** @type {Error} */ (err).message}`));
+    } finally {
+      this.#exporting = false;
+      this.#syncExportButtons();
+    }
+  }
+
+  /** «Desa en PDF…» i «Desa en CSV…»: només si hi ha alguna emissió i no se n'està desant cap. */
+  #syncExportButtons() {
+    const off = this.#exporting || this.#entries.length === 0;
+    /** @type {HTMLButtonElement} */ ($('hs-pdf')).disabled = off;
+    /** @type {HTMLButtonElement} */ ($('hs-csv')).disabled = off;
+  }
+
   #render() {
+    this.#syncExportButtons();
     $('hs-summary').textContent = summaryText(this.#entries.length, this.#total);
     $('hs-empty').classList.toggle('d-none', this.#entries.length > 0);
     $('hs-more-box').classList.toggle('d-none', !this.#more);

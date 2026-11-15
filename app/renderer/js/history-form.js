@@ -75,3 +75,72 @@ export function summaryText(shown, total) {
   if (total == null || total === shown) return `${shown} ${word(shown)}`;
   return `Se'n mostren ${shown} de ${total} ${word(total)}`;
 }
+
+/** Quantes files com a molt es desen en un PDF o un CSV (de 2.000 en 2.000). */
+export const EXPORT_LIMIT = 20_000;
+
+/** 'AAAA-MM-DD' → 'd/m/aaaa'. @param {string} iso */
+function dayText(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return `${d}/${m}/${y}`;
+}
+
+/**
+ * Els filtres en una frase, per a la capçalera del PDF: «Del 1/11/2026 al 15/11/2026 · Tipus: Falca · …».
+ * @param {HistoryFilters} f
+ * @param {(type: string) => string} typeName @param {(origin: string) => string} originName
+ */
+export function filtersText(f, typeName, originName) {
+  const parts = [];
+  if (f.from && f.to) parts.push(f.from === f.to ? `El ${dayText(f.from)}` : `Del ${dayText(f.from)} al ${dayText(f.to)}`);
+  else if (f.from) parts.push(`Des del ${dayText(f.from)}`);
+  else if (f.to) parts.push(`Fins al ${dayText(f.to)}`);
+  else parts.push('Totes les dates');
+  if (f.track) parts.push(`Pista: ${f.track.name}`);
+  if (f.text.trim()) parts.push(`Text: «${f.text.trim()}»`);
+  if (f.type) parts.push(`Tipus: ${typeName(f.type)}`);
+  if (f.origin) parts.push(`Origen: ${originName(f.origin)}`);
+  return parts.join(' · ');
+}
+
+/**
+ * El nom proposat per al fitxer: «Historial - Ferreteria - Falca - del 2026-11-01 al 2026-11-15.csv». Sense els
+ * caràcters que Windows no admet en un nom de fitxer.
+ * @param {HistoryFilters} f @param {'pdf' | 'csv'} extension
+ */
+export function historyFileName(f, extension) {
+  const parts = ['Historial'];
+  if (f.track) parts.push(f.track.name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim().slice(0, 80));
+  if (f.from && f.to) parts.push(f.from === f.to ? f.from : `del ${f.from} al ${f.to}`);
+  else if (f.from) parts.push(`des del ${f.from}`);
+  else if (f.to) parts.push(`fins al ${f.to}`);
+  else parts.push('totes les dates');
+  return `${parts.join(' - ')}.${extension}`;
+}
+
+/** Un camp del CSV: entre cometes si cal (punt i coma, cometes o salts de línia). @param {unknown} value */
+function csvField(value) {
+  const text = String(value ?? '');
+  return /[;"\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+/**
+ * La llista en CSV, per obrir-la amb un full de càlcul: separada per punt i coma (com la llegeix l'Excel en català),
+ * amb salts de línia de Windows. La durada va en m:ss i en segons (per poder sumar). El procés principal hi afegeix la
+ * marca UTF-8 perquè els accents es vegin bé.
+ * @param {any[]} entries
+ * @param {(type: string) => string} typeName @param {(origin: string) => string} originName
+ * @param {(ms: number) => string} formatDuration
+ */
+export function historyCsv(entries, typeName, originName, formatDuration) {
+  const head = ['Data', 'Hora', 'Artista', 'Títol', 'Tipus', 'Origen', 'Campanya', 'Ha sonat', 'Segons', 'Sencera', 'Fitxer'];
+  const rows = entries.map((e) => {
+    const { date, time } = localDateTime(e.startedAt);
+    return [
+      date, time, e.artist ?? '', e.title ?? '', e.type ? typeName(e.type) : '', originName(e.origin), e.campaignName ?? '',
+      e.playedMs == null ? '' : formatDuration(e.playedMs), e.playedMs == null ? '' : Math.round(e.playedMs / 1000),
+      completeState(e).text, e.path ?? '',
+    ];
+  });
+  return [head, ...rows].map((r) => r.map(csvField).join(';')).join('\r\n') + '\r\n';
+}
