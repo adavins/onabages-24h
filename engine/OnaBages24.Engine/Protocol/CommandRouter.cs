@@ -201,6 +201,8 @@ public sealed partial class CommandRouter
                 "savedCalendars.delete" => SavedCalendarsDelete(msg),
                 "savedCalendars.apply" => SavedCalendarsApply(msg),
                 "season.get" => SeasonGet(),
+                "validity.list" => ValidityList(),
+                "validity.removeFromEvents" => ValidityRemove(msg),
                 "season.set" => SeasonSet(msg),
                 "station.get" => StationGet(),
                 "station.set" => StationSet(msg),
