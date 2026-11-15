@@ -125,3 +125,50 @@ export function trackProblems(values) {
   if (values.tags.some((t) => t.length > 100)) problems.push('Una etiqueta pot tenir com a molt 100 caràcters.');
   return problems;
 }
+
+// --- Resums dels requadres de la fitxa, quan estan plegats (D-147) ---
+
+/** «1/12/2026» a partir de 'AAAA-MM-DD'. @param {string} iso */
+function day(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return `${d}/${m}/${y}`;
+}
+
+/** «Dades de la pista»: «Artista · Títol». @param {{ artist: string, title: string }} values */
+export function dataSummary(values) {
+  return [values.artist.trim(), values.title.trim()].filter(Boolean).join(' · ') || 'sense artista ni títol';
+}
+
+/**
+ * «Classificació»: «Falca · Publicitat · 2 etiquetes · durada variable».
+ * @param {{ type: string, tags: string[], variableDuration: boolean }} values @param {string | null} subcategoryName
+ * @param {(type: string) => string} typeName
+ */
+export function classSummary(values, subcategoryName, typeName) {
+  const tags = values.tags.length === 0 ? null : values.tags.length === 1 ? '1 etiqueta' : `${values.tags.length} etiquetes`;
+  return [typeName(values.type), subcategoryName || 'sense subcategoria', tags, values.variableDuration ? 'durada variable' : null]
+    .filter(Boolean).join(' · ');
+}
+
+/** Les dates d'una pista, en text: «del 1/12/2026 al 31/12/2026», «des del…», «fins al…» o «sense límit de dates». @param {string} from @param {string} until */
+export function datesText(from, until) {
+  if (from && until) return `del ${day(from)} al ${day(until)}`;
+  if (from) return `des del ${day(from)}`;
+  if (until) return `fins al ${day(until)}`;
+  return 'sense límit de dates';
+}
+
+/** «Validesa»: les dates i en quants esdeveniments és. @param {{ validFrom: string, validUntil: string }} values @param {number} events */
+export function validitySummary(values, events) {
+  const where = events === 0 ? 'cap esdeveniment' : events === 1 ? '1 esdeveniment' : `${events} esdeveniments`;
+  return `${datesText(values.validFrom, values.validUntil)} · ${where}`;
+}
+
+/**
+ * «Altres»: «3:25 · Àlbum · 1998 · ha sonat 12 vegades».
+ * @param {{ album: string, year: string }} values @param {number} playCount @param {string} [duration]  ja en text
+ */
+export function otherSummary(values, playCount, duration = '') {
+  const played = !playCount ? 'no ha sonat mai' : playCount === 1 ? 'ha sonat 1 vegada' : `ha sonat ${playCount} vegades`;
+  return [duration, values.album.trim(), values.year.trim(), played].filter(Boolean).join(' · ');
+}

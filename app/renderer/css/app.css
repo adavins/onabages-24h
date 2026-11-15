@@ -789,13 +789,7 @@ body {
   display: none;
 }
 
-/* Fitxa (D-111): els botons «Punts…» i «Calendari…» a la capçalera, i les etiquetes com a pastilles */
-.tm-head-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.5rem;
-}
+/* Fitxa (D-111): les etiquetes com a pastilles */
 
 .tm-tag-chips {
   display: flex;
@@ -1035,16 +1029,15 @@ body {
 
 .tm-detail {
   overflow-y: auto;
-  padding: 0.75rem;
+  padding: 0 0.25rem 0.75rem 0; /* sense marc (D-147): una mica d'aire per a la barra de desplaçament */
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .tm-empty {
   color: var(--ob-muted);
   margin: 1rem 0.25rem;
-}
-
-.tm-head {
-  margin-bottom: 0.75rem;
 }
 
 .tm-head-title {
@@ -1092,9 +1085,7 @@ body {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 0.2rem 0.75rem;
-  margin: 0.75rem 0;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--ob-border);
+  margin: 0.5rem 0 0;
   font-size: 0.85rem;
 }
 
@@ -1112,13 +1103,6 @@ body {
   padding-left: 1rem;
 }
 
-.tm-file-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--ob-border);
-}
 
 /* Importació en curs o l'última (fase 3, pas 7b) */
 .tm-import-panel {
@@ -4190,4 +4174,59 @@ button.pl-chip.is-off {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.3rem 0.75rem;
+}
+
+/* Fitxa de la pista en requadres (D-147): la fila de dalt es queda fixa en baixar per la fitxa */
+.tm-top {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  margin: 0 0 0.75rem;
+  padding: 0 0 0.5rem;
+  border-bottom: 1px solid var(--ob-border);
+  background: var(--ob-bg); /* el fons de la pàgina: els requadres hi passen per sota en baixar */
+}
+
+.tm-top-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+}
+
+.tm-top-buttons {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.tm-top .tm-dirty:empty,
+.tm-top .tm-problems:empty {
+  display: none;
+}
+
+.tm-top .tm-dirty,
+.tm-top .tm-problems {
+  margin-top: 0.3rem;
+}
+
+.tm-box .ee-box-body {
+  padding-top: 0.4rem;
+}
+
+.tm-alerts:empty {
+  display: none;
+}
+
+.tm-alerts {
+  margin-bottom: 0.75rem;
+}
+
+.tm-alerts .vw-box {
+  margin: 0.4rem 0 0;
+}
+
+.tm-used-box {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
 }

@@ -11,7 +11,7 @@ import { seasonButton } from './season.js';
 import { askText } from './ask-text.js';
 import { formDialog, dialogField } from './form-dialog.js';
 import { formatDuration, typeName, playedAgo } from '../format.js';
-import { TRACK_TYPES, trackChanges, trackProblems } from '../track-form.js';
+import { TRACK_TYPES, trackChanges, trackProblems, dataSummary, classSummary, validitySummary, otherSummary } from '../track-form.js';
 import { CueEditor } from './cue-editor.js';
 import {
   defaultFilters, filtersToParams, filterChips, withoutFilter, isFiltered, sortBy, trackStates, dateCell, totalText,
@@ -86,6 +86,9 @@ export class TrackManagerView {
    */
   validityBox = () => document.createElement('div');
 
+  /** Els requadres de la fitxa que estan oberts (D-147); es manté en canviar de pista. */
+  #openSections = new Set(['data', 'class', 'validity']);
+
   constructor(send, chooseFile, folders, openCalendar, showFile, openReport, openHistory) {
     this.#openReport = openReport;
     this.#openHistory = openHistory;
@@ -95,6 +98,11 @@ export class TrackManagerView {
     this.#openCalendar = openCalendar;
     this.#showFile = showFile;
     this.#cueEditor = new CueEditor(send);
+    // El menú «Més» de la fitxa es tanca en clicar fora o amb Esc
+    document.addEventListener('click', (e) => {
+      if (!(/** @type {HTMLElement} */ (e.target).closest?.('#tm-detail .ee-more'))) this.#closeMenu();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.#closeMenu(); });
     // Una carpeta vigilada nova o canviada: el requadre i els desplegables de subcategories (la marca, D-119)
     folders.onChange(() => {
       this.#renderBox();
@@ -974,58 +982,6 @@ export class TrackManagerView {
       this.#save();
     });
 
-    // Capçalera: títol, estat i fitxer
-    const head = el('div', 'tm-head');
-    head.append(el('h2', 'h5 tm-head-title', t.artist ? `${t.artist} - ${t.title}` : t.title || '(sense títol)'));
-    const badges = el('div', 'tm-head-badges');
-    const ownBadges = stateBadges(t);
-    badges.append(...(ownBadges.length ? ownBadges : [statusLabel('text-success', 'bi-check-circle', 'El fitxer hi és')]));
-    head.append(badges, el('div', 'tm-path', t.path));
-    const headTools = el('div', 'tm-head-tools');
-    const cues = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
-    cues.type = 'button';
-    cues.append(icon('bi-soundwave'), ' Punts…');
-    cues.disabled = t.fileState === 'missing' || t.type === 'stream';
-    cues.title = cues.disabled ? 'Sense fitxer (o un stream) no hi ha forma d\'ona per editar' : 'Editor de punts: forma d\'ona, inici, mescla i final';
-    cues.addEventListener('click', () => this.#editCues());
-    const calendar = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
-    calendar.type = 'button';
-    calendar.append(icon('bi-calendar-check'), ' Calendari…');
-    calendar.title = 'Obre el calendari d\'aquesta pista: on sona i quants passis fa';
-    calendar.addEventListener('click', () => this.#openCalendar({ id: t.id, title: t.title }));
-    const explorer = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
-    explorer.type = 'button';
-    explorer.append(icon('bi-folder2-open'), ' Carpeta…');
-    explorer.disabled = t.type === 'stream' || String(t.path ?? '').includes('://'); // un stream és una adreça, no un fitxer
-    explorer.title = explorer.disabled ? "És una adreça d'internet, no un fitxer" : "Obre a l'Explorador de Windows la carpeta del fitxer, amb el fitxer seleccionat";
-    explorer.addEventListener('click', () => this.#openFolder(t.path));
-    const close = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary ms-auto'));
-    close.type = 'button';
-    close.title = 'Tanca la fitxa';
-    close.append(icon('bi-x-lg'), ' Tanca');
-    close.addEventListener('click', () => this.#closeDetail());
-    // Els informes de la pista (D-138): els passis previstos i les emissions reals, en PDF
-    const report = (/** @type {'programming' | 'certificate'} */ kind, /** @type {string} */ iconName, /** @type {string} */ text, /** @type {string} */ help) => {
-      const b = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
-      b.type = 'button';
-      b.append(icon(iconName), ` ${text}`);
-      b.title = help;
-      b.addEventListener('click', () => this.#openReport(kind, t));
-      return b;
-    };
-    // Quan ha sonat (D-143): la pestanya Historial amb aquesta pista
-    const history = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
-    history.type = 'button';
-    history.append(icon('bi-clock-history'), ' Historial…');
-    history.title = 'Quan ha sonat aquesta pista (pestanya Historial)';
-    history.addEventListener('click', () => this.#openHistory(t));
-    headTools.append(cues, calendar, history,
-      report('programming', 'bi-calendar-range', 'Programació…', 'Informe de programació d\'aquesta pista: els passis previstos, en PDF'),
-      report('certificate', 'bi-patch-check', 'Certificat…', 'Certificat d\'emissió d\'aquesta pista: les emissions reals (de l\'historial), en PDF'),
-      explorer, close);
-    head.append(headTools);
-    form.append(head);
-
     // Camps
     const field = (/** @type {string} */ label, /** @type {HTMLElement} */ input, /** @type {string} */ help = '') => {
       const id = `tm-f-${Math.random().toString(36).slice(2, 9)}`;
@@ -1050,8 +1006,8 @@ export class TrackManagerView {
       i.value = value ?? '';
       return i;
     };
-    const check = (/** @type {string} */ label, /** @type {boolean} */ value, /** @type {string} */ help = '') => {
-      const wrap = el('div', 'form-check form-switch mb-2');
+    const check = (/** @type {string} */ label, /** @type {boolean} */ value, /** @type {string} */ help = '', css = 'mb-2') => {
+      const wrap = el('div', `form-check form-switch ${css}`);
       const i = /** @type {HTMLInputElement} */ (el('input', 'form-check-input'));
       i.type = 'checkbox';
       i.checked = value;
@@ -1061,6 +1017,11 @@ export class TrackManagerView {
       wrap.append(i, l);
       if (help) wrap.append(el('div', 'form-text', help));
       return { wrap, input: i };
+    };
+    const pair = (/** @type {HTMLElement} */ a, /** @type {HTMLElement} */ b) => {
+      const row = el('div', 'tm-pair');
+      row.append(a, b);
+      return row;
     };
 
     const artist = text(t.artist);
@@ -1074,30 +1035,13 @@ export class TrackManagerView {
     const tags = this.#tagPicker(t.tags ?? []);
     const validFrom = date(t.validFrom);
     const validUntil = date(t.validUntil);
-    const enabled = check('Activada', t.enabled, 'Desactivada, no sona: ni l\'AutoDJ ni els esdeveniments la fan sonar (es pot posar a la cua a mà).');
+    const enabled = check('Activada', t.enabled, '', 'mb-0 tm-enabled');
+    enabled.wrap.title = 'Desactivada, no sona: ni l\'AutoDJ ni els esdeveniments la fan sonar (es pot posar a la cua a mà).';
     const variable = check('Durada variable', t.variableDuration, 'El fitxer se substitueix de tant en tant (programes, promos, locucions).');
     const notes = /** @type {HTMLTextAreaElement} */ (el('textarea', 'form-control form-control-sm'));
     notes.rows = 3;
     notes.maxLength = 5000;
     notes.value = t.notes ?? '';
-
-    const pair = (/** @type {HTMLElement} */ a, /** @type {HTMLElement} */ b) => {
-      const row = el('div', 'tm-pair');
-      row.append(a, b);
-      return row;
-    };
-    form.append(
-      field('Artista', artist),
-      field('Títol', title),
-      pair(field('Àlbum', album), field('Any', year)),
-      pair(field('Tipus', type), field('Subcategoria', subcategory)),
-      field('Etiquetes', tags.input, 'Escriu-ne una i prem Retorn (o una coma). Les que ja existeixen surten com a suggeriment.'),
-      tags.chips,
-      pair(field('Sona des del dia', validFrom), field('Fins al dia', validUntil)),
-      seasonLine(seasonButton(this.#send, validFrom, validUntil), 'Fora d\'aquestes dates, l\'AutoDJ no la tria. Buit = sense límit.'),
-      enabled.wrap, variable.wrap,
-      field('Notes', notes),
-    );
 
     this.#readForm = () => ({
       artist: artist.value, title: title.value, album: album.value, year: year.value, type: type.value,
@@ -1105,27 +1049,64 @@ export class TrackManagerView {
       variableDuration: variable.input.checked, validFrom: validFrom.value, validUntil: validUntil.value,
       enabled: enabled.input.checked, notes: notes.value,
     });
+    const readForm = this.#readForm;
 
-    // Botons: desar i descartar (actius només si hi ha canvis)
-    const actions = el('div', 'tm-actions');
+    // Fila de dalt, fixa (D-147): «Activada», «Desa», «Més» i «Tanca»; a sota, si hi ha canvis o problemes
     const save = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-primary'));
     save.type = 'submit';
     save.append(icon('bi-check-lg'), ' Desa');
-    const discard = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
-    discard.type = 'button';
-    discard.textContent = 'Descarta els canvis';
-    discard.addEventListener('click', () => this.#renderDetail());
-    const state = el('span', 'tm-dirty');
-    actions.append(save, discard, state);
-    form.append(actions);
+    const close = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    close.type = 'button';
+    close.title = 'Tanca la fitxa';
+    close.append(icon('bi-x-lg'), ' Tanca');
+    close.addEventListener('click', () => this.#closeDetail());
+    const { more, discard } = this.#moreMenu(t);
+    const buttons = el('div', 'tm-top-buttons');
+    buttons.append(save, more, close);
+    const topRow = el('div', 'tm-top-row');
+    topRow.append(enabled.wrap, buttons);
+    const state = el('div', 'tm-dirty');
     const problemsBox = el('div', 'tm-problems text-warning');
-    form.append(problemsBox);
+    const top = el('div', 'tm-top');
+    top.append(topRow, state, problemsBox);
 
-    const readForm = this.#readForm;
+    // Sense requadre, només si n'hi ha: l'estat del fitxer (falta, retirada…) i els avisos de vigència (D-146)
+    const alerts = el('div', 'tm-alerts');
+    const badges = stateBadges(t);
+    if (badges.length > 0) {
+      const badgeBox = el('div', 'tm-head-badges');
+      badgeBox.append(...badges);
+      alerts.append(badgeBox);
+    }
+    alerts.append(this.validityBox('track', t.id));
+
+    const values = () => readForm();
+    const subcategoryName = () => (subcategory.value === '' ? null : subcategory.selectedOptions[0]?.textContent ?? null);
+    const usedBy = t.usedBy ?? [];
+    const sections = [
+      this.#section('data', 'Dades de la pista', () => dataSummary(values()), [field('Artista', artist), field('Títol', title)]),
+      this.#section('class', 'Classificació', () => classSummary(values(), subcategoryName(), typeName), [
+        pair(field('Tipus', type), field('Subcategoria', subcategory)),
+        field('Etiquetes', tags.input, 'Escriu-ne una i prem Retorn (o una coma). Les que ja existeixen surten com a suggeriment.'),
+        tags.chips,
+        variable.wrap,
+      ]),
+      this.#section('validity', 'Validesa', () => validitySummary(values(), usedBy.length), [
+        pair(field('Sona des del dia', validFrom), field('Fins al dia', validUntil)),
+        seasonLine(seasonButton(this.#send, validFrom, validUntil), 'Fora d\'aquestes dates no sona. Buit = sense límit.'),
+        this.#usedBy(usedBy),
+      ]),
+      this.#section('other', 'Altres', () => otherSummary(values(), t.playCount, formatDuration(t.durationMs)), [
+        pair(field('Àlbum', album), field('Any', year)),
+        field('Notes', notes),
+        this.#info(t),
+      ]),
+    ];
+    form.append(top, alerts, ...sections);
+
     const updateButtons = () => {
-      const values = readForm();
-      const changed = Object.keys(trackChanges(t, values)).length > 0;
-      const problems = trackProblems(values);
+      const changed = Object.keys(trackChanges(t, readForm())).length > 0;
+      const problems = trackProblems(readForm());
       save.disabled = !changed || problems.length > 0;
       discard.disabled = !changed;
       state.replaceChildren(changed ? statusLabel('text-warning', 'bi-pencil-fill', 'Canvis sense desar') : '');
@@ -1135,28 +1116,117 @@ export class TrackManagerView {
     form.addEventListener('change', updateButtons);
     updateButtons();
 
-    // Informació (no editable)
-    form.append(this.#info(t));
+    box.replaceChildren(form);
+  }
 
-    // Fitxer i esborrar
-    const fileTools = el('div', 'tm-file-tools');
-    const relink = /** @type {HTMLButtonElement} */ (el('button', `btn btn-sm ${t.fileState === 'missing' ? 'btn-warning' : 'btn-outline-secondary'}`));
-    relink.type = 'button';
-    relink.append(icon('bi-file-earmark-music'), ' Canvia el fitxer…');
-    relink.title = 'Fes que aquesta pista apunti a un altre fitxer (si s\'ha mogut o falta). Es conserven la fitxa i l\'historial.';
-    relink.addEventListener('click', () => this.#relink());
-    const remove = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-danger'));
-    remove.type = 'button';
-    remove.append(icon('bi-trash'), ' Esborra de la biblioteca');
-    remove.disabled = (t.usedBy ?? []).length > 0;
-    remove.title = remove.disabled
-      ? 'No es pot esborrar: la fan servir esdeveniments del planificador.'
-      : 'Treu la pista de la biblioteca. El fitxer no s\'esborra i l\'historial la conserva.';
-    remove.addEventListener('click', () => this.#delete());
-    fileTools.append(relink, remove);
-    form.append(fileTools);
+  /**
+   * Un requadre de la fitxa amb títol, replegable (D-147), com els del Planificador. Plegat, el títol porta un resum d'una
+   * línia. Si es plega o es desplega, es queda així per a les altres pistes (fins que es tanca l'aplicació).
+   * @param {string} key @param {string} title @param {() => string} summary @param {HTMLElement[]} content
+   */
+  #section(key, title, summary, content) {
+    const box = /** @type {HTMLDetailsElement} */ (el('details', 'ee-box tm-box'));
+    box.open = this.#openSections.has(key);
+    const head = el('summary', 'ee-box-title');
+    const resum = el('span', 'ee-box-summary', summary());
+    head.append(el('span', 'ee-box-name', title), resum);
+    box.addEventListener('toggle', () => {
+      if (box.open) this.#openSections.add(key);
+      else {
+        this.#openSections.delete(key);
+        resum.textContent = summary(); // pot haver canviat mentre era oberta
+      }
+    });
+    const body = el('div', 'ee-box-body');
+    body.append(...content);
+    box.append(head, body);
+    return box;
+  }
 
-    box.replaceChildren(this.validityBox('track', t.id), form);
+  /** Els esdeveniments que fan sonar la pista (a «Validesa»). @param {any[]} usedBy */
+  #usedBy(usedBy) {
+    const wrap = el('div', 'tm-used-box');
+    if (usedBy.length === 0) {
+      wrap.append(el('div', 'form-text m-0', 'Cap esdeveniment la fa sonar.'));
+      return wrap;
+    }
+    wrap.append(el('div', 'form-label mb-1', usedBy.length === 1 ? 'La fa sonar l\'esdeveniment:' : `La fan sonar ${usedBy.length} esdeveniments:`));
+    const list = el('ul', 'tm-used');
+    list.append(...usedBy.map((/** @type {any} */ e) => el('li', '', e.name)));
+    wrap.append(list);
+    return wrap;
+  }
+
+  /**
+   * El menú «Més» de la fila de dalt (D-147): la resta d'accions de la pista. Retorna també «Descarta els canvis», que
+   * només s'activa si n'hi ha.
+   * @param {any} t
+   */
+  #moreMenu(t) {
+    const more = el('div', 'ee-more');
+    const toggle = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    toggle.type = 'button';
+    toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.append(icon('bi-three-dots'), ' Més');
+    const menu = el('div', 'ee-menu cp-menu d-none');
+    menu.setAttribute('role', 'menu');
+    const item = (/** @type {string} */ iconName, /** @type {string} */ label, /** @type {string} */ help, /** @type {() => void} */ run, danger = false) => {
+      const b = /** @type {HTMLButtonElement} */ (el('button', `ee-menu-item${danger ? ' text-danger' : ''}`));
+      b.type = 'button';
+      b.setAttribute('role', 'menuitem');
+      b.title = help;
+      b.append(icon(iconName), ' ', el('span', '', label));
+      b.addEventListener('click', () => {
+        this.#closeMenu();
+        run();
+      });
+      menu.append(b);
+      return b;
+    };
+    const isStream = t.type === 'stream' || String(t.path ?? '').includes('://'); // un stream és una adreça, no un fitxer
+
+    const cues = item('bi-soundwave', 'Punts…', 'Editor de punts: forma d\'ona, inici, mescla i final', () => this.#editCues());
+    if (t.fileState === 'missing' || t.type === 'stream') {
+      cues.disabled = true;
+      cues.title = 'Sense fitxer (o un stream) no hi ha forma d\'ona per editar';
+    }
+    item('bi-calendar-check', 'Calendari…', 'Obre el calendari d\'aquesta pista: on sona i quants passis fa', () => this.#openCalendar({ id: t.id, title: t.title }));
+    item('bi-clock-history', 'Historial…', 'Quan ha sonat aquesta pista (pestanya Historial)', () => this.#openHistory(t));
+    // Els informes de la pista (D-138): els passis previstos i les emissions reals, en PDF
+    item('bi-calendar-range', 'Informe de programació…', 'Els passis previstos d\'aquesta pista, en PDF', () => this.#openReport('programming', t));
+    item('bi-patch-check', 'Certificat d\'emissió…', 'Les emissions reals d\'aquesta pista (de l\'historial), en PDF', () => this.#openReport('certificate', t));
+    const explorer = item('bi-folder2-open', 'Obre la carpeta…', 'Obre a l\'Explorador de Windows la carpeta del fitxer, amb el fitxer seleccionat', () => this.#openFolder(t.path));
+    if (isStream) {
+      explorer.disabled = true;
+      explorer.title = 'És una adreça d\'internet, no un fitxer';
+    }
+    const relink = item('bi-file-earmark-music', 'Canvia el fitxer…',
+      'Fes que aquesta pista apunti a un altre fitxer (si s\'ha mogut o falta). Es conserven la fitxa i l\'historial.', () => this.#relink());
+    if (t.fileState === 'missing') relink.classList.add('text-warning');
+    const discard = item('bi-arrow-counterclockwise', 'Descarta els canvis', 'Torna als valors desats', () => this.#renderDetail());
+    const remove = item('bi-trash', 'Esborra de la biblioteca…', 'Treu la pista de la biblioteca. El fitxer no s\'esborra i l\'historial la conserva.', () => this.#delete(), true);
+    if ((t.usedBy ?? []).length > 0) {
+      remove.disabled = true;
+      remove.title = 'No es pot esborrar: la fan servir esdeveniments del planificador.';
+    }
+
+    toggle.addEventListener('click', () => {
+      const open = menu.classList.contains('d-none');
+      menu.classList.toggle('d-none', !open);
+      toggle.setAttribute('aria-expanded', String(open));
+      if (open) /** @type {HTMLElement | null} */ (menu.querySelector('.ee-menu-item:not(:disabled)'))?.focus();
+    });
+    more.append(toggle, menu);
+    return { more, discard };
+  }
+
+  /** Tanca el menú «Més» de la fitxa, si és obert. */
+  #closeMenu() {
+    const menu = document.querySelector('#tm-detail .ee-menu');
+    if (!menu || menu.classList.contains('d-none')) return;
+    menu.classList.add('d-none');
+    document.querySelector('#tm-detail .ee-more > button')?.setAttribute('aria-expanded', 'false');
   }
 
   /**
@@ -1238,7 +1308,7 @@ export class TrackManagerView {
     return select;
   }
 
-  /** Dades que no s'editen aquí: durada, punts, reproduccions i on es fa servir. @param {any} t */
+  /** Dades que no s'editen aquí (a «Altres»): durada, punts, on és el fitxer i quan ha sonat. @param {any} t */
   #info(t) {
     const box = el('dl', 'tm-info');
     const row = (/** @type {string} */ name, /** @type {string | Node} */ value) => {
@@ -1253,12 +1323,8 @@ export class TrackManagerView {
     const cueBox = el('span', '');
     cueBox.append(`${cues}${source ? ` (${source})` : ''} `);
     row('Punts', cueBox);
+    row('Fitxer', el('span', 'tm-path', t.path));
     row('Ha sonat', t.playCount ? `${t.playCount} ${t.playCount === 1 ? 'vegada' : 'vegades'}, l'última ${playedAgo(t.lastPlayed, new Date())}` : 'mai');
-    if ((t.usedBy ?? []).length > 0) {
-      const list = el('ul', 'tm-used');
-      list.append(...t.usedBy.map((/** @type {any} */ e) => el('li', '', e.name)));
-      row('Esdeveniments', list);
-    }
     return box;
   }
 

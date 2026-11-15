@@ -2,7 +2,10 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTags, trackChanges, trackProblems, guessType, parseSeconds, formatSeconds, cueProblems } from '../renderer/js/track-form.js';
+import {
+  parseTags, trackChanges, trackProblems, guessType, parseSeconds, formatSeconds, cueProblems,
+  dataSummary, classSummary, datesText, validitySummary, otherSummary,
+} from '../renderer/js/track-form.js';
 
 test('parseSeconds i formatSeconds: segons amb coma i minuts', () => {
   assert.equal(parseSeconds('62,5'), 62500);
@@ -71,4 +74,21 @@ test('problemes: sense títol ni artista, i dates al revés', () => {
   assert.deepEqual(trackProblems(values()), []);
   assert.equal(trackProblems(values({ title: ' ', artist: '' })).length, 1);
   assert.match(trackProblems(values({ validFrom: '2026-12-10', validUntil: '2026-12-01' }))[0], /data de fi/);
+});
+
+test('resums dels requadres de la fitxa, plegats (D-147)', () => {
+  assert.equal(dataSummary({ artist: ' Sau ', title: 'Boig per tu' }), 'Sau · Boig per tu');
+  assert.equal(dataSummary({ artist: '', title: '' }), 'sense artista ni títol');
+  const name = (/** @type {string} */ t) => ({ commercial: 'Falca', music: 'Música' })[t] ?? t;
+  assert.equal(classSummary({ type: 'commercial', tags: ['a', 'b'], variableDuration: true }, 'Publicitat', name),
+    'Falca · Publicitat · 2 etiquetes · durada variable');
+  assert.equal(classSummary({ type: 'music', tags: [], variableDuration: false }, null, name), 'Música · sense subcategoria');
+  assert.equal(datesText('2026-12-01', '2026-12-31'), 'del 1/12/2026 al 31/12/2026');
+  assert.equal(datesText('2026-12-01', ''), 'des del 1/12/2026');
+  assert.equal(datesText('', '2026-12-31'), 'fins al 31/12/2026');
+  assert.equal(validitySummary({ validFrom: '', validUntil: '' }, 0), 'sense límit de dates · cap esdeveniment');
+  assert.equal(validitySummary({ validFrom: '', validUntil: '2026-12-31' }, 3), 'fins al 31/12/2026 · 3 esdeveniments');
+  assert.equal(otherSummary({ album: 'Disc', year: '1990' }, 1), 'Disc · 1990 · ha sonat 1 vegada');
+  assert.equal(otherSummary({ album: '', year: '' }, 0), 'no ha sonat mai');
+  assert.equal(otherSummary({ album: '', year: '' }, 2, '3:25'), '3:25 · ha sonat 2 vegades');
 });
