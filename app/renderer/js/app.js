@@ -33,6 +33,7 @@ import { setupZoom, applyZoom } from './ui/zoom.js';
 import { setupWindowFrame } from './ui/window-frame.js';
 import { CollapsibleCards } from './ui/collapsible.js';
 import { openStationDialog } from './ui/station-dialog.js';
+import { backupsDialog } from './ui/backups.js';
 import { openReport } from './ui/report-dialog.js';
 import { HistorySearchView } from './ui/history-search.js';
 
@@ -51,12 +52,15 @@ import { HistorySearchView } from './ui/history-search.js';
  *   saveCsv: (text: string, name: string) => Promise<{ path?: string, error?: string } | null>,
  *   choosePackageSave: (suggestedName: string) => Promise<string | null>,
  *   choosePackageOpen: () => Promise<string | null>,
+ *   chooseBackup: () => Promise<string | null>,
  * }} Bridge
  */
 const bridge = /** @type {Bridge} */ (/** @type {any} */ (window).onabages);
 
 // Informes (fase 4, pas 4b; D-138): les dades de l'emissora (botó ⚙ de la capçalera) i la finestra d'un informe
-const openStation = () => openStationDialog(send, () => bridge.chooseImage());
+// ⚙ Configuració, i des d'allà les còpies de seguretat (D-152)
+const openStation = () => openStationDialog(send, () => bridge.chooseImage(),
+  () => backupsDialog(send, { chooseFile: () => bridge.chooseBackup(), showFile: (path) => bridge.showFile(path) }));
 /**
  * @param {'programming' | 'certificate'} kind
  * @param {{ campaignId: number } | { trackId: number }} target

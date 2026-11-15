@@ -46,4 +46,7 @@ contextBridge.exposeInMainWorld('onabages', {
   /** Paquet de campanya (D-150): on es desa i quin s'obre. Retornen la ruta, o null si es cancel·la. */
   choosePackageSave: (suggestedName) => ipcRenderer.invoke('dialog:choose-package-save', suggestedName),
   choosePackageOpen: () => ipcRenderer.invoke('dialog:choose-package-open'),
+
+  /** Còpies de seguretat (D-152): triar un fitxer de còpia (.db) per restaurar-lo. Retorna la ruta, o null. */
+  chooseBackup: () => ipcRenderer.invoke('dialog:choose-backup'),
 });

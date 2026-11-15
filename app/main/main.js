@@ -427,6 +427,17 @@ ipcMain.handle('dialog:choose-package-open', async () => {
   return result.filePaths[0];
 });
 
+// Còpies de seguretat (fase 4, pas 7b; D-152): triar una còpia que no és a la carpeta de còpies. La restaura el motor.
+ipcMain.handle('dialog:choose-backup', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Tria la còpia de seguretat',
+    properties: ['openFile'],
+    filters: [{ name: 'Còpia de seguretat (base de dades)', extensions: ['db'] }],
+  });
+  return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+});
+
 // ---------------------------------------------------------------------------
 // Zoom i capçalera com a barra de títol
 // ---------------------------------------------------------------------------
