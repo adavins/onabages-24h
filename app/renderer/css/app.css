@@ -2283,7 +2283,7 @@ button.pl-chip.is-off {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 27rem;
-  gap: 1rem;
+  gap: 1rem 0; /* sense espai entre la graella i l'editor (l'editor ja té el seu marge); en pantalla estreta, sí entre les files */
   padding: 0.75rem 1rem;
 }
 
@@ -2938,16 +2938,28 @@ button.pl-chip.is-off {
   color: var(--bs-warning);
 }
 
-.ee-buttons {
-  position: sticky;
-  bottom: -1rem;
+/* El mode a «General»: el desplegable i, al costat, l'etiqueta amb color + icona + text (D-149) */
+.ee-mode-row {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ee-mode-row > .form-select {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.ee-mode-row > .pl-chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* «Desa», «Més» i «Tanca» a la dreta de la capçalera de l'editor (D-149) */
+.ee-head-buttons {
+  display: flex;
   gap: 0.4rem;
-  margin: 1rem -1rem -1rem;
-  padding: 0.75rem 1rem;
-  border-top: 1px solid var(--ob-border);
-  background: var(--ob-bg);
+  margin-left: auto;
 }
 
 .ee-datelist-add .btn {
@@ -4187,7 +4199,6 @@ button.pl-chip.is-off {
   z-index: 6;
   margin: 0 0 0.75rem;
   padding: 0 0 0.5rem;
-  border-bottom: 1px solid var(--ob-border);
   background: var(--ob-bg); /* el fons de la pàgina: els requadres hi passen per sota en baixar */
 }
 

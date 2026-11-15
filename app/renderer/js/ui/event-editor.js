@@ -274,7 +274,15 @@ export class EventEditor {
       this.#draft = withMode(ev, select.value);
       this.#restructured();
     });
-    return this.#labelled('Mode', select, MODE_HELP[/** @type {keyof typeof MODE_HELP} */ (ev.mode)]);
+    const info = modeInfo(ev.mode);
+    const badge = el('span', `pl-chip ${info.css}`);
+    badge.append(icon(info.icon), ' ', el('span', '', info.label));
+    const row = el('div', 'ee-mode-row');
+    row.append(select, badge);
+    const box = this.#labelled('Mode', row, MODE_HELP[/** @type {keyof typeof MODE_HELP} */ (ev.mode)]);
+    const label = /** @type {HTMLLabelElement | null} */ (box.querySelector('label'));
+    if (label) label.htmlFor = select.id;
+    return box;
   }
 
   #render() {
@@ -285,14 +293,11 @@ export class EventEditor {
     // Sense cap esdeveniment obert, la columna s'amaga i la graella ocupa tot l'ample (D-115)
     panel.classList.toggle('is-empty', !ev);
     if (!ev) return;
-    const info = modeInfo(ev.mode);
 
-    // A dalt de tot: activat, el mode (color + icona + text) i el botó per tancar
+    // A dalt de tot: activat i, a la dreta, «Desa», «Més» i «Tanca». El mode és a «General», al costat del desplegable (D-149)
     const head = el('div', 'ee-head');
     head.append(this.#switch('Activat', ev.enabled, (on) => { ev.enabled = on; }));
-    const badge = el('span', `pl-chip ${info.css}`);
-    badge.append(icon(info.icon), ' ', el('span', '', info.label));
-    const close = el('button', 'btn btn-sm btn-outline-secondary ms-auto');
+    const close = el('button', 'btn btn-sm btn-outline-secondary');
     close.type = 'button';
     close.title = 'Tanca l\'editor';
     close.append(icon('bi-x-lg'), ' ', el('span', '', 'Tanca'));
@@ -301,14 +306,69 @@ export class EventEditor {
       this.open(null);
       this.#callbacks.onClosed();
     });
-    head.append(badge, close);
+    // «Desa» i «Més» a dalt, al costat de «Tanca», com a la fitxa de la pista (D-149)
+    const save = el('button', 'btn btn-sm btn-primary');
+    save.id = 'ee-save';
+    save.type = 'button';
+    save.append(icon('bi-check-lg'), ' ', el('span', '', 'Desa'));
+    save.addEventListener('click', () => this.#save());
+
+    // La resta d'opcions, en un menú (redisseny, D-109): descarta els canvis, duplica i esborra
+    const more = el('div', 'ee-more');
+    const toggle = el('button', 'btn btn-sm btn-outline-secondary');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.append(icon('bi-three-dots'), ' ', el('span', '', 'Més'));
+    const menu = el('div', 'ee-menu cp-menu d-none'); // s'obre cap avall, alineat a la dreta
+    menu.setAttribute('role', 'menu');
+    const item = (/** @type {string} */ iconName, /** @type {string} */ text, /** @type {() => void} */ run, danger = false) => {
+      const b = el('button', `ee-menu-item${danger ? ' text-danger' : ''}`);
+      b.type = 'button';
+      b.setAttribute('role', 'menuitem');
+      b.append(icon(iconName), ' ', el('span', '', text));
+      b.addEventListener('click', () => {
+        this.#closeMenu();
+        run();
+      });
+      menu.append(b);
+      return b;
+    };
+    const discard = item('bi-arrow-counterclockwise', 'Descarta els canvis', () => {
+      if (this.#original) this.open(this.#original);
+      else {
+        this.open(null);
+        this.#callbacks.onClosed();
+      }
+    });
+    discard.id = 'ee-discard';
+    if (ev.id !== 0) {
+      item('bi-copy', 'Duplica', async () => {
+        if (!(await this.confirmDiscard())) return;
+        this.#original = null;
+        this.#draft = duplicateEvent(ev);
+        this.#openSections = initialSections(this.#draft, false);
+        this.#restructured();
+      });
+      item('bi-trash', 'Esborra…', () => this.#delete(), true);
+    }
+    toggle.addEventListener('click', () => {
+      const open = menu.classList.contains('d-none');
+      menu.classList.toggle('d-none', !open);
+      toggle.setAttribute('aria-expanded', String(open));
+      if (open) /** @type {HTMLElement | null} */ (menu.querySelector('.ee-menu-item:not(.d-none)'))?.focus();
+    });
+    more.append(toggle, menu);
+    const buttons = el('div', 'ee-head-buttons');
+    buttons.append(save, more, close);
+    head.append(buttons);
 
     // Avisos (pas 8c): els calcula el motor amb l'esborrany, alhora que les pròximes emissions
     const warnings = el('div', 'ee-warnings d-none');
     warnings.id = 'ee-warnings';
     warnings.setAttribute('role', 'status');
 
-    // La capçalera i els avisos queden sempre visibles a dalt (com els botons a baix)
+    // La capçalera (amb els botons) i els avisos queden sempre visibles a dalt
     const top = el('div', 'ee-top');
     // L'error de validació en desar («Cal posar-li un nom»…): al mateix lloc que els avisos, sempre visible
     const error = el('div', 'alert alert-danger d-flex gap-2 m-0 d-none');
@@ -407,63 +467,6 @@ export class EventEditor {
     preview.id = 'ee-preview';
     panel.append(this.#section('next', 'Pròximes emissions', () => this.#nextSummary, null, [preview]));
 
-    // Botons (l'error de validació és a dalt, amb els avisos)
-    const buttons = el('div', 'ee-buttons');
-    const save = el('button', 'btn btn-primary');
-    save.id = 'ee-save';
-    save.type = 'button';
-    save.append(icon('bi-check-lg'), ' ', el('span', '', 'Desa'));
-    save.addEventListener('click', () => this.#save());
-    buttons.append(save);
-
-    // La resta d'opcions, en un menú (redisseny, D-109): descarta els canvis, duplica i esborra
-    const more = el('div', 'ee-more');
-    const toggle = el('button', 'btn btn-outline-secondary');
-    toggle.type = 'button';
-    toggle.setAttribute('aria-haspopup', 'menu');
-    toggle.setAttribute('aria-expanded', 'false');
-    toggle.append(icon('bi-three-dots'), ' ', el('span', '', 'Més'));
-    const menu = el('div', 'ee-menu d-none');
-    menu.setAttribute('role', 'menu');
-    const item = (/** @type {string} */ iconName, /** @type {string} */ text, /** @type {() => void} */ run, danger = false) => {
-      const b = el('button', `ee-menu-item${danger ? ' text-danger' : ''}`);
-      b.type = 'button';
-      b.setAttribute('role', 'menuitem');
-      b.append(icon(iconName), ' ', el('span', '', text));
-      b.addEventListener('click', () => {
-        this.#closeMenu();
-        run();
-      });
-      menu.append(b);
-      return b;
-    };
-    const discard = item('bi-arrow-counterclockwise', 'Descarta els canvis', () => {
-      if (this.#original) this.open(this.#original);
-      else {
-        this.open(null);
-        this.#callbacks.onClosed();
-      }
-    });
-    discard.id = 'ee-discard';
-    if (ev.id !== 0) {
-      item('bi-copy', 'Duplica', async () => {
-        if (!(await this.confirmDiscard())) return;
-        this.#original = null;
-        this.#draft = duplicateEvent(ev);
-        this.#openSections = initialSections(this.#draft, false);
-        this.#restructured();
-      });
-      item('bi-trash', 'Esborra…', () => this.#delete(), true);
-    }
-    toggle.addEventListener('click', () => {
-      const open = menu.classList.contains('d-none');
-      menu.classList.toggle('d-none', !open);
-      toggle.setAttribute('aria-expanded', String(open));
-      if (open) /** @type {HTMLElement | null} */ (menu.querySelector('.ee-menu-item:not(.d-none)'))?.focus();
-    });
-    more.append(toggle, menu);
-    buttons.append(more);
-    panel.append(buttons);
 
     panel.scrollTop = scroll;
     this.#showError();
