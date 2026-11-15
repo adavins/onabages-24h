@@ -11,6 +11,8 @@ import { NowPlaying } from './ui/now-playing.js';
 import { QueueView, HistoryView } from './ui/queue.js';
 import { AutoDjView } from './ui/autodj.js';
 import { renderOutput, renderNowPlaying, renderWarnings } from './ui/statusbar.js';
+import { ValidityView } from './ui/validity.js';
+import { todayIso } from './event-form.js';
 import { openOutputPicker } from './ui/output-picker.js';
 import { CampaignsView } from './ui/campaigns.js';
 import { PlannerView } from './ui/planner.js';
@@ -178,6 +180,23 @@ const historySearch = new HistorySearchView(send, (trackId) => {
   showView('biblioteca');
   trackManager.openTrack(trackId);
 }, { savePdf: (html, name) => bridge.saveReportPdf(html, name), saveCsv: (text, name) => bridge.saveCsv(text, name) });
+// Avisos de vigència (fase 4, pas 6b; D-146): a la barra de sota, en una finestra, a la fitxa de la pista i a la campanya
+const validity = new ValidityView(send, {
+  openTrack: (id) => {
+    showView('biblioteca');
+    trackManager.openTrack(id);
+  },
+  openCampaign: (id) => {
+    showView('campanyes');
+    campaignsView.openById(id);
+  },
+  openEvent: (id) => {
+    showView('planificador');
+    planner.openEvent(id, todayIso());
+  },
+});
+trackManager.validityBox = (subject, id) => validity.box(subject, id);
+campaignsView.validityBox = (subject, id) => validity.box(subject, id);
 const importView = new ImportView(send, (path) => bridge.chooseFolder(path), (path) => bridge.chooseAudioFiles(path),
   () => trackManager.importContext(), (id) => trackManager.openTrack(id));
 
@@ -459,6 +478,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
       showQueue({ current: null, upcoming: [] });
       auxPlayers.refresh(); // sense connexió: es buida el que sonava
       processor.render(null); // no se sap com està: s'amaga fins que es torni a connectar
+      validity.clear();
       processor.setReduction(0);
       // Potser el motor ha tornat a arrencar amb un altre testimoni: se'n llegeix el fitxer d'execució
       const found = await bridge.findEngine().catch(() => null);
@@ -484,6 +504,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
     historySearch.refresh();
   });
   client.addEventListener('ev:scheduler.changed', () => {
+    validity.refresh();
     planner.refresh();
     upcoming.refresh();
     calendarView.refresh(); // només si es mostra (p. ex. s'ha canviat un esdeveniment al Planificador)
@@ -511,6 +532,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   });
   // Campanyes (fase 4, pas 3c): la pantalla i el planificador (l'acció «Campanya» en diu el nom i l'estat)
   client.addEventListener('ev:campaigns.changed', () => {
+    validity.refresh();
     campaignsView.refresh();
     campaignCalendar.refresh(); // el nom, l'estat o les dates de la campanya oberta
     planner.refresh();
@@ -518,6 +540,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   // Gestor de pistes (fase 3, pas 7a): una pista o les categories han canviat
   client.addEventListener('ev:library.changed', (e) => {
     const trackId = detail(e).trackId ?? null;
+    validity.refresh();
     trackManager.libraryChanged(trackId);
     calendarView.refresh(); // el títol o les dates de la pista triada poden haver canviat
     campaignCalendar.refresh(); // la durada de les falques (hores previstes del contingut)
@@ -560,10 +583,16 @@ async function loadState() {
     folders.refresh();
     rotationsView.refresh(); // només si es mostra
     campaignsView.refresh(); // només si es mostra
+    validity.refresh();
   } catch (err) {
     console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }
 }
+
+// Els avisos de vigència no tenen esdeveniment propi (D-146): cada hora, per al canvi de dia
+setInterval(() => {
+  if (client?.connected) validity.refresh();
+}, 3_600_000);
 
 // El títol per a BUTT no té esdeveniment propi: es mira de tant en tant si s'ha pogut escriure
 setInterval(() => {

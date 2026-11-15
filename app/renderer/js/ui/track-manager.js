@@ -80,6 +80,12 @@ export class TrackManagerView {
    * @param {(kind: 'programming' | 'certificate', track: any) => void} openReport  obre un informe de la pista
    * @param {(track: any) => void} openHistory  obre la pestanya Historial amb aquesta pista
    */
+  /**
+   * Els avisos de vigència d'aquesta pista (D-146), a dalt de la fitxa. Ho posa app.js.
+   * @type {(subject: 'track' | 'campaign', id: number) => HTMLElement}
+   */
+  validityBox = () => document.createElement('div');
+
   constructor(send, chooseFile, folders, openCalendar, showFile, openReport, openHistory) {
     this.#openReport = openReport;
     this.#openHistory = openHistory;
@@ -1068,7 +1074,7 @@ export class TrackManagerView {
     const tags = this.#tagPicker(t.tags ?? []);
     const validFrom = date(t.validFrom);
     const validUntil = date(t.validUntil);
-    const enabled = check('Activada', t.enabled, 'Desactivada, l\'AutoDJ no la tria (es pot posar a la cua a mà).');
+    const enabled = check('Activada', t.enabled, 'Desactivada, no sona: ni l\'AutoDJ ni els esdeveniments la fan sonar (es pot posar a la cua a mà).');
     const variable = check('Durada variable', t.variableDuration, 'El fitxer se substitueix de tant en tant (programes, promos, locucions).');
     const notes = /** @type {HTMLTextAreaElement} */ (el('textarea', 'form-control form-control-sm'));
     notes.rows = 3;
@@ -1150,7 +1156,7 @@ export class TrackManagerView {
     fileTools.append(relink, remove);
     form.append(fileTools);
 
-    box.replaceChildren(form);
+    box.replaceChildren(this.validityBox('track', t.id), form);
   }
 
   /**

@@ -4133,3 +4133,61 @@ button.pl-chip.is-off {
   grid-template-columns: 1fr 1fr;
   gap: 0 0.75rem;
 }
+
+/* Avisos de vigència (fase 4, pas 6b; D-146): la finestra amb la llista i el requadre de la fitxa i de la campanya */
+.vw-list {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.vw-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+.vw-item:last-child {
+  border-bottom: 0;
+}
+
+.vw-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+
+.vw-text {
+  margin: 0.15rem 0 0.25rem;
+}
+
+.vw-events {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.6rem;
+  font-size: 0.875rem;
+}
+
+.vw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.vw-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.375rem;
+}
+
+.vw-box-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.75rem;
+}

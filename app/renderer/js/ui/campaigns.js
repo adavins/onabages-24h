@@ -42,6 +42,12 @@ export class CampaignsView {
    * @param {(campaign: { id: number }) => void} openCalendar  obre el calendari d'una campanya desada
    * @param {(kind: 'programming' | 'certificate', campaign: any) => void} openReport  obre un informe d'una campanya desada
    */
+  /**
+   * Els avisos de vigència d'aquesta campanya (D-146), sota la capçalera de l'editor. Ho posa app.js.
+   * @type {(subject: 'track' | 'campaign', id: number) => HTMLElement}
+   */
+  validityBox = () => document.createElement('div');
+
   constructor(send, openCalendar, openReport) {
     this.#send = send;
     this.#openCalendar = openCalendar;
@@ -335,7 +341,8 @@ export class CampaignsView {
     // «Dades» i «Falques» una al costat de l'altra si hi caben (D-132); a sota, el pla de passis (d'una campanya desada)
     const top = el('div', 'cp-top');
     top.append(this.#generalBox(form, changed), this.#spotsBox(form));
-    box.replaceChildren(header, ...notes, top, ...(this.#campaign ? [this.#planBox()] : []));
+    const validity = this.#campaign ? [this.validityBox('campaign', this.#campaign.id)] : [];
+    box.replaceChildren(header, ...notes, ...validity, top, ...(this.#campaign ? [this.#planBox()] : []));
     this.#updateActions();
   }
 
