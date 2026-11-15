@@ -84,7 +84,7 @@ export class UpcomingEvents {
     this.#tick();
   }
 
-  /** Cada segon: el compte enrere de la franja i el de la barra d'estat. */
+  /** Cada segon: el compte enrere de la franja. */
   #tick() {
     const now = Date.now();
     const first = this.#events.find((e) => Date.parse(e.at) > now);
@@ -94,15 +94,8 @@ export class UpcomingEvents {
       this.#onChange(); // la previsió de la cua es torna a calcular amb el TALLA següent
       return;
     }
-    const status = $('status-next');
-    if (!first) {
-      setText(status, '');
-      return;
-    }
-    const info = modeInfo(first.mode);
-    const until = untilText(Date.parse(first.at) - now);
+    if (!first) return;
     const chip = document.getElementById('upcoming-until');
-    if (chip) setText(chip, until);
-    setText(status, `Pròxim esdeveniment: ${dayText(first.date, new Date())} ${shortTime(first.time)} · ${first.name} · ${info.label} (${until})`);
+    if (chip) setText(chip, untilText(Date.parse(first.at) - now));
   }
 }

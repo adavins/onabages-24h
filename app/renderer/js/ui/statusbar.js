@@ -1,5 +1,5 @@
 // @ts-check
-// Barra d'estat de sota: per on s'emet (avís si és la sortida d'emergència), el títol per a BUTT i els avisos.
+// Barra d'estat de sota: per on s'emet (avís si és la sortida d'emergència) i el títol per a BUTT. Els avisos són a warnings.js.
 // Cada estat amb color + icona + text.
 
 import { $, statusLabel } from './dom.js';
@@ -26,29 +26,17 @@ export function renderNowPlaying(nowPlaying) {
   if (!nowPlaying) {
     target.replaceChildren();
   } else if (!nowPlaying.enabled) {
-    target.replaceChildren(statusLabel('text-body-secondary', 'bi-slash-circle', 'Títol per a BUTT: desactivat'));
+    target.replaceChildren(statusLabel('text-body-secondary', 'bi-slash-circle', 'BUTT: desactivat'));
+    target.title = 'Títol per a BUTT: desactivat';
   } else if (nowPlaying.problem) {
     target.replaceChildren(statusLabel('text-danger', 'bi-exclamation-triangle-fill', 'Títol per a BUTT: no es pot escriure'));
     target.title = nowPlaying.problem;
   } else if (nowPlaying.text) {
-    target.replaceChildren(statusLabel('text-success', 'bi-check-lg', `Títol per a BUTT: ${nowPlaying.text}`));
+    // El que sona, amb una icona de play (el que rep BUTT); la ruta del fitxer, en passar-hi el ratolí
+    target.replaceChildren(statusLabel('', 'bi-play-fill', nowPlaying.text));
+    target.title = `Títol per a BUTT: ${nowPlaying.text}${nowPlaying.path ? `\n${nowPlaying.path}` : ''}`;
   } else {
-    target.replaceChildren(statusLabel('text-body-secondary', 'bi-hourglass', 'Títol per a BUTT: encara no n\'hi ha cap'));
-  }
-}
-
-/**
- * Avisos de la sortida, l'AutoDJ, la pausa que ha continuat sola (D-103) i les carpetes vigilades, junts.
- * @param {{ autodj?: string | null, output?: string | null, pause?: string | null, folders?: string[] }} problems
- */
-export function renderWarnings(problems) {
-  const list = [problems.output, problems.autodj, problems.pause, ...(problems.folders ?? [])].filter(Boolean);
-  const target = $('status-warnings');
-  if (list.length === 0) {
-    target.replaceChildren(statusLabel('text-success', 'bi-check-circle', 'Cap avís'));
-    target.title = '';
-  } else {
-    target.replaceChildren(statusLabel('text-warning', 'bi-exclamation-triangle-fill', list.length === 1 ? '1 avís' : `${list.length} avisos`));
-    target.title = list.join('\n');
+    target.replaceChildren(statusLabel('text-body-secondary', 'bi-play', 'Encara no hi ha cap títol'));
+    target.title = 'Títol per a BUTT: encara no n\'hi ha cap';
   }
 }

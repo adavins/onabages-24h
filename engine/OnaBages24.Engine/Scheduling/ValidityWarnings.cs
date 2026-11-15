@@ -4,13 +4,13 @@ using OnaBages24.Data;
 
 namespace OnaBages24.Engine.Scheduling;
 
-/// <summary>Tipus d'avís de vigència (fase 4, pas 6b; D-146).</summary>
+/// <summary>Tipus d'avís de vigència (fase 4, pas 6b; D-146), del més greu al menys.</summary>
 public enum ValidityKind
 {
-    /// <summary>CADUCADA: la pista o la campanya ja s'ha acabat i encara és als esdeveniments.</summary>
-    Expired,
     /// <summary>NO_SONARA: és als esdeveniments però no sonarà (desactivada, fitxer que falta, esborrany, falques que no poden sonar…).</summary>
     WontPlay,
+    /// <summary>CADUCADA: la pista o la campanya ja s'ha acabat i encara és als esdeveniments.</summary>
+    Expired,
     /// <summary>DATES_INCORRECTES: les dates no quadren (fi abans de l'inici, la pista no cobreix la falca…).</summary>
     BadDates,
     /// <summary>COMENCA_AVIAT: comença d'aquí a 7 dies o menys.</summary>

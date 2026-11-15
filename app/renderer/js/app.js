@@ -10,8 +10,8 @@ import { OutputMeters } from './ui/meters.js';
 import { NowPlaying } from './ui/now-playing.js';
 import { QueueView, HistoryView } from './ui/queue.js';
 import { AutoDjView } from './ui/autodj.js';
-import { renderOutput, renderNowPlaying, renderWarnings } from './ui/statusbar.js';
-import { ValidityView } from './ui/validity.js';
+import { renderOutput, renderNowPlaying } from './ui/statusbar.js';
+import { WarningsView } from './ui/warnings.js';
 import { todayIso } from './event-form.js';
 import { openOutputPicker } from './ui/output-picker.js';
 import { CampaignsView } from './ui/campaigns.js';
@@ -180,8 +180,9 @@ const historySearch = new HistorySearchView(send, (trackId) => {
   showView('biblioteca');
   trackManager.openTrack(trackId);
 }, { savePdf: (html, name) => bridge.saveReportPdf(html, name), saveCsv: (text, name) => bridge.saveCsv(text, name) });
-// Avisos de vigència (fase 4, pas 6b; D-146): a la barra de sota, en una finestra, a la fitxa de la pista i a la campanya
-const validity = new ValidityView(send, {
+// Avisos (fase 4, pas 6b; D-146): tots junts a la barra de sota, amb una finestra per gravetat; els de vigència, també
+// a la fitxa de la pista i a la campanya
+const warnings = new WarningsView(send, {
   openTrack: (id) => {
     showView('biblioteca');
     trackManager.openTrack(id);
@@ -195,8 +196,8 @@ const validity = new ValidityView(send, {
     planner.openEvent(id, todayIso());
   },
 });
-trackManager.validityBox = (subject, id) => validity.box(subject, id);
-campaignsView.validityBox = (subject, id) => validity.box(subject, id);
+trackManager.validityBox = (subject, id) => warnings.box(subject, id);
+campaignsView.validityBox = (subject, id) => warnings.box(subject, id);
 const importView = new ImportView(send, (path) => bridge.chooseFolder(path), (path) => bridge.chooseAudioFiles(path),
   () => trackManager.importContext(), (id) => trackManager.openTrack(id));
 
@@ -247,6 +248,14 @@ async function loadUiSettings() {
 
 $('tab-search').addEventListener('click', () => showSideTab('search'));
 $('tab-notes').addEventListener('click', () => showSideTab('notes'));
+/** Els avisos de la sortida (greu), l'AutoDJ, la pausa i les carpetes, a la barra de sota amb els de vigència. */
+function showProblems() {
+  warnings.setGeneral([
+    ...(problems.output ? [{ level: /** @type {const} */ ('danger'), text: problems.output }] : []),
+    ...[problems.autodj, problems.pause, problems.butt, ...problems.folders].filter((t) => !!t)
+      .map((t) => ({ level: /** @type {const} */ ('warning'), text: /** @type {string} */ (t) })),
+  ]);
+}
 const problems = {
   autodj: /** @type {string | null} */ (null),
   output: /** @type {string | null} */ (null),
@@ -254,11 +263,13 @@ const problems = {
   folders: [],
   /** Una pausa que ha continuat sola (D-103). @type {string | null} */
   pause: null,
+  /** El fitxer del títol per a BUTT que no es pot escriure. @type {string | null} */
+  butt: null,
 };
-renderWarnings(problems);
+showProblems();
 folders.onChange((list) => {
   problems.folders = folderWarnings(list);
-  renderWarnings(problems);
+  showProblems();
 });
 
 /** @param {any} queue  docs/protocol.md, 4.2 */
@@ -281,7 +292,7 @@ function showQueue(queue) {
   pause.replaceChildren(icon, el('span', '', paused ? 'Continua' : 'Pausa'));
   if (problems.pause !== (queue.pauseNotice ?? null)) {
     problems.pause = queue.pauseNotice ?? null;
-    renderWarnings(problems);
+    showProblems();
   }
 }
 
@@ -290,19 +301,25 @@ function showAutoDj(state) {
   autoDjView.render(state);
   rotationsView.setActive(state.rotation?.id ?? null);
   problems.autodj = state.problem;
-  renderWarnings(problems);
+  showProblems();
 }
 
 /** @param {any} output */
 function showOutput(output) {
   renderOutput(output);
   problems.output = output.problem;
-  renderWarnings(problems);
+  showProblems();
 }
 
 async function refreshNowPlayingStatus() {
   try {
-    renderNowPlaying((await send('nowplaying.get')).nowPlaying);
+    const nowPlaying = (await send('nowplaying.get')).nowPlaying;
+    renderNowPlaying(nowPlaying);
+    const butt = nowPlaying?.enabled && nowPlaying.problem ? `No es pot escriure el títol per a BUTT: ${nowPlaying.problem}` : null;
+    if (butt !== problems.butt) {
+      problems.butt = butt;
+      showProblems();
+    }
   } catch { /* sense connexió: ja ho diu la capçalera */ }
 }
 
@@ -406,13 +423,6 @@ $('btn-pause').addEventListener('click', async () => {
 // Triar la sortida d'àudio, en clicar-la a la barra de sota (D-120)
 $('status-output').addEventListener('click', () => openOutputPicker(send));
 
-// Els avisos, sencers, en clicar el comptador de la barra de sota
-$('status-warnings').addEventListener('click', () => {
-  const list = [problems.output, problems.autodj, problems.pause, ...problems.folders].filter(Boolean);
-  if (list.length === 0) return;
-  confirmAction({ title: 'Avisos', message: list.join('\n\n'), confirm: 'D\'acord', info: true });
-});
-
 // En clicar la X (D-054): per defecte només es tanca la finestra i l'emissió continua.
 // «Atura l'emissió i tanca» atura el motor; si no hi ha connexió amb el motor, aquesta opció no hi és.
 bridge.onCloseRequested(async () => {
@@ -478,7 +488,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
       showQueue({ current: null, upcoming: [] });
       auxPlayers.refresh(); // sense connexió: es buida el que sonava
       processor.render(null); // no se sap com està: s'amaga fins que es torni a connectar
-      validity.clear();
+      warnings.clear();
       processor.setReduction(0);
       // Potser el motor ha tornat a arrencar amb un altre testimoni: se'n llegeix el fitxer d'execució
       const found = await bridge.findEngine().catch(() => null);
@@ -504,7 +514,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
     historySearch.refresh();
   });
   client.addEventListener('ev:scheduler.changed', () => {
-    validity.refresh();
+    warnings.refresh();
     planner.refresh();
     upcoming.refresh();
     calendarView.refresh(); // només si es mostra (p. ex. s'ha canviat un esdeveniment al Planificador)
@@ -532,7 +542,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   });
   // Campanyes (fase 4, pas 3c): la pantalla i el planificador (l'acció «Campanya» en diu el nom i l'estat)
   client.addEventListener('ev:campaigns.changed', () => {
-    validity.refresh();
+    warnings.refresh();
     campaignsView.refresh();
     campaignCalendar.refresh(); // el nom, l'estat o les dates de la campanya oberta
     planner.refresh();
@@ -540,7 +550,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   // Gestor de pistes (fase 3, pas 7a): una pista o les categories han canviat
   client.addEventListener('ev:library.changed', (e) => {
     const trackId = detail(e).trackId ?? null;
-    validity.refresh();
+    warnings.refresh();
     trackManager.libraryChanged(trackId);
     calendarView.refresh(); // el títol o les dates de la pista triada poden haver canviat
     campaignCalendar.refresh(); // la durada de les falques (hores previstes del contingut)
@@ -583,7 +593,7 @@ async function loadState() {
     folders.refresh();
     rotationsView.refresh(); // només si es mostra
     campaignsView.refresh(); // només si es mostra
-    validity.refresh();
+    warnings.refresh();
   } catch (err) {
     console.error('No s\'ha pogut llegir l\'estat del motor:', err);
   }
@@ -591,7 +601,7 @@ async function loadState() {
 
 // Els avisos de vigència no tenen esdeveniment propi (D-146): cada hora, per al canvi de dia
 setInterval(() => {
-  if (client?.connected) validity.refresh();
+  if (client?.connected) warnings.refresh();
 }, 3_600_000);
 
 // El títol per a BUTT no té esdeveniment propi: es mira de tant en tant si s'ha pogut escriure

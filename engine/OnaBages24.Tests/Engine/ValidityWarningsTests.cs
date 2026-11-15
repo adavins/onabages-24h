@@ -79,8 +79,8 @@ public sealed class ValidityWarningsTests : IDisposable
         AddEvent("Bloc de les 10", block: true, enabled: true, Track(expired));
         AddEvent("Desactivat", block: false, enabled: false, Track(disabledEventOnly));
 
-        Assert.Equal(["CADUCADA track Caducada", "NO_SONARA track Desactivada", "NO_SONARA track Sense fitxer", "COMENCA_AVIAT track Comença demà"], Warnings());
-        var first = Send(new() { ["cmd"] = "validity.list" })["warnings"]![0]!;
+        Assert.Equal(["NO_SONARA track Desactivada", "NO_SONARA track Sense fitxer", "CADUCADA track Caducada", "COMENCA_AVIAT track Comença demà"], Warnings());
+        var first = Send(new() { ["cmd"] = "validity.list" })["warnings"]![2]!;
         Assert.True(first["canRemove"]!.GetValue<bool>());
         Assert.Equal(2, first["events"]!.AsArray().Count);
         Assert.Contains("2 esdeveniments", first["text"]!.GetValue<string>());
@@ -102,14 +102,14 @@ public sealed class ValidityWarningsTests : IDisposable
             CampaignAction(finished), CampaignAction(draftSoon), CampaignAction(draftLater), CampaignAction(tomorrow), CampaignAction(problems));
 
         Assert.Equal([
-            "CADUCADA campaign Acabada",
             "NO_SONARA campaign Amb problemes",
             "NO_SONARA campaign Esborrany aviat",
+            "CADUCADA campaign Acabada",
             "DATES_INCORRECTES campaign Amb problemes",
             "COMENCA_AVIAT campaign Comença demà",
         ], Warnings());
         var texts = Send(new() { ["cmd"] = "validity.list" })["warnings"]!.AsArray().Select(w => w!["text"]!.GetValue<string>()).ToArray();
-        Assert.Contains("«Falca desactivada»: està desactivada", texts[1]);
+        Assert.Contains("«Falca desactivada»: està desactivada", texts[0]);
         Assert.Contains("«Falca curta»: les dates de la pista", texts[3]);
     }
 
