@@ -71,6 +71,9 @@ public static class QueueJson
         ["playCount"] = track.PlayCount,
         // Fase 3, pas 7a: per marcar les desactivades a la llista del gestor de pistes
         ["enabled"] = track.Enabled,
+        // Les dates de la pista, per a les columnes «Data d'inici» i «Data de fi» i l'estat «Vençuda» o «Encara no» (D-154)
+        ["validFrom"] = track.ValidFrom?.ToString("yyyy-MM-dd"),
+        ["validUntil"] = track.ValidUntil?.ToString("yyyy-MM-dd"),
         ["cueSource"] = track.CueSource switch
         {
             CueSource.RadioDj => "radiodj",

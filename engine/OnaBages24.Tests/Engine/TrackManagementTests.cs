@@ -127,6 +127,35 @@ public sealed class TrackManagementTests : IDisposable
     }
 
     [Fact]
+    public void Les_dates_es_canvien_en_bloc_i_surten_a_la_llista()
+    {
+        // D-154: les dues dates, només una o treure-les; les que es quedarien amb la fi abans de l'inici no es toquen
+        long a = Add("A", _falques), b = Add("B", _falques, until: new DateOnly(2026, 12, 15)), c = Add("C", _falques, from: new DateOnly(2027, 2, 1));
+        var all = new JsonArray(a, b, c);
+
+        var both = Result(new() { ["cmd"] = "library.bulk", ["trackIds"] = all.DeepClone(), ["action"] = "dates", ["validFrom"] = "2026-12-01", ["validUntil"] = "2027-01-06" });
+        Assert.Equal((3, 0), (both["changed"]!.GetValue<int>(), both["invalid"]!.GetValue<int>()));
+        Assert.Equal((new DateOnly(2026, 12, 1), new DateOnly(2027, 1, 6)), (_library.GetTrack(c)!.ValidFrom, _library.GetTrack(c)!.ValidUntil));
+
+        // Només la de fi: la d'inici es queda; una fi abans de l'inici d'alguna, aquella no es toca
+        _library.UpdateTrack(_library.GetTrack(c)! with { ValidFrom = new DateOnly(2027, 1, 1), ValidUntil = null });
+        var onlyEnd = Result(new() { ["cmd"] = "library.bulk", ["trackIds"] = all.DeepClone(), ["action"] = "dates", ["validUntil"] = "2026-12-24" });
+        Assert.Equal((2, 1), (onlyEnd["changed"]!.GetValue<int>(), onlyEnd["invalid"]!.GetValue<int>()));
+        Assert.Equal(new DateOnly(2026, 12, 1), _library.GetTrack(a)!.ValidFrom);
+        Assert.Null(_library.GetTrack(c)!.ValidUntil);
+
+        // Treure-les (null = sense límit)
+        Result(new() { ["cmd"] = "library.bulk", ["trackIds"] = new JsonArray(a), ["action"] = "dates", ["validFrom"] = null, ["validUntil"] = null });
+        Assert.Equal(((DateOnly?)null, (DateOnly?)null), (_library.GetTrack(a)!.ValidFrom, _library.GetTrack(a)!.ValidUntil));
+        Assert.Contains("anterior", Error(new() { ["cmd"] = "library.bulk", ["trackIds"] = new JsonArray(a), ["action"] = "dates", ["validFrom"] = "2027-01-02", ["validUntil"] = "2027-01-01" }));
+
+        // La llista porta les dates i s'hi pot ordenar per la d'inici
+        var list = Result(new() { ["cmd"] = "library.search", ["subcategoryId"] = _falques, ["sort"] = "validFrom" })["tracks"]!.AsArray();
+        Assert.Equal(["2026-12-01", "2027-01-01", null], list.Select(t => t!["validFrom"]?.GetValue<string>()));
+        Assert.Equal("2026-12-24", list[0]!["validUntil"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void Esborrar_en_bloc_respecta_les_que_fan_servir_els_esdeveniments_i_avisa_de_les_que_han_sonat()
     {
         long usada = Add("Usada", _falques), sonada = Add("Sonada", _falques), lliure = Add("Lliure", _falques);

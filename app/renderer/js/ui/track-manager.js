@@ -520,6 +520,7 @@ export class TrackManagerView {
       button('bi-check-circle', 'Activa', () => this.#bulk({ action: 'enable' }, 'activades')),
       button('bi-slash-circle', 'Desactiva', () => this.#bulk({ action: 'disable' }, 'desactivades')),
       button('bi-tags', 'Etiqueta…', () => this.#bulkTag()),
+      button('bi-calendar-range', 'Dates…', () => this.#bulkDates()),
       button('bi-trash', 'Esborra…', () => this.#bulkDelete(), 'btn-outline-danger'),
       button('bi-x-lg', 'Treu la selecció', () => this.#clearSelection(), 'btn-link'),
     );
@@ -611,6 +612,68 @@ export class TrackManagerView {
     await this.#bulk({ action: 'subcategory', subcategoryId: select.value === '' ? null : Number(select.value) }, 'mogudes');
   }
 
+  /**
+   * «Dates…» (D-154): canvia la data d'inici, la de fi o totes dues de les seleccionades. Cada una es pot deixar com està,
+   * posar-ne una o treure-la (sense límit). El botó «Temporada» posa les de la configuració.
+   */
+  async #bulkDates() {
+    const n = this.#selected.size;
+    const row = (/** @type {string} */ label) => {
+      const mode = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
+      mode.append(option('keep', 'No la canviïs'), option('set', 'Posa-hi aquesta:'), option('clear', 'Treu-la (sense límit)'));
+      const input = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
+      input.type = 'date';
+      const sync = () => { input.disabled = mode.value !== 'set'; };
+      mode.addEventListener('change', sync);
+      // Escriure una data (o el botó «Temporada») vol dir posar-la
+      input.addEventListener('input', () => {
+        mode.value = 'set';
+        sync();
+      });
+      sync();
+      const line = el('div', 'tm-bulk-date');
+      line.append(mode, input);
+      return { box: dialogField(label, line), mode, input };
+    };
+    const from = row('Data d\'inici');
+    const until = row('Data de fi');
+    // «Temporada» omple les dues dates (i avisa amb «input»: passen a «Posa-hi aquesta»)
+    const season = seasonButton(this.#send, from.input, until.input);
+    for (;;) {
+      const ok = await formDialog({
+        title: 'Canviar les dates', icon: 'bi-calendar-range', confirm: 'Canvia-les',
+        message: `De ${n === 1 ? 'la pista seleccionada' : `les ${n.toLocaleString('ca-ES')} pistes seleccionades`}. Fora d'aquestes dates no sonen.`,
+        body: [from.box, until.box, seasonLine(season, 'Posa les dates de la temporada (es canvien a ⚙ Configuració).')],
+      });
+      if (!ok) return;
+      /** @type {Record<string, string | null>} */
+      const params = {};
+      let problem = '';
+      for (const [key, r] of /** @type {[string, typeof from][]} */ ([['validFrom', from], ['validUntil', until]])) {
+        if (r.mode.value === 'clear') params[key] = null;
+        else if (r.mode.value === 'set') {
+          if (!r.input.value) problem = 'Falta la data que vols posar.';
+          params[key] = r.input.value;
+        }
+      }
+      if (Object.keys(params).length === 0) problem = 'No has triat cap data per canviar.';
+      if (!problem && params.validFrom && params.validUntil && params.validUntil < params.validFrom) problem = 'La data de fi no pot ser anterior a la d\'inici.';
+      if (problem) {
+        await confirmAction({ title: 'No es pot fer', message: problem, confirm: 'D\'acord', info: true });
+        continue;
+      }
+      const ids = [...this.#selected];
+      const result = await this.#try('No s\'han pogut canviar les dates', () => this.#send('library.bulk', { trackIds: ids, action: 'dates', ...params }));
+      if (!result) return;
+      await this.#afterBulk();
+      const invalid = result.invalid > 0
+        ? `\n\n${result.invalid === 1 ? '1 pista no s\'ha canviat' : `${result.invalid.toLocaleString('ca-ES')} pistes no s'han canviat`}: amb la data nova, la de fi quedaria abans de la d'inici.`
+        : '';
+      await confirmAction({ title: 'Fet', message: `S'han canviat les dates de ${result.changed.toLocaleString('ca-ES')} de ${ids.length.toLocaleString('ca-ES')} pistes.${invalid}`, confirm: 'D\'acord', info: true });
+      return;
+    }
+  }
+
   /** «Etiqueta…»: afegeix o treu una etiqueta a totes les seleccionades. */
   async #bulkTag() {
     const tags = this.#filters?.tags ?? [];
@@ -686,6 +749,7 @@ export class TrackManagerView {
     { sort: 'type', label: 'Tipus', css: 'tm-c-type' },
     { sort: 'duration', label: 'Durada', css: 'tm-c-num' },
     { sort: null, label: 'Estat', css: 'tm-c-state' },
+    { sort: 'validFrom', label: 'Data d\'inici', css: 'tm-c-date' },
     { sort: 'validUntil', label: 'Data de fi', css: 'tm-c-date' },
     { sort: 'plays', label: 'Reprod.', css: 'tm-c-num', title: 'Quantes vegades ha sonat' },
     { sort: 'lastPlayed', label: 'Última vegada', css: 'tm-c-played' },
@@ -922,6 +986,7 @@ export class TrackManagerView {
       states.append(label);
     }
     cell('tm-c-state', states);
+    cell('tm-c-date', dateCell(track.validFrom));
     cell('tm-c-date', dateCell(track.validUntil));
     cell('tm-c-num', String(track.playCount ?? 0));
     const played = cell('tm-c-played', track.lastPlayed ? playedAgo(track.lastPlayed, now) : 'mai');

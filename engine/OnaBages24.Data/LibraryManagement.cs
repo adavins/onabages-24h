@@ -28,6 +28,7 @@ public enum TrackSort
     Plays,
     LastPlayed,
     ValidUntil,
+    ValidFrom,
 }
 
 /// <summary>Una etiqueta al gestor d'etiquetes (D-111): quantes pistes la tenen i quines rotacions la fan servir.</summary>
@@ -145,6 +146,7 @@ public sealed partial class Library
             TrackSort.Plays => $"reproduccions {dir}",
             TrackSort.LastPlayed => $"darrera_reproduccio IS NULL, darrera_reproduccio {dir}",
             TrackSort.ValidUntil => $"data_fi IS NULL, data_fi {dir}",
+            TrackSort.ValidFrom => $"data_inici IS NULL, data_inici {dir}",
             _ => $"artista COLLATE NOCASE {dir}, titol COLLATE NOCASE {dir}",
         };
         return $"ORDER BY {column}, artista COLLATE NOCASE, titol COLLATE NOCASE, id";
@@ -191,6 +193,48 @@ public sealed partial class Library
     /// <summary>Activa o desactiva moltes pistes alhora. Retorna quantes han canviat.</summary>
     public int SetEnabled(IReadOnlyCollection<long> trackIds, bool enabled) =>
         UpdateMany(trackIds, "activa = $valor", enabled ? 1 : 0);
+
+    /// <summary>
+    /// Canvia les dates de moltes pistes alhora (D-154): la d'inici si <paramref name="changeFrom"/> i la de fi si
+    /// <paramref name="changeUntil"/> (null = sense límit). Les que es quedarien amb la de fi abans de la d'inici no es toquen.
+    /// Retorna quantes han canviat i quantes s'han deixat per això.
+    /// </summary>
+    public (int Changed, int Invalid) SetDates(IReadOnlyCollection<long> trackIds, bool changeFrom, DateOnly? from, bool changeUntil, DateOnly? until)
+    {
+        lock (database.Sync)
+        {
+            using var transaction = database.BeginTransaction();
+            int changed = 0, invalid = 0;
+            foreach (long id in trackIds.Distinct())
+            {
+                DateOnly? oldFrom, oldUntil;
+                using (var read = database.Command("SELECT data_inici, data_fi FROM pista WHERE id = $id;", transaction))
+                {
+                    read.Parameters.AddWithValue("$id", id);
+                    using var r = read.ExecuteReader();
+                    if (!r.Read()) continue;
+                    oldFrom = r.IsDBNull(0) ? null : DbTime.ParseDate(r.GetString(0));
+                    oldUntil = r.IsDBNull(1) ? null : DbTime.ParseDate(r.GetString(1));
+                }
+                var newFrom = changeFrom ? from : oldFrom;
+                var newUntil = changeUntil ? until : oldUntil;
+                if (newFrom is { } f && newUntil is { } u && u < f)
+                {
+                    invalid++;
+                    continue;
+                }
+                if (newFrom == oldFrom && newUntil == oldUntil) continue;
+                using var command = database.Command("UPDATE pista SET data_inici = $inici, data_fi = $fi, modificada = $ara WHERE id = $id;", transaction);
+                command.Parameters.AddWithValue("$inici", newFrom is { } nf ? DbTime.ToText(nf) : DBNull.Value);
+                command.Parameters.AddWithValue("$fi", newUntil is { } nu ? DbTime.ToText(nu) : DBNull.Value);
+                command.Parameters.AddWithValue("$ara", DbTime.ToText(DateTimeOffset.UtcNow));
+                command.Parameters.AddWithValue("$id", id);
+                changed += command.ExecuteNonQuery();
+            }
+            transaction.Commit();
+            return (changed, invalid);
+        }
+    }
 
     private int UpdateMany(IReadOnlyCollection<long> trackIds, string set, object value)
     {

@@ -70,6 +70,7 @@ public sealed partial class CommandRouter
                 "plays" => TrackSort.Plays,
                 "lastPlayed" => TrackSort.LastPlayed,
                 "validUntil" => TrackSort.ValidUntil,
+                "validFrom" => TrackSort.ValidFrom,
                 var other => throw new BadParamsException($"El camp 'sort' no és vàlid: «{other}»."),
             },
             Descending = Bool("desc") ?? false,
@@ -151,6 +152,25 @@ public sealed partial class CommandRouter
             return result;
         }
 
+        // Les dates (D-154): «validFrom» i «validUntil»; la que no s'envia no canvia, i null la treu (sense límit)
+        if (action == "dates")
+        {
+            bool changeFrom = msg.ContainsKey("validFrom"), changeUntil = msg.ContainsKey("validUntil");
+            if (!changeFrom && !changeUntil) throw new BadParamsException("Falta 'validFrom' o 'validUntil' (una data 'AAAA-MM-DD' o null).");
+            DateOnly? Day(string field) => msg[field] is null ? null
+                : DateOnly.TryParseExact(ReadString(msg[field]), "yyyy-MM-dd", out var day) ? day
+                : throw new BadParamsException($"El camp '{field}' ha de ser una data 'AAAA-MM-DD' o null.");
+            var from = Day("validFrom");
+            var until = Day("validUntil");
+            if (from is { } f && until is { } u && u < f) throw new BadParamsException("La data de fi no pot ser anterior a la d'inici.");
+            if (dryRun) return result;
+            var (datesChanged, invalid) = library.SetDates(ids, changeFrom, from, changeUntil, until);
+            result["changed"] = datesChanged;
+            result["invalid"] = invalid;
+            if (datesChanged > 0) LibraryChanged?.Invoke(null);
+            return result;
+        }
+
         if (dryRun) return result;
         int changed = action switch
         {
@@ -162,7 +182,7 @@ public sealed partial class CommandRouter
             "addTag" => (ReadString(msg["tag"])?.Trim() is { Length: > 0 and <= 100 } tag)
                 ? library.AddTag(ids, tag) : throw new BadParamsException("Falta 'tag' (el nom de l'etiqueta, com a molt 100 caràcters)."),
             "removeTag" => library.RemoveTag(ids, RequiredId(msg, "tagId")),
-            _ => throw new BadParamsException($"L'acció «{action}» no existeix (subcategory, enable, disable, addTag, removeTag o delete)."),
+            _ => throw new BadParamsException($"L'acció «{action}» no existeix (subcategory, enable, disable, addTag, removeTag, dates o delete)."),
         };
         result["changed"] = changed;
         if (changed > 0) LibraryChanged?.Invoke(null);

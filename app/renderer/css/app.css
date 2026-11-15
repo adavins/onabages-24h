@@ -923,6 +923,15 @@ body {
 .tm-results {
   flex: 1 1 auto;
   overflow: auto;
+  container-type: inline-size; /* per amagar columnes quan la llista és estreta (p. ex. amb la fitxa oberta) */
+}
+
+/* Llista estreta (D-154): les dates i l'última vegada que ha sonat no hi caben; es veuen a la fitxa i s'hi pot filtrar igualment */
+@container (max-width: 62rem) {
+  #tm-results .tm-c-date,
+  #tm-results .tm-c-played {
+    display: none;
+  }
 }
 
 .tm-table {
@@ -997,8 +1006,8 @@ body {
 }
 
 .tm-c-check { width: 2.2rem; text-align: center; }
-.tm-c-title { width: 24%; }
-.tm-c-artist { width: 18%; color: var(--ob-muted); }
+.tm-c-title { width: auto; } /* el que queda: les altres sumen menys del 100 % (amb la casella) */
+.tm-c-artist { width: 16%; color: var(--ob-muted); }
 .tm-c-type { width: 9%; }
 .tm-c-state { width: 15%; }
 .tm-c-date { width: 8%; font-variant-numeric: tabular-nums; }
@@ -4377,4 +4386,11 @@ button.pl-chip.is-off {
 .bk-contents {
   margin: 0 0 0.25rem;
   padding-left: 1.2rem;
+}
+
+/* «Dates…» en bloc a la pestanya Pistes (D-154): què fer amb cada data i la data */
+.tm-bulk-date {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.5rem;
 }
