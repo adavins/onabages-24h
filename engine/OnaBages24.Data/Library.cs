@@ -141,10 +141,30 @@ public sealed record Track
     public string? Notes { get; init; }
 }
 
-/// <summary>Una entrada de l'historial de reproducció.</summary>
+/// <summary>
+/// Una entrada de l'historial de reproducció. <c>CampaignId</c>: la campanya per la qual va sonar; <c>Type</c>: el tipus
+/// de la pista ara (null si no és a la biblioteca). Tots dos només els omple la cerca amb filtres (fase 4, pas 5a).
+/// </summary>
 public sealed record HistoryEntry(
     long Id, long? TrackId, DateTimeOffset Started, long? PlayedMs, bool? Complete,
-    QueueOrigin Origin, string Artist, string Title, string Path);
+    QueueOrigin Origin, string Artist, string Title, string Path, long? CampaignId = null, TrackType? Type = null);
+
+/// <summary>
+/// Filtres de la cerca a l'historial (fase 4, pas 5a; D-143). Tots opcionals: <c>From</c> (inclosa) i <c>To</c> (exclosa);
+/// <c>Text</c>, a l'artista o al títol; una pista o una campanya; els orígens i els tipus de pista que es volen (null o
+/// buit = tots); <c>BeforeId</c>, per continuar després de l'última entrada que ja es té.
+/// </summary>
+public sealed record HistoryFilter
+{
+    public DateTimeOffset? From { get; init; }
+    public DateTimeOffset? To { get; init; }
+    public string? Text { get; init; }
+    public long? TrackId { get; init; }
+    public long? CampaignId { get; init; }
+    public IReadOnlyCollection<QueueOrigin>? Origins { get; init; }
+    public IReadOnlyCollection<TrackType>? Types { get; init; }
+    public long? BeforeId { get; init; }
+}
 
 /// <summary>
 /// Biblioteca: pistes, categories, subcategories, etiquetes, historial i configuració.
@@ -888,33 +908,89 @@ public sealed partial class Library(Database database)
     /// <paramref name="from"/> (inclosa) i <paramref name="to"/> (exclosa) són opcionals; <paramref name="text"/>, si n'hi ha,
     /// ha de ser a l'artista o al títol (sense distingir majúscules; els accents sí que compten).
     /// </summary>
-    public IReadOnlyList<HistoryEntry> SearchHistory(DateTimeOffset? from, DateTimeOffset? to, string? text, int limit)
-    {
-        var where = new List<string>();
-        var parameters = new List<(string, object)>();
-        if (from is { } f) { where.Add("inici >= $from"); parameters.Add(("$from", DbTime.ToText(f))); }
-        if (to is { } t) { where.Add("inici < $to"); parameters.Add(("$to", DbTime.ToText(t))); }
-        if (!string.IsNullOrWhiteSpace(text))
-        {
-            // Els caràcters especials de LIKE (%, _ i \) es busquen tal qual
-            string pattern = "%" + text.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
-            where.Add("(artista LIKE $text ESCAPE '\\' OR titol LIKE $text ESCAPE '\\')");
-            parameters.Add(("$text", pattern));
-        }
+    public IReadOnlyList<HistoryEntry> SearchHistory(DateTimeOffset? from, DateTimeOffset? to, string? text, int limit) =>
+        SearchHistory(new HistoryFilter { From = from, To = to, Text = text }, limit);
 
+    /// <summary>
+    /// Cerca a l'historial amb filtres (fase 4, pas 5a; D-143): les entrades més recents primer, com a molt
+    /// <paramref name="limit"/>, amb la campanya i el tipus de la pista.
+    /// </summary>
+    public IReadOnlyList<HistoryEntry> SearchHistory(HistoryFilter filter, int limit)
+    {
+        var (where, parameters) = HistoryWhere(filter);
+        if (filter.BeforeId is { } before)
+        {
+            // Les que van sonar abans que aquesta (el mateix ordre que la llista: hora i, si és igual, id)
+            where.Add("(h.inici < (SELECT inici FROM historial WHERE id = $before) " +
+                "OR (h.inici = (SELECT inici FROM historial WHERE id = $before) AND h.id < $before))");
+            parameters.Add(("$before", before));
+        }
         lock (database.Sync)
         {
             using var command = database.Command(
-                "SELECT id, pista_id, inici, durada_ms, sencera, origen, artista, titol, ruta FROM historial " +
+                "SELECT h.id, h.pista_id, h.inici, h.durada_ms, h.sencera, h.origen, h.artista, h.titol, h.ruta, h.campanya_id, p.tipus " +
+                "FROM historial h LEFT JOIN pista p ON p.id = h.pista_id " +
                 (where.Count > 0 ? "WHERE " + string.Join(" AND ", where) + " " : "") +
-                "ORDER BY inici DESC, id DESC LIMIT $limit;");
+                "ORDER BY h.inici DESC, h.id DESC LIMIT $limit;");
             foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value);
             command.Parameters.AddWithValue("$limit", limit);
             using var reader = command.ExecuteReader();
             var list = new List<HistoryEntry>();
-            while (reader.Read()) list.Add(ReadHistoryEntry(reader));
+            while (reader.Read())
+            {
+                list.Add(ReadHistoryEntry(reader) with
+                {
+                    CampaignId = reader.IsDBNull(9) ? null : reader.GetInt64(9),
+                    Type = reader.IsDBNull(10) ? null : ParseType(reader.GetString(10)),
+                });
+            }
             return list;
         }
+    }
+
+    /// <summary>Quantes entrades de l'historial compleixen els filtres (sense comptar <c>BeforeId</c>).</summary>
+    public int CountHistory(HistoryFilter filter)
+    {
+        var (where, parameters) = HistoryWhere(filter);
+        lock (database.Sync)
+        {
+            using var command = database.Command(
+                "SELECT count(*) FROM historial h LEFT JOIN pista p ON p.id = h.pista_id " +
+                (where.Count > 0 ? "WHERE " + string.Join(" AND ", where) : "") + ";");
+            foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value);
+            return Convert.ToInt32(command.ExecuteScalar());
+        }
+    }
+
+    /// <summary>Les condicions SQL dels filtres de l'historial (taula <c>h</c>, pista <c>p</c>).</summary>
+    private static (List<string> Where, List<(string, object)> Parameters) HistoryWhere(HistoryFilter filter)
+    {
+        var where = new List<string>();
+        var parameters = new List<(string, object)>();
+        if (filter.From is { } f) { where.Add("h.inici >= $from"); parameters.Add(("$from", DbTime.ToText(f))); }
+        if (filter.To is { } t) { where.Add("h.inici < $to"); parameters.Add(("$to", DbTime.ToText(t))); }
+        if (!string.IsNullOrWhiteSpace(filter.Text))
+        {
+            // Els caràcters especials de LIKE (%, _ i \) es busquen tal qual
+            string pattern = "%" + filter.Text.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+            where.Add("(h.artista LIKE $text ESCAPE '\\' OR h.titol LIKE $text ESCAPE '\\')");
+            parameters.Add(("$text", pattern));
+        }
+        if (filter.TrackId is { } track) { where.Add("h.pista_id = $track"); parameters.Add(("$track", track)); }
+        if (filter.CampaignId is { } campaign) { where.Add("h.campanya_id = $campaign"); parameters.Add(("$campaign", campaign)); }
+        if (filter.Origins is { Count: > 0 } origins)
+        {
+            var names = origins.Distinct().Select((o, i) => (Name: $"$origin{i}", Text: ToText(o))).ToList();
+            where.Add($"h.origen IN ({string.Join(", ", names.Select(n => n.Name))})");
+            parameters.AddRange(names.Select(n => (n.Name, (object)n.Text)));
+        }
+        if (filter.Types is { Count: > 0 } types)
+        {
+            var names = types.Distinct().Select((t, i) => (Name: $"$type{i}", Text: ToText(t))).ToList();
+            where.Add($"p.tipus IN ({string.Join(", ", names.Select(n => n.Name))})");
+            parameters.AddRange(names.Select(n => (n.Name, (object)n.Text)));
+        }
+        return (where, parameters);
     }
 
     private static HistoryEntry ReadHistoryEntry(Microsoft.Data.Sqlite.SqliteDataReader reader) => new(

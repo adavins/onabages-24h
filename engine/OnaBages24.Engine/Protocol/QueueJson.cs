@@ -305,6 +305,8 @@ public static class QueueJson
         ["artist"] = entry.Artist,
         ["title"] = entry.Title,
         ["path"] = entry.Path,
+        ["type"] = entry.Type is { } type ? Type(type) : null,
+        ["campaignId"] = entry.CampaignId,
     };
 
     /// <summary>Exportació del títol per a BUTT (docs/protocol.md, 4.6).</summary>

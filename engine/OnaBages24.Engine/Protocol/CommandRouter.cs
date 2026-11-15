@@ -1887,6 +1887,9 @@ public sealed partial class CommandRouter
     /// Cerca a l'historial, les més recents primer. <c>from</c> i <c>to</c>: una hora ISO 8601 amb zona
     /// (<c>2026-11-10T12:00:00Z</c>) o un dia (<c>2026-11-10</c>, hora local; <c>to</c> inclou tot el dia).
     /// <c>search</c>: text de l'artista o del títol. <c>limit</c>: per defecte 100, com a molt 2.000.
+    /// Fase 4, pas 5a (D-143): <c>trackId</c>, <c>campaignId</c>, <c>origins</c> (llista: <c>autodj</c>, <c>manual</c>,
+    /// <c>event</c>), <c>types</c> (llista de tipus de pista), <c>beforeId</c> (continuar després d'aquesta entrada) i
+    /// <c>count</c> (<c>true</c>: quantes n'hi ha en total amb aquests filtres).
     /// </summary>
     private JsonObject HistoryList(JsonObject msg)
     {
@@ -1896,12 +1899,49 @@ public sealed partial class CommandRouter
         if (from is not null && to is not null && from >= to)
             throw new BadParamsException("El camp 'from' ha de ser anterior a 'to'.");
         int limit = Math.Clamp(ReadInt(msg["limit"]) ?? 100, 1, 2000);
+
+        List<string> Texts(string field)
+        {
+            if (msg[field] is null) return [];
+            if (msg[field] is not JsonArray list) throw new BadParamsException($"El camp '{field}' ha de ser una llista.");
+            return list.Select(n => ReadString(n) ?? throw new BadParamsException($"El camp '{field}' ha de ser una llista de textos.")).ToList();
+        }
+        var origins = Texts("origins").Select(o => o switch
+        {
+            "autodj" => QueueOrigin.AutoDj,
+            "manual" => QueueOrigin.Manual,
+            "event" => QueueOrigin.Event,
+            _ => throw new BadParamsException($"Origen desconegut: «{o}» (ha de ser autodj, manual o event)."),
+        }).ToList();
+        List<TrackType> types;
+        try { types = Texts("types").Select(NowPlayingSettings.ParseType).ToList(); }
+        catch (FormatException ex) { throw new BadParamsException(ex.Message); }
+
+        long? Id(string field) => msg[field] is null ? null : RequiredId(msg, field);
+        var filter = new HistoryFilter
+        {
+            From = from, To = to, Text = ReadString(msg["search"]),
+            TrackId = Id("trackId"), CampaignId = Id("campaignId"),
+            Origins = origins, Types = types, BeforeId = Id("beforeId"),
+        };
         // Se'n demana una de més per saber si n'hi ha més que les que es retornen
-        var entries = library.SearchHistory(from, to, ReadString(msg["search"]), limit + 1);
+        var entries = library.SearchHistory(filter, limit + 1);
+        bool count = msg["count"] is JsonValue c && c.TryGetValue(out bool yes) && yes;
+
+        // El nom de les campanyes de les entrades que en tenen
+        var names = entries.Any(e => e.CampaignId is not null) && _campaigns is not null
+            ? _campaigns.List().ToDictionary(k => k.Id, k => k.Name)
+            : [];
         return new JsonObject
         {
-            ["entries"] = new JsonArray(entries.Take(limit).Select(e => (JsonNode)QueueJson.History(e)).ToArray()),
+            ["entries"] = new JsonArray(entries.Take(limit).Select(e =>
+            {
+                var json = QueueJson.History(e);
+                json["campaignName"] = e.CampaignId is { } id ? names.GetValueOrDefault(id) : null;
+                return (JsonNode)json;
+            }).ToArray()),
             ["more"] = entries.Count > limit,
+            ["total"] = count ? library.CountHistory(filter with { BeforeId = null }) : null,
         };
     }
 

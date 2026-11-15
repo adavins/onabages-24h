@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 4, pas 4c (informes amb «previst i emès» i dades de l'emissora; campanyes, pla de passis, pantalla de campanyes i calendari de la campanya; motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 4, pas 5a (cerca a l'historial amb filtres; informes amb «previst i emès» i dades de l'emissora; campanyes, pla de passis, pantalla de campanyes i calendari de la campanya; motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -164,7 +164,7 @@ El `message` és en català i es pot mostrar a l'operador.
 | `reserve.get` | — | `{ rotationId, rotationName, excludedSubcategories: [ { id, name, categoryName } ] }`: la reserva de l'AutoDJ (D-099). Si cap pas de la rotació activa no troba res, sona la rotació de reserva (`rotationId`, o `null` si no n'hi ha) i, si tampoc, música de tota la biblioteca sense les subcategories «no de reserva» (si només en queden d'aquestes, també: mai silenci). Sempre amb avís a `autodj.problem` | fase 3, pas 8d |
 | `reserve.set` | `rotationId` (o `null`: cap), `excludedSubcategoryIds` (llista d'id), tots dos opcionals: el que no s'envia no canvia | Com `reserve.get`, i `rotations.changed`. Es desa. Les pistes de la cua que venien de la reserva es tornen a triar (D-097) | fase 3, pas 8d |
 | `rotations.delete` | `rotationId` | `{ deleted }` i `rotations.changed`. No es pot si és la rotació activa de l'AutoDJ, si és la rotació de reserva (8d) o si la posa algun esdeveniment (es diu quins): `bad_params` | fase 3, pas 8a |
-| `history.list` | `from`, `to`: una hora ISO 8601 amb zona (`"2026-11-10T12:00:00Z"`) o un dia (`"2026-11-10"`, en hora local; a `to`, el dia hi és inclòs). `search`: text de l'artista o del títol. `limit`: per defecte 100, com a molt 2.000. Tots opcionals | `{ entries: [ … ], more }` (vegeu 4.6): les més recents primer. `more`: n'hi ha més que les retornades | fase 1, pas 9 |
+| `history.list` | `from`, `to`: una hora ISO 8601 amb zona (`"2026-11-10T12:00:00Z"`) o un dia (`"2026-11-10"`, en hora local; a `to`, el dia hi és inclòs). `search`: text de l'artista o del títol. `limit`: per defecte 100, com a molt 2.000. Des del pas 5a de la fase 4 (D-143): `trackId`, `campaignId`, `origins` (llista de `autodj`, `manual`, `event`), `types` (llista de tipus de pista, 4.2), `beforeId` (les que van sonar abans d'aquesta entrada: per carregar-ne més) i `count` (`true`: retorna `total`). Tots opcionals | `{ entries: [ … ], more, total }` (vegeu 4.6): les més recents primer. `more`: n'hi ha més que les retornades. `total`: quantes n'hi ha amb aquests filtres (sense `beforeId`), o `null` si no s'ha demanat. Un origen o un tipus desconegut: `bad_params` | fase 1, pas 9; filtres, fase 4, pas 5a |
 | `nowplaying.get` | — | `{ nowPlaying }` (vegeu 4.6) | fase 1, pas 9 |
 | `nowplaying.set` | `enabled`, `path` (ruta completa del fitxer; `null` o `""` = el per defecte), `template` (ha de tenir `$artist$` o `$title$`), `types` (llista de tipus de pista, 4.2). Tots opcionals: el que no s'envia es queda com està | `{ nowPlaying }`. Es desa a la configuració i es torna a escriure el títol de seguida | fase 1, pas 9 |
 | `scheduler.list` | — | `{ events: [ … ] }` (vegeu 4.7): tots, també els desactivats i les plantilles | fase 2, pas 3 |
@@ -296,12 +296,14 @@ Entrada de l'historial:
 
 ```json
 { "id": 812, "trackId": 23977, "startedAt": "2026-11-10T11:51:44.0000000+00:00", "playedMs": 214350, "complete": true,
-  "origin": "autodj", "artist": "Macy Gray", "title": "Still", "path": "O:\musica\…" }
+  "origin": "autodj", "artist": "Macy Gray", "title": "Still", "path": "O:\musica\…",
+  "type": "music", "campaignId": null, "campaignName": null }
 ```
 
 - `startedAt`: hora real en què ha començat a sonar, en UTC.
 - `playedMs` i `complete`: quant ha sonat i si ha arribat al final previst; `null` mentre encara sona.
 - `trackId`: `null` si era un fitxer que no és a la biblioteca o si la pista s'ha esborrat. L'artista, el títol i la ruta són els del moment en què va sonar.
+- `type`: el tipus de la pista **ara** (4.2), o `null` si no és a la biblioteca. `campaignId` i `campaignName`: la campanya per la qual va sonar (D-142), o `null` (fase 4, pas 5a; D-143).
 
 Exportació del títol:
 

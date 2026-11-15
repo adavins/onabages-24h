@@ -117,6 +117,49 @@ public class HistoryAndNowPlayingTests : IDisposable
         Assert.Equal(["Nit", "Matí"], response["result"]!["entries"]!.AsArray().Select(e => e!["title"]!.GetValue<string>()));
     }
 
+    [Fact]
+    public void History_list_filtra_per_pista_campanya_origen_i_tipus_i_continua_on_s_havia_quedat()
+    {
+        // Fase 4, pas 5a (D-143)
+        var campaigns = new Campaigns(_db);
+        var router = new CommandRouter(new EngineState(), () => { }, _library, campaigns: campaigns);
+        JsonNode Result(string json) => router.Handle(json)["result"]!;
+        string[] Titles(JsonNode r) => r["entries"]!.AsArray().Select(e => e!["title"]!.GetValue<string>()).ToArray();
+
+        var t0 = new DateTimeOffset(2026, 11, 10, 9, 0, 0, TimeSpan.Zero);
+        long spot = _library.AddTrack(new Track { Path = @"O:\falques\Ferreteria.mp3", Artist = "Ferreteria", Title = "Falca", Type = TrackType.Commercial });
+        long campaign = campaigns.Save(new Campaign
+        {
+            Name = "Ferreteria", StartDate = new DateOnly(2026, 11, 1), EndDate = new DateOnly(2026, 11, 30), Spots = [new CampaignSpot { TrackId = spot }],
+        }, t0);
+        Played("Macy Gray", "Still", t0);
+        _library.AddHistory(_library.GetTrack(spot)!, t0.AddMinutes(4), QueueOrigin.Event, campaign);
+        Played("The Kooks", "Bad Habit", t0.AddMinutes(8), QueueOrigin.Manual);
+        _library.AddHistory(_library.GetTrack(spot)!, t0.AddMinutes(12), QueueOrigin.Manual);
+
+        Assert.Equal(["Falca", "Falca"], Titles(Result($$"""{ "v": 1, "id": 1, "cmd": "history.list", "trackId": {{spot}} }""")));
+        var byCampaign = Result($$"""{ "v": 1, "id": 1, "cmd": "history.list", "campaignId": {{campaign}} }""");
+        var entry = Assert.Single(byCampaign["entries"]!.AsArray())!;
+        Assert.Equal(("commercial", campaign, "Ferreteria"), (entry["type"]!.GetValue<string>(), entry["campaignId"]!.GetValue<long>(), entry["campaignName"]!.GetValue<string>()));
+        Assert.Equal(["Falca", "Bad Habit"], Titles(Result("""{ "v": 1, "id": 1, "cmd": "history.list", "origins": ["manual"] }""")));
+        Assert.Equal(["Bad Habit", "Still"], Titles(Result("""{ "v": 1, "id": 1, "cmd": "history.list", "types": ["music"] }""")));
+        Assert.Equal(["Bad Habit"], Titles(Result("""{ "v": 1, "id": 1, "cmd": "history.list", "types": ["music"], "origins": ["manual", "event"] }""")));
+
+        // Per pàgines: dues i dues, i el total
+        var first = Result("""{ "v": 1, "id": 1, "cmd": "history.list", "limit": 2, "count": true }""");
+        Assert.Equal(["Falca", "Bad Habit"], Titles(first));
+        Assert.Equal((true, 4), (first["more"]!.GetValue<bool>(), first["total"]!.GetValue<int>()));
+        long last = first["entries"]![1]!["id"]!.GetValue<long>();
+        var second = Result($$"""{ "v": 1, "id": 1, "cmd": "history.list", "limit": 2, "beforeId": {{last}} }""");
+        Assert.Equal(["Falca", "Still"], Titles(second));
+        Assert.False(second["more"]!.GetValue<bool>());
+        Assert.Null(second["total"]); // només si es demana
+
+        // Valors desconeguts
+        Assert.Equal("bad_params", router.Handle("""{ "v": 1, "id": 1, "cmd": "history.list", "origins": ["radio"] }""")["error"]!["code"]!.GetValue<string>());
+        Assert.Equal("bad_params", router.Handle("""{ "v": 1, "id": 1, "cmd": "history.list", "types": ["cançó"] }""")["error"]!["code"]!.GetValue<string>());
+    }
+
     [Theory]
     [InlineData("""{ "v": 1, "id": 1, "cmd": "history.list", "from": "ahir" }""")]
     [InlineData("""{ "v": 1, "id": 1, "cmd": "history.list", "from": "2026-11-10T12:00:00" }""")] // sense zona: ambigu
