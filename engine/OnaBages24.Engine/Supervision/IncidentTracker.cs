@@ -50,8 +50,9 @@ public sealed class IncidentTracker
     public event Action<Incident>? Changed;
 
     /// <summary>
-    /// En començar, tanca les que havien quedat obertes de l'execució anterior del motor: si el problema continua, es
-    /// tornaran a obrir de seguida.
+    /// En començar, continua les que havien quedat obertes de l'execució anterior del motor (no es tanquen pel reinici: es
+    /// tancaran quan el motor comprovi que el problema ja no hi és). Per això, cada tipus que dura s'ha de tornar a mirar
+    /// després d'arrencar (<see cref="Set"/> o <see cref="SetAll"/>).
     /// </summary>
     public IncidentTracker(IncidentStore store, ILogger log, Func<DateTimeOffset>? clock = null)
     {
@@ -60,12 +61,17 @@ public sealed class IncidentTracker
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         try
         {
-            if (_store.CloseAllOpen(_clock()) is var closed and > 0)
-                _log.LogInformation("Incidències: {Count} obertes de l'execució anterior, tancades", closed);
+            // Les més antigues primer: si n'hi hagués dues de la mateixa clau, es continua la més nova i es tanca l'altra
+            foreach (var incident in _store.List(new IncidentFilter { Open = true, Limit = 1000 }).Incidents.Reverse())
+            {
+                if (_open.TryGetValue(incident.Key, out var older)) _store.Close(older.Id, _clock(), recovered: false);
+                _open[incident.Key] = incident;
+            }
+            if (_open.Count > 0) _log.LogInformation("Incidències: {Count} obertes de l'execució anterior; es continuen", _open.Count);
         }
         catch (Exception ex) when (ex is DatabaseException or SqliteException)
         {
-            _log.LogWarning("Incidències: no s'han pogut tancar les de l'execució anterior ({Message})", ex.Message);
+            _log.LogWarning("Incidències: no s'han pogut llegir les de l'execució anterior ({Message})", ex.Message);
         }
     }
 

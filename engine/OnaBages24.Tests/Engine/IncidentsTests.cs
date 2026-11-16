@@ -102,14 +102,19 @@ public sealed class IncidentsTests : IDisposable
     }
 
     [Fact]
-    public void En_arrencar_es_tanquen_les_obertes_de_l_execucio_anterior()
+    public void En_arrencar_es_continuen_les_obertes_de_l_execucio_anterior_fins_que_es_resolen()
     {
+        var started = _now;
         Tracker().Set(IncidentKind.Output, "sortida", IncidentSeverity.Danger, "Emergència");
         _now = _now.AddHours(1);
 
         var tracker = Tracker(); // el motor torna a arrencar
-        Assert.Empty(tracker.Open);
-        Assert.Equal(_now, All().Single().EndedAt);
+        Assert.Equal(started, tracker.Open.Single().StartedAt);
+        tracker.Set(IncidentKind.Output, "sortida", IncidentSeverity.Danger, "Emergència"); // continua igual: no se n'obre cap altra
+        Assert.Single(All());
+
+        tracker.Set(IncidentKind.Output, "sortida", IncidentSeverity.Danger, null);
+        Assert.Equal((started, (DateTimeOffset?)_now), (All().Single().StartedAt, All().Single().EndedAt));
     }
 
     [Fact]

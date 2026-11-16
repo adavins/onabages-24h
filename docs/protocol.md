@@ -483,7 +483,7 @@ Tot el que va malament a l'emissió, desat a la base de dades (migració 009) i 
 - **Les que duren** s'obren quan apareixen i es tanquen quan desapareixen (el motor ho mira cada 2 s): `SORTIDA` (sortida d'emergència o cap sortida; `danger`), `AUTODJ` (l'AutoDJ no troba pistes o fa servir la reserva), `BUTT` (no es pot escriure el títol, si està activat) i `CARPETA` (una carpeta vigilada que no es pot revisar o amb fitxers que falten; una per carpeta). Mentre són obertes, `endedAt` és `null` i `open` és `true`.
 - **Les d'un moment** es desen ja tancades (`startedAt` = `endedAt`): `FITXER` (una pista que no s'ha pogut fer sonar i s'ha saltat, o un auxiliar o un sweeper; `detail`: la ruta), `PAUSA` (una pausa que ha continuat sola o una pista que no s'ha pogut tornar a obrir, D-103), `ESDEVENIMENT_OMES` (`OMES_TARD` al registre), `ESDEVENIMENT_ERROR` (`ERROR`; `danger`) i `ESDEVENIMENT_TARD` (un TALLA, SUPERPOSA o auxiliar que ha començat més de 2 s tard). Els omesos per conflicte, pel canvi d'hora o amb els esdeveniments aturats, i el contingut d'un ENCUA tret de la cua, no són incidències.
 - `severity`: `danger`, `warning` o `info`. `recovered`: el motor ho ha resolt sol (p. ex. ha saltat la pista i l'emissió ha continuat).
-- En arrencar, el motor tanca les que havien quedat obertes; si el problema continua, es tornen a obrir.
+- En arrencar, el motor **continua** les que havien quedat obertes (un reinici no les resol): les tanca quan comprova que el problema ja no hi és (les carpetes, després de la primera revisió).
 
 ## 5. Esdeveniments
 

@@ -430,6 +430,9 @@ public static class EngineServer
                 ? $"No s'ha pogut fer sonar el sweeper «{e.Item}» (la pista ha sonat sense): {e.Message}"
                 : $"No s'ha pogut fer sonar «{e.Item}» al reproductor auxiliar {e.Player}: {e.Message}", e.Item.Path));
         queue.Problem += message => _ = Task.Run(() => incidents.Report(IncidentKind.Pause, "pausa", IncidentSeverity.Warning, message, recovered: true));
+        // Les carpetes, només després de la primera revisió: abans no se'n sap res, i es tancarien les que continuen d'abans
+        bool foldersScanned = false;
+        watcher.Scanned += _ => foldersScanned = true;
         _ = Task.Run(async () =>
         {
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
@@ -443,7 +446,7 @@ public static class EngineServer
                         incidents.Set(IncidentKind.AutoDj, "autodj", IncidentSeverity.Warning, autoDj.Problem);
                         incidents.Set(IncidentKind.Butt, "butt", IncidentSeverity.Warning,
                             nowPlaying.Settings.Enabled && nowPlaying.Problem is { } butt ? $"Títol per a BUTT: {butt}" : null);
-                        incidents.SetAll(IncidentKind.Folder, IncidentSeverity.Warning, IncidentRules.Folders(watcher.Status));
+                        if (foldersScanned) incidents.SetAll(IncidentKind.Folder, IncidentSeverity.Warning, IncidentRules.Folders(watcher.Status));
                     }
                     catch (Exception ex)
                     {

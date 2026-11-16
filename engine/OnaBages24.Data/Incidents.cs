@@ -112,20 +112,6 @@ public sealed class IncidentStore(Database database)
         }
     }
 
-    /// <summary>
-    /// Tanca totes les que han quedat obertes (en arrencar el motor: les de l'execució d'abans). Si encara passa, el motor
-    /// la tornarà a obrir. Retorna quantes n'ha tancat.
-    /// </summary>
-    public int CloseAllOpen(DateTimeOffset at)
-    {
-        lock (database.Sync)
-        {
-            using var command = database.Command("UPDATE incidencia SET fi = max(inici, $fi) WHERE fi IS NULL;");
-            command.Parameters.AddWithValue("$fi", DbTime.ToText(at));
-            return command.ExecuteNonQuery();
-        }
-    }
-
     /// <summary>Les que compleixen els filtres, les més recents primer, i quantes n'hi ha en total.</summary>
     public (IReadOnlyList<Incident> Incidents, int Total) List(IncidentFilter filter)
     {
