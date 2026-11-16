@@ -175,6 +175,11 @@ public sealed record ExecutionRecord
     public DateTimeOffset? ExecutedAt { get; init; }
     public ExecutionResult Result { get; init; }
     public string? Detail { get; init; }
+    /// <summary>
+    /// Per a un esdeveniment a l'hora exacta (TALLA, SUPERPOSA o auxiliar) que ja ha començat: quants mil·lisegons tard
+    /// (o d'hora, si és negatiu) ha sonat. No es desa: el motor en fa una incidència si passa de 2 s (fase 5, pas 1).
+    /// </summary>
+    public double? StartDelayMs { get; init; }
 }
 
 /// <summary>

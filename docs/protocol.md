@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 4, pas 7b (còpies de seguretat i restauració; paquet de campanya; avisos de vigència; calendaris desats i temporada; cerca a l'historial amb filtres; informes amb «previst i emès» i dades de l'emissora; campanyes, pla de passis, pantalla de campanyes i calendari de la campanya; motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 5, pas 1a (incidències; còpies de seguretat i restauració; paquet de campanya; avisos de vigència; calendaris desats i temporada; cerca a l'historial amb filtres; informes amb «previst i emès» i dades de l'emissora; campanyes, pla de passis, pantalla de campanyes i calendari de la campanya; motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -186,6 +186,7 @@ El `message` és en català i es pot mostrar a l'operador.
 | `scheduler.save` | `event` (4.7). Sense `id` (o 0), en crea un de nou; amb `id`, el substitueix sencer (els camps que no s'envien prenen el valor per defecte) | `{ event, warnings }`: l'esdeveniment tal com s'ha desat i els avisos (vegeu 4.7; pas 8c). El planificador el té en compte de seguida. Si no és coherent (p. ex. «cada N setmanes» sense dia de referència), `bad_params` amb el motiu en català Ha de tenir **alguna acció**, i cada `STREAM`, quin stream és (`songId` o, als d'abans, `url`) i `durada_seg` (D-108); i cada `CAMPANYA`, una campanya que existeixi (`campanyaId`; pas 3c); si no, `bad_params`. | fase 2, pas 3; accions obligatòries, D-108 |
 | `scheduler.preview` | `event` (4.7), encara que no s'hagi desat; `limit` (per defecte 10, com a molt 100) | `{ occurrences: [ … ], warnings }` (4.7): les pròximes emissions des d'ara (fins a 400 dies), comptant-hi les dates excloses i els canvis d'hora, i els avisos (pas 8c). No desa res. Si l'esdeveniment no és coherent, `bad_params` amb el motiu en català | fase 2, pas 8b |
 | `scheduler.delete` | `eventId` | `{ deleted: <id> }`. El registre d'execució es conserva | fase 2, pas 3 |
+| `incidents.list` | `open` (`true`: només les obertes, totes, les més greus primer, i la resta de filtres no compten; `false`: només les resoltes), `from`, `to` (com a `history.list`: quan han començat), `kinds` (llista de tipus, 4.13), `offset` (per defecte 0), `limit` (per defecte 100, com a molt 500). Tots opcionals | `{ incidents: [ … ], total }` (4.13): les més recents primer (amb `open: true`, les més greus primer). `total`: quantes n'hi ha amb aquests filtres | fase 5, pas 1a (D-156) |
 | `scheduler.occurrences` | `from`, `to` (com a `history.list`; per defecte, d'ara a 24 h; com a molt 400 dies), `eventId` (només aquest, encara que estigui desactivat), `includeDisabled` (també els desactivats; per defecte, no), `limit` (per defecte 200, com a molt 2.000) | `{ occurrences: [ … ], more }` (4.7), per ordre. Sense `eventId`, només els actius que no són plantilles (amb `includeDisabled`, també els desactivats) | fase 2, pas 3; `includeDisabled`, pas 8a |
 | `scheduler.status` | — | `{ paused }`: si els esdeveniments estan aturats, `{ until, by }` (fins quan, hora ISO, i qui); si funcionen, `null` | fase 3, pas 2c |
 | `scheduler.pause` | `minutes` (1 a 720) **o bé** `until` (una hora ISO, com a molt d'aquí a 12 h) | `{ paused }`. «Atura els esdeveniments» (D-073, D-077): mentre estan aturats no se'n dispara cap, ni els senyals horaris, i queden al registre com a `OMES_ATURAT`; en reactivar-los, el que ja havia d'haver sonat tampoc no sona. Mai indefinidament: a l'hora tornen a funcionar sols. Es manté si el motor es reinicia | fase 3, pas 2c |
@@ -470,6 +471,20 @@ Estat (`folders.status`, `folders.changed`), una entrada per subcategoria amb ca
 - **Pla de passis i acció `CAMPANYA`** (pas 3b, D-123): el motor calcula quina falca sona a cada emissió dels esdeveniments que fan sonar la campanya (vegeu `campaigns.plan`) i el torna a calcular quan canvien les campanyes, els esdeveniments o la biblioteca (només els passis futurs). Per repartir les falques compta el que ha sonat de debò (historial), no els passis d'abans del pla (D-127). En sonar, l'acció posa la falca del pla al seu lloc dins del contingut; si no pot sonar, una altra de vàlida de la campanya; si no en pot sonar cap (o la campanya és un esborrany o està acabada), no posa res. Tot queda al detall del registre d'execució (`scheduler.log`). L'historial desa la campanya de cada falca que sona (`campanya_id`).
 - Una pista que és falca d'una campanya no es pot esborrar ni es treu de la biblioteca en buidar la subcategoria o quan surt d'una carpeta vigilada.
 
+### 4.13. Incidències (fase 5, pas 1; D-156)
+
+Tot el que va malament a l'emissió, desat a la base de dades (migració 009) i conservat 1 any. Restaurar una còpia no les toca (són el registre d'aquest ordinador).
+
+```json
+{ "id": 41, "kind": "SORTIDA", "severity": "danger", "text": "S'emet per la sortida d'emergència: …", "detail": null,
+  "startedAt": "2026-11-16T09:00:00.0000000+00:00", "endedAt": null, "open": true, "recovered": false }
+```
+
+- **Les que duren** s'obren quan apareixen i es tanquen quan desapareixen (el motor ho mira cada 2 s): `SORTIDA` (sortida d'emergència o cap sortida; `danger`), `AUTODJ` (l'AutoDJ no troba pistes o fa servir la reserva), `BUTT` (no es pot escriure el títol, si està activat) i `CARPETA` (una carpeta vigilada que no es pot revisar o amb fitxers que falten; una per carpeta). Mentre són obertes, `endedAt` és `null` i `open` és `true`.
+- **Les d'un moment** es desen ja tancades (`startedAt` = `endedAt`): `FITXER` (una pista que no s'ha pogut fer sonar i s'ha saltat, o un auxiliar o un sweeper; `detail`: la ruta), `PAUSA` (una pausa que ha continuat sola o una pista que no s'ha pogut tornar a obrir, D-103), `ESDEVENIMENT_OMES` (`OMES_TARD` al registre), `ESDEVENIMENT_ERROR` (`ERROR`; `danger`) i `ESDEVENIMENT_TARD` (un TALLA, SUPERPOSA o auxiliar que ha començat més de 2 s tard). Els omesos per conflicte, pel canvi d'hora o amb els esdeveniments aturats, i el contingut d'un ENCUA tret de la cua, no són incidències.
+- `severity`: `danger`, `warning` o `info`. `recovered`: el motor ho ha resolt sol (p. ex. ha saltat la pista i l'emissió ha continuat).
+- En arrencar, el motor tanca les que havien quedat obertes; si el problema continua, es tornen a obrir.
+
 ## 5. Esdeveniments
 
 | Esdeveniment | Camps | Freqüència | Des de |
@@ -498,6 +513,7 @@ Estat (`folders.status`, `folders.changed`), una entrada per subcategoria amb ca
 | `meters` | `output` (nivells de la sortida), `reductionDb` (quant abaixa el processador), `position` (la pista que sona); vegeu 5.1 | unes 20 vegades per segon, només si hi ha algun client connectat | fase 1, pas 10a |
 | `scheduler.fired` | `entry` (línia del registre, 4.7) | quan el planificador executa o omet una emissió, i quan comença la primera pista d'un TALLA o l'auxiliar d'un SUPERPOSA (la mateixa línia, completada) | fase 2, passos 3 a 5 |
 | `scheduler.paused` | `paused` (com a `scheduler.status`) | quan s'aturen o es reactiven els esdeveniments (també quan tornen a funcionar sols) | fase 3, pas 2c |
+| `incidents.changed` | `incident` (4.13) | quan s'obre, canvia o es tanca una incidència, o se n'anota una d'un moment | fase 5, pas 1a (D-156) |
 | `scheduler.changed` | — | quan es desa o s'esborra un esdeveniment (la interfície torna a demanar el que mostra) | fase 2, pas 3 |
 
 ### 5.1. Mesuradors i posició

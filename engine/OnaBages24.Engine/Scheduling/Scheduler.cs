@@ -434,7 +434,7 @@ public sealed class Scheduler
             string difference = Math.Abs(started.DelayMs) < 0.5
                 ? "ha començat a la mostra prevista"
                 : $"ha començat amb {started.DelayMs:+0;-0} ms de diferència";
-            record = record with { ExecutedAt = started.HeardAt ?? _clock(), Detail = $"{record.Detail}; {difference}" };
+            record = record with { ExecutedAt = started.HeardAt ?? _clock(), Detail = $"{record.Detail}; {difference}", StartDelayMs = started.DelayMs };
             _log.LogInformation("Esdeveniment «{Name}»: {Difference}", record.Name, difference);
             try
             {

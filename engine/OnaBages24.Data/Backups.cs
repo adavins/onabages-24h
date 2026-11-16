@@ -148,7 +148,8 @@ public sealed class Backups(Database database, string folder)
     /// 3. copia el contingut de la còpia a la base de dades i aplica les migracions que faltin;
     /// 4. si es demana, hi torna a posar l'historial i el registre d'execució d'ara que són posteriors a la còpia (perquè no
     ///    es perdin emissions dels certificats, D-011) i els valors d'ara de les claus de configuració indicades (les que
-    ///    depenen de l'ordinador, com la sortida d'àudio).
+    ///    depenen de l'ordinador, com la sortida d'àudio);
+    /// 5. les incidències es queden totes com ara (són el registre d'aquest ordinador, D-156), també les obertes.
     /// Tot dins del mateix bloqueig: cap altre codi escriu a mig fer. L'àudio no depèn de la base de dades.
     /// </summary>
     public RestoreResult Restore(string backupPath, RestoreOptions options, DateTime? now = null)
@@ -168,7 +169,7 @@ public sealed class Backups(Database database, string folder)
         lock (database.Sync)
         {
             using var copy = ReadableCopy.Of(backupPath);
-            List<object?[]> history = [], executions = [];
+            List<object?[]> history = [], executions = [], incidents = [];
             var settings = new Dictionary<string, string?>();
             using (var source = OpenFile(copy.Path, SqliteOpenMode.ReadWrite))
             {
@@ -184,6 +185,9 @@ public sealed class Backups(Database database, string folder)
                         "SELECT id, esdeveniment_id, nom, programat_per, executat_a, resultat, detall FROM registre_execucio " +
                         "WHERE $after IS NULL OR programat_per > $after ORDER BY id;", lastExecution);
                 }
+                // Les incidències d'ara, totes (D-156)
+                incidents = Rows(database.Connection,
+                    "SELECT id, tipus, clau, gravetat, text, detall, inici, fi, recuperada FROM incidencia WHERE $after IS NULL ORDER BY id;", null);
                 foreach (string key in options.KeepSettings)
                 {
                     using var read = database.Command("SELECT valor FROM configuracio WHERE clau = $k;");
@@ -197,6 +201,16 @@ public sealed class Backups(Database database, string folder)
             using var transaction = database.BeginTransaction();
             foreach (var row in history) InsertHistory(row, transaction);
             foreach (var row in executions) InsertExecution(row, transaction);
+            using (var clear = database.Command("DELETE FROM incidencia;", transaction)) clear.ExecuteNonQuery();
+            foreach (var row in incidents)
+            {
+                using var insert = database.Command(
+                    "INSERT INTO incidencia (id, tipus, clau, gravetat, text, detall, inici, fi, recuperada) " +
+                    "VALUES ($id, $tipus, $clau, $gravetat, $text, $detall, $inici, $fi, $recuperada);", transaction);
+                string[] names = ["$id", "$tipus", "$clau", "$gravetat", "$text", "$detall", "$inici", "$fi", "$recuperada"];
+                for (int i = 0; i < names.Length; i++) insert.Parameters.AddWithValue(names[i], row[i] ?? DBNull.Value);
+                insert.ExecuteNonQuery();
+            }
             foreach (var (key, value) in settings)
             {
                 using var write = database.Command(value is null

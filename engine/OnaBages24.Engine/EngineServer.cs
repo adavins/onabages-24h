@@ -4,6 +4,7 @@ using OnaBages24.Data;
 using OnaBages24.Engine.Infrastructure;
 using OnaBages24.Engine.Playback;
 using OnaBages24.Engine.Protocol;
+using OnaBages24.Engine.Supervision;
 
 namespace OnaBages24.Engine;
 
@@ -96,6 +97,16 @@ public static class EngineServer
             catch (OperationCanceledException) { }
         });
 
+        // Incidències (fase 5, pas 1; D-156): tot el que va malament a l'emissió, desat i enviat a les interfícies
+        var incidentStore = new IncidentStore(database);
+        var incidents = new IncidentTracker(incidentStore, log);
+        incidents.Changed += incident =>
+        {
+            var ev = Messages.Event("incidents.changed");
+            ev["incident"] = CommandRouter.IncidentJson(incident);
+            Broadcast(ev);
+        };
+
         // Àudio (D-005, D-039): mesclador estèreo a 48 kHz, una sola sortida i la cua d'emissió
         var mixer = new Mixer(sampleRate: 48000);
         // Processador de sortida (fase 3, pas 6): el desat o «Suau», i el sostre de seguretat sempre. Es desa i s'avisa en canviar.
@@ -179,6 +190,9 @@ public static class EngineServer
             var ev = Messages.Event("scheduler.fired");
             ev["entry"] = EventJson.Execution(record);
             Broadcast(ev);
+            // Omès, fallat o fet tard: incidència (fora del fil de control, perquè escriu a la base de dades)
+            if (IncidentRules.FromExecution(record) is { } incident)
+                _ = Task.Run(() => incidents.Report(incident.Kind, $"esdeveniment:{record.EventId}", incident.Severity, incident.Text));
         };
         scheduler.EventsChanged += () =>
         {
@@ -247,7 +261,8 @@ public static class EngineServer
         var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
             events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher,
-            campaigns: campaigns, savedCalendars: new SavedCalendars(database), backups: backups);
+            campaigns: campaigns, savedCalendars: new SavedCalendars(database), backups: backups,
+            incidentStore: incidentStore, incidents: incidents);
         // Editor de rotacions (fase 3, pas 8a): les interfícies tornen a demanar les rotacions
         router.RotationsChanged += () => Broadcast(Messages.Event("rotations.changed"));
         // Calendaris desats (fase 4, pas 6a): les interfícies tornen a demanar la llista
@@ -405,6 +420,40 @@ public static class EngineServer
 
         var stopping = app.Lifetime.ApplicationStopping;
 
+        // Incidències que duren (fase 5, pas 1): cada 2 s es mira com estan la sortida, l'AutoDJ, el títol per a BUTT i les
+        // carpetes vigilades, i s'obren o es tanquen. Les d'un moment (una pista saltada, una pausa que continua sola) s'anoten
+        // quan passen, fora del fil de control.
+        queue.Failed += e => _ = Task.Run(() => incidents.Report(IncidentKind.File, $"fitxer:{e.Item.Path}", IncidentSeverity.Warning,
+            $"No s'ha pogut fer sonar «{e.Item}» i s'ha saltat: {e.Message}", e.Item.Path, recovered: true));
+        aux.Failed += e => _ = Task.Run(() => incidents.Report(IncidentKind.File, $"fitxer:{e.Item.Path}", IncidentSeverity.Warning,
+            e.Player == AuxPlayers.SweeperPlayer
+                ? $"No s'ha pogut fer sonar el sweeper «{e.Item}» (la pista ha sonat sense): {e.Message}"
+                : $"No s'ha pogut fer sonar «{e.Item}» al reproductor auxiliar {e.Player}: {e.Message}", e.Item.Path));
+        queue.Problem += message => _ = Task.Run(() => incidents.Report(IncidentKind.Pause, "pausa", IncidentSeverity.Warning, message, recovered: true));
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+            try
+            {
+                while (await timer.WaitForNextTickAsync(stopping))
+                {
+                    try
+                    {
+                        incidents.Set(IncidentKind.Output, "sortida", IncidentSeverity.Danger, outputs.Problem);
+                        incidents.Set(IncidentKind.AutoDj, "autodj", IncidentSeverity.Warning, autoDj.Problem);
+                        incidents.Set(IncidentKind.Butt, "butt", IncidentSeverity.Warning,
+                            nowPlaying.Settings.Enabled && nowPlaying.Problem is { } butt ? $"Títol per a BUTT: {butt}" : null);
+                        incidents.SetAll(IncidentKind.Folder, IncidentSeverity.Warning, IncidentRules.Folders(watcher.Status));
+                    }
+                    catch (Exception ex)
+                    {
+                        log.LogWarning("Incidències: no s'ha pogut revisar l'estat ({Message})", ex.Message);
+                    }
+                }
+            }
+            catch (OperationCanceledException) { }
+        });
+
         // Cada segon, l'estat general a tots els clients.
         _ = Task.Run(async () =>
         {
@@ -462,6 +511,8 @@ public static class EngineServer
                     {
                         if (backups.CreateIfDue() is { } copy)
                             log.LogInformation("Còpia de seguretat: {Path}", copy);
+                        // Les incidències es conserven 1 any (D-156)
+                        incidents.Purge();
                     }
                     catch (Exception ex)
                     {

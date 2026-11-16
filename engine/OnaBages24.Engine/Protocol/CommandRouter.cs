@@ -59,9 +59,11 @@ public sealed partial class CommandRouter
         NowPlaying? nowPlaying = null, Events? events = null, Scheduler? scheduler = null, AuxPlayers? aux = null,
         SweeperOverlay? sweepers = null, OutputProcessor? processor = null, LibraryTools.LibraryImporter? importer = null,
         LibraryTools.FolderWatcher? watcher = null, Campaigns? campaigns = null, SavedCalendars? savedCalendars = null,
-        Backups? backups = null)
+        Backups? backups = null, IncidentStore? incidentStore = null, Supervision.IncidentTracker? incidents = null)
     {
         _backups = backups;
+        _incidentStore = incidentStore;
+        _incidents = incidents;
         _campaigns = campaigns;
         _savedCalendars = savedCalendars;
         _importer = importer;
@@ -220,6 +222,7 @@ public sealed partial class CommandRouter
                 "reserve.get" => ReserveJson(AutoDjOrError().Reserve),
                 "reserve.set" => ReserveSet(msg),
                 "history.list" => HistoryList(msg),
+                "incidents.list" => IncidentsList(msg),
                 "nowplaying.get" => new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(NowPlayingOrError()) },
                 "nowplaying.set" => NowPlayingSet(msg),
                 "scheduler.list" => SchedulerList(),
