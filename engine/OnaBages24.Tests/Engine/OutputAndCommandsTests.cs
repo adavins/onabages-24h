@@ -27,13 +27,86 @@ public class OutputManagerTests
 
     private readonly Dictionary<string, FakeOutput> _opened = [];
 
+    private TimeSpan _now = TimeSpan.FromMinutes(1);
+
     private OutputManager Manager(Mixer mixer) => new(mixer, () => _devices.ToList(), id =>
     {
         if (!_devices.Any(d => d.Id == id && d.Status == DeviceStatus.Active)) throw new AudioDeviceException("Dispositiu no disponible.");
         var output = new FakeOutput(id == "spdif" ? 44100 : 48000);
         _opened[id] = output;
         return output;
-    });
+    }, () => _now);
+
+    /// <summary>Passa el temps de mig en mig segon, com el fil de control; si <paramref name="pump"/>, la sortida demana so.</summary>
+    private void Wait(OutputManager manager, double seconds, bool pump)
+    {
+        for (int i = 0; i < seconds * 2; i++)
+        {
+            _now += TimeSpan.FromMilliseconds(500);
+            if (pump && manager.Current is { } device) _opened[device.Id].Pump(480);
+            manager.Ensure();
+        }
+    }
+
+    [Fact]
+    public void Una_sortida_que_deixa_de_demanar_so_es_torna_a_obrir()
+    {
+        var mixer = new Mixer(48000);
+        var manager = Manager(mixer);
+        manager.Configure(new ConfiguredOutput("realtek", "Altaveus (Realtek)"));
+        manager.Ensure();
+        var first = _opened["realtek"];
+        Wait(manager, 10, pump: true);
+        Assert.Null(manager.Problem);
+
+        // Deixa de demanar so sense cap error: als 3 s es tanca i es torna a obrir la mateixa
+        Wait(manager, 2.5, pump: false);
+        Assert.Same(first, _opened["realtek"]);
+        Wait(manager, 0.5, pump: false);
+        Assert.True(first.Disposed);
+        Assert.NotSame(first, _opened["realtek"]);
+        Assert.Equal("realtek", manager.Current?.Id);
+        Assert.Contains("intent 1 de 3", manager.Problem);
+
+        // La nova demana so: l'avís es manté 5 s (perquè quedi anotat) i després marxa
+        Wait(manager, 4, pump: true);
+        Assert.NotNull(manager.Problem);
+        Wait(manager, 1.5, pump: true);
+        Assert.Null(manager.Problem);
+        Assert.False(manager.IsEmergency);
+    }
+
+    [Fact]
+    public void Si_no_es_recupera_despres_de_tres_intents_passa_a_la_d_emergencia_i_no_hi_torna_sola()
+    {
+        var mixer = new Mixer(48000);
+        var manager = Manager(mixer);
+        manager.Configure(new ConfiguredOutput("realtek", "Altaveus (Realtek)"));
+        manager.Ensure();
+
+        // Mai no demana so: 3 s, i després 10, 10 i 10 s
+        var opened = new HashSet<FakeOutput>();
+        for (int i = 0; i < 66 && manager.Current?.Id == "realtek"; i++)
+        {
+            opened.Add(_opened["realtek"]);
+            Wait(manager, 0.5, pump: false);
+        }
+        Assert.Equal(4, opened.Count); // l'original i tres intents
+        Assert.Equal("blaster", manager.Current?.Id);
+        Assert.True(manager.IsEmergency);
+        Assert.Contains("altra sortida", manager.Problem);
+
+        // La d'emergència sí que demana so; no es torna a la configurada, que continua «activa» per a Windows
+        Wait(manager, 10, pump: true);
+        Assert.Equal("blaster", manager.Current?.Id);
+        Assert.Contains("s'ha encallat", manager.Problem);
+
+        // Tornar-la a triar és tornar-la a provar
+        manager.Configure(new ConfiguredOutput("realtek", "Altaveus (Realtek)"));
+        manager.Ensure();
+        Assert.Equal("realtek", manager.Current?.Id);
+        Assert.Null(manager.Problem);
+    }
 
     [Fact]
     public void L_ordre_es_la_configurada_i_despres_analogiques_digitals_i_HDMI()

@@ -33,6 +33,13 @@ public sealed class PeakMeter
     /// </param>
     public void AddInterleaved(ReadOnlySpan<float> samples, int channels, float gain = 1f, float ceiling = float.MaxValue)
     {
+        var (left, right) = PeakOf(samples, channels);
+        Add(Math.Min(left * gain, ceiling), Math.Min(right * gain, ceiling));
+    }
+
+    /// <summary>El pic dels dos primers canals d'un bloc intercalat (un sol canal compta per als dos). Sense objectes nous.</summary>
+    public static (float Left, float Right) PeakOf(ReadOnlySpan<float> samples, int channels)
+    {
         float left = 0, right = 0;
         int second = channels > 1 ? 1 : 0;
         for (int i = 0; i + channels <= samples.Length; i += channels)
@@ -42,7 +49,7 @@ public sealed class PeakMeter
             if (l > left) left = l;
             if (r > right) right = r;
         }
-        Add(Math.Min(left * gain, ceiling), Math.Min(right * gain, ceiling));
+        return (left, right);
     }
 
     /// <summary>Retorna el pic des de l'última crida i el torna a posar a zero.</summary>

@@ -50,6 +50,12 @@ public sealed class Mixer : IWaveProvider
     public PeakMeter Meter { get; } = new();
 
     /// <summary>
+    /// El mateix pic, per a la detecció de silenci (fase 5, pas 3; D-158). És a part perquè cada un el buida quan el llegeix
+    /// (els mesuradors de la pantalla, unes 20 vegades per segon; el detector, unes 4).
+    /// </summary>
+    public PeakMeter SilenceMeter { get; } = new();
+
+    /// <summary>
     /// Processador d'àudio de la sortida (fase 3, pas 6; D-086): compressor, volum i sostre de seguretat, a la mescla
     /// final (música, auxiliars i sweepers), just abans de la targeta. Per defecte, desactivat: el so passa igual.
     /// </summary>
@@ -120,7 +126,9 @@ public sealed class Mixer : IWaveProvider
             // Processador de sortida (fase 3, pas 6): al mateix lloc, sense objectes nous. Activat, retarda el so 1,5 ms.
             Processor.Process(mix);
 
-            Meter.AddInterleaved(mix, 2);
+            var (left, right) = PeakMeter.PeakOf(mix, 2);
+            Meter.Add(left, right);
+            SilenceMeter.Add(left, right);
             WriteOutput(mix, output.Slice(done * _outChannels, frames * _outChannels), frames);
 
             Interlocked.Add(ref _framesRendered, frames);

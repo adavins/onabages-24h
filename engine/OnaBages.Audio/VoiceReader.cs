@@ -138,7 +138,7 @@ public sealed class VoiceReader : IDisposable
         }
         catch (Exception ex)
         {
-            Volatile.Write(ref _error, ex is AudioFileException ? ex.Message : $"No s'ha pogut llegir {System.IO.Path.GetFileName(_path)}: {ex.Message}");
+            Volatile.Write(ref _error, ex is AudioFileException ? ex.Message : $"No s'ha pogut llegir {System.IO.Path.GetFileName(_path)}: {AudioErrors.Message(ex)}");
             _voice.MarkSourceFinished();
             Volatile.Write(ref _state, (int)ReaderState.Failed);
         }

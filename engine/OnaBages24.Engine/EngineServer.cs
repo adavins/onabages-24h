@@ -128,6 +128,9 @@ public static class EngineServer
         var outputs = new OutputManager(mixer);
         outputs.Configure(ReadConfiguredOutput(library, log));
         var queue = new QueuePlayer(mixer);
+        // Silenci a la sortida (fase 5, pas 3; D-158): el llindar i els segons desats
+        var silence = new Supervision.SilenceDetector(mixer, queue);
+        ConfigureSilence(silence, library);
         // Rellotge de mostres (fase 2, pas 4): l'hora en què sona cada fotograma, amb la latència mesurada de la sortida (pas 4b)
         var sampleClock = new SampleClock(mixer, () => outputs.Latency);
         // Reproductors auxiliars (fase 2, pas 5): senyals horaris per sobre de la música, amb atenuació opcional
@@ -262,7 +265,7 @@ public static class EngineServer
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
             events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher,
             campaigns: campaigns, savedCalendars: new SavedCalendars(database), backups: backups,
-            incidentStore: incidentStore, incidents: incidents);
+            incidentStore: incidentStore, incidents: incidents, silence: silence);
         // Editor de rotacions (fase 3, pas 8a): les interfícies tornen a demanar les rotacions
         router.RotationsChanged += () => Broadcast(Messages.Event("rotations.changed"));
         // Calendaris desats (fase 4, pas 6a): les interfícies tornen a demanar la llista
@@ -311,6 +314,7 @@ public static class EngineServer
             aux.DefaultDuckingDb = ducking.Aux;
             sweepers.DuckingDb = ducking.Sweepers;
             ConfigureProcessor(processor, library, log);
+            ConfigureSilence(silence, library);
             nowPlaying.Configure(ReadNowPlayingSettings(library, log));
             // Els esdeveniments i el pla de les campanyes (scheduler.changed)
             scheduler.Reload();
@@ -365,7 +369,7 @@ public static class EngineServer
         });
 
         // Fil de control (docs/disseny-motor.md, 3): la cua cada 10 ms i la sortida cada 0,5 s. Mai no fa esperar el fil d'àudio.
-        var control = new ControlLoop(queue, outputs, log, autoDj, scheduler, aux, sweepers);
+        var control = new ControlLoop(queue, outputs, log, autoDj, scheduler, aux, sweepers, silence);
 
         // Comprovació de vida (sense testimoni). Només diu «ok» si el mesclador ha enviat àudio a la sortida en els
         // últims 2 segons (D-045) i el fil de control ha fet alguna volta en els últims 5 (fase 5, pas 2; D-157): un motor
@@ -443,6 +447,9 @@ public static class EngineServer
                 _ = Task.Run(() => incidents.Report(IncidentKind.Dropouts, $"fitxer:{e.Item.Path}", IncidentSeverity.Warning,
                     IncidentRules.DropoutsText(e.Item.ToString(), e.Dropouts), e.Item.Path));
         };
+        // Silenci a la sortida (fase 5, pas 3; D-158): una pista en silenci que s'ha saltat
+        silence.Skipped += e => _ = Task.Run(() => incidents.Report(IncidentKind.Silence, $"fitxer:{e.Item.Path}", IncidentSeverity.Warning,
+            IncidentRules.SilenceSkipText(e.Item.ToString(), e.Position, silence.Seconds), e.Item.Path, recovered: true));
         // Les carpetes, només després de la primera revisió: abans no se'n sap res, i es tancarien les que continuen d'abans
         bool foldersScanned = false;
         watcher.Scanned += _ => foldersScanned = true;
@@ -457,6 +464,8 @@ public static class EngineServer
                     {
                         incidents.Set(IncidentKind.Output, "sortida", IncidentSeverity.Danger, outputs.Problem);
                         incidents.Set(IncidentKind.AutoDj, "autodj", IncidentSeverity.Warning, autoDj.Problem);
+                        var silent = silence.Problem;
+                        incidents.Set(IncidentKind.Silence, "silenci", silent?.Severity ?? IncidentSeverity.Danger, silent?.Text);
                         incidents.Set(IncidentKind.Butt, "butt", IncidentSeverity.Warning,
                             nowPlaying.Settings.Enabled && nowPlaying.Problem is { } butt ? $"Títol per a BUTT: {butt}" : null);
                         if (foldersScanned) incidents.SetAll(IncidentKind.Folder, IncidentSeverity.Warning, IncidentRules.Folders(watcher.Status));
@@ -603,6 +612,14 @@ public static class EngineServer
         {
             log.LogWarning("La categoria de sweepers desada no és vàlida ({Message}): no n'hi ha cap", ex.Message);
         }
+    }
+
+    /// <summary>Silenci a la sortida (fase 5, pas 3; D-158): el llindar i els segons desats, o els per defecte.</summary>
+    private static void ConfigureSilence(Supervision.SilenceDetector silence, Library library)
+    {
+        var (thresholdDb, seconds) = CommandRouter.ReadSilence(library);
+        silence.ThresholdDb = thresholdDb;
+        silence.Seconds = seconds;
     }
 
     /// <summary>Clau de la configuració amb el processador de sortida: <c>{ "preset": "suau", "volumeDb": 0 }</c>.</summary>

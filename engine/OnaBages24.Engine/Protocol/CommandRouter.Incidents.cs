@@ -9,6 +9,57 @@ public sealed partial class CommandRouter
 {
     private IncidentStore? _incidentStore;
     private IncidentTracker? _incidents;
+    private SilenceDetector? _silence;
+
+    // --- Silenci a la sortida (fase 5, pas 3; D-158) ---
+
+    public const string SilenceSettingKey = "silenci";
+    public const double MinSilenceThresholdDb = -70, MaxSilenceThresholdDb = -30;
+    public const double MinSilenceSeconds = 5, MaxSilenceSeconds = 120;
+
+    /// <summary>El llindar i els segons desats (o els per defecte, si no n'hi ha o no es poden llegir).</summary>
+    public static (double ThresholdDb, double Seconds) ReadSilence(Library? library)
+    {
+        try
+        {
+            if (library?.GetSetting(SilenceSettingKey) is { } json && JsonNode.Parse(json) is JsonObject saved)
+                return (Math.Clamp(saved["llindar"]?.GetValue<double>() ?? SilenceDetector.StandardThresholdDb, MinSilenceThresholdDb, MaxSilenceThresholdDb),
+                        Math.Clamp(saved["segons"]?.GetValue<double>() ?? SilenceDetector.StandardSeconds, MinSilenceSeconds, MaxSilenceSeconds));
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or FormatException) { }
+        return (SilenceDetector.StandardThresholdDb, SilenceDetector.StandardSeconds);
+    }
+
+    private static JsonObject SilenceJson((double ThresholdDb, double Seconds) silence) => new()
+    {
+        ["thresholdDb"] = silence.ThresholdDb,
+        ["seconds"] = silence.Seconds,
+        ["standardThresholdDb"] = SilenceDetector.StandardThresholdDb,
+        ["standardSeconds"] = SilenceDetector.StandardSeconds,
+    };
+
+    /// <summary><c>silence.set</c>: <c>thresholdDb</c> (de −70 a −30) i <c>seconds</c> (de 5 a 120), tots dos opcionals.</summary>
+    private JsonObject SilenceSet(JsonObject msg)
+    {
+        var library = _library ?? throw new BadParamsException("El motor no té biblioteca.");
+        var (thresholdDb, seconds) = ReadSilence(library);
+        static double Read(JsonNode? node, string name, double current, double min, double max, string unit)
+        {
+            if (node is null) return current;
+            if (node is not JsonValue v || !v.TryGetValue(out double value) || value < min || value > max)
+                throw new BadParamsException($"El camp '{name}' ha de ser un nombre entre {min} i {max} ({unit}).");
+            return value;
+        }
+        thresholdDb = Read(msg["thresholdDb"], "thresholdDb", thresholdDb, MinSilenceThresholdDb, MaxSilenceThresholdDb, "dB");
+        seconds = Read(msg["seconds"], "seconds", seconds, MinSilenceSeconds, MaxSilenceSeconds, "segons");
+        library.SetSetting(SilenceSettingKey, System.Text.Json.JsonSerializer.Serialize(new { llindar = thresholdDb, segons = seconds }));
+        if (_silence is not null)
+        {
+            _silence.ThresholdDb = thresholdDb;
+            _silence.Seconds = seconds;
+        }
+        return SilenceJson((thresholdDb, seconds));
+    }
 
     /// <summary>Com es diu la gravetat al protocol (els mateixos noms que els colors de la interfície).</summary>
     internal static string SeverityText(IncidentSeverity severity) => severity switch

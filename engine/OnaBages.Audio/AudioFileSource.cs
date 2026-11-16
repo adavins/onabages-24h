@@ -110,6 +110,9 @@ public sealed class AudioFileSource : IDisposable
         catch (Exception ex) when (ex is not AudioFileException)
         {
             reader?.Dispose();
+            // Un error de disc o de xarxa (D-158): el fitxer pot estar bé, no és el format
+            if (AudioErrors.IsAccessProblem(ex))
+                throw new AudioFileException($"No s'ha pogut obrir el fitxer {Path.GetFileName(path)}: {AudioErrors.Describe(ex)}.", ex);
             throw new AudioFileException(
                 $"No s'ha pogut obrir el fitxer {Path.GetFileName(path)}: format no compatible o fitxer malmès. " +
                 "Si és un MP3 o un M4A i l'ordinador té Windows «N», cal instal·lar el Media Feature Pack.", ex);

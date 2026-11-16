@@ -347,6 +347,22 @@ public class HistoryAndNowPlayingTests : IDisposable
         Assert.Equal("bad_params", Send("""{ "v": 1, "id": 4, "cmd": "ducking.set", "sweepers": "fort" }""")["error"]!["code"]!.GetValue<string>());
     }
 
+    // --- Silenci a la sortida (fase 5, pas 3; D-158) ---
+
+    [Fact]
+    public void El_llindar_i_els_segons_del_silenci_es_canvien_i_es_conserven()
+    {
+        var get = Send("""{ "v": 1, "id": 1, "cmd": "silence.get" }""")["result"]!;
+        Assert.Equal((-50.0, 15.0), (get["thresholdDb"]!.GetValue<double>(), get["seconds"]!.GetValue<double>()));
+
+        var set = Send("""{ "v": 1, "id": 2, "cmd": "silence.set", "seconds": 20 }""")["result"]!;
+        Assert.Equal((-50.0, 20.0), (set["thresholdDb"]!.GetValue<double>(), set["seconds"]!.GetValue<double>()));
+        Assert.Equal((-50.0, 20.0), CommandRouter.ReadSilence(_library)); // el que llegeix el motor en arrencar
+
+        Assert.Equal("bad_params", Send("""{ "v": 1, "id": 3, "cmd": "silence.set", "seconds": 2 }""")["error"]!["code"]!.GetValue<string>());
+        Assert.Equal("bad_params", Send("""{ "v": 1, "id": 4, "cmd": "silence.set", "thresholdDb": -10 }""")["error"]!["code"]!.GetValue<string>());
+    }
+
     [Fact]
     public void Les_notes_sense_text_o_massa_llargues_responen_bad_params()
     {

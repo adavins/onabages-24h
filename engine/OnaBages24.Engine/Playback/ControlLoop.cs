@@ -10,6 +10,7 @@ public sealed class ControlLoop : IDisposable
     private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(10);
     private static readonly TimeSpan OutputInterval = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan LatencyInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan SilenceInterval = TimeSpan.FromMilliseconds(250);
 
     /// <summary>Un canvi de latència més petit que això no s'escriu al registre (la mesura balla una mica).</summary>
     private static readonly TimeSpan LatencyLogStep = TimeSpan.FromMilliseconds(5);
@@ -24,6 +25,7 @@ public sealed class ControlLoop : IDisposable
     private readonly Thread _thread;
 
     private readonly SweeperOverlay? _sweepers;
+    private readonly Supervision.SilenceDetector? _silence;
 
     /// <summary>Quan ha començat l'última volta (ticks de <see cref="Environment.TickCount64"/>, en ms); 0 = encara cap.</summary>
     private long _lastLoopMs;
@@ -42,8 +44,9 @@ public sealed class ControlLoop : IDisposable
     }
 
     public ControlLoop(QueuePlayer queue, OutputManager outputs, ILogger log, AutoDj? autoDj = null, Scheduling.Scheduler? scheduler = null,
-        AuxPlayers? aux = null, SweeperOverlay? sweepers = null)
+        AuxPlayers? aux = null, SweeperOverlay? sweepers = null, Supervision.SilenceDetector? silence = null)
     {
+        _silence = silence;
         _sweepers = sweepers;
         _scheduler = scheduler;
         _aux = aux;
@@ -61,6 +64,7 @@ public sealed class ControlLoop : IDisposable
         var token = _stop.Token;
         var lastOutputCheck = DateTime.MinValue;
         var lastLatencyCheck = DateTime.MinValue;
+        var lastSilenceCheck = DateTime.MinValue;
         TimeSpan? loggedLatency = null;
         var lastError = DateTime.MinValue;
         while (!token.IsCancellationRequested)
@@ -121,6 +125,12 @@ public sealed class ControlLoop : IDisposable
                     }
                 }
                 _queue.Tick();
+                // Silenci a la sortida (fase 5, pas 3): després de la cua, perquè si salta una pista la següent ja hi sigui
+                if (_silence is not null && DateTime.UtcNow - lastSilenceCheck >= SilenceInterval)
+                {
+                    lastSilenceCheck = DateTime.UtcNow;
+                    _silence.Tick();
+                }
             }
             catch (Exception ex)
             {

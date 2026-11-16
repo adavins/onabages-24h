@@ -59,8 +59,10 @@ public sealed partial class CommandRouter
         NowPlaying? nowPlaying = null, Events? events = null, Scheduler? scheduler = null, AuxPlayers? aux = null,
         SweeperOverlay? sweepers = null, OutputProcessor? processor = null, LibraryTools.LibraryImporter? importer = null,
         LibraryTools.FolderWatcher? watcher = null, Campaigns? campaigns = null, SavedCalendars? savedCalendars = null,
-        Backups? backups = null, IncidentStore? incidentStore = null, Supervision.IncidentTracker? incidents = null)
+        Backups? backups = null, IncidentStore? incidentStore = null, Supervision.IncidentTracker? incidents = null,
+        Supervision.SilenceDetector? silence = null)
     {
+        _silence = silence;
         _backups = backups;
         _incidentStore = incidentStore;
         _incidents = incidents;
@@ -223,6 +225,8 @@ public sealed partial class CommandRouter
                 "reserve.set" => ReserveSet(msg),
                 "history.list" => HistoryList(msg),
                 "incidents.list" => IncidentsList(msg),
+                "silence.get" => SilenceJson(ReadSilence(_library)),
+                "silence.set" => SilenceSet(msg),
                 "nowplaying.get" => new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(NowPlayingOrError()) },
                 "nowplaying.set" => NowPlayingSet(msg),
                 "scheduler.list" => SchedulerList(),

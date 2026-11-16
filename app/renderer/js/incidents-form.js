@@ -13,6 +13,7 @@ export const KINDS = [
   ['FITXER', 'Fitxer que no sona'],
   ['ENCALLADA', 'Pista encallada'],
   ['TALLS', 'Talls de so'],
+  ['SILENCI', 'Silenci a la sortida'],
   ['ESDEVENIMENT_OMES', 'Esdeveniment omès'],
   ['ESDEVENIMENT_ERROR', 'Esdeveniment fallat'],
   ['ESDEVENIMENT_TARD', 'Esdeveniment tard'],

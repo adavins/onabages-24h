@@ -13,6 +13,11 @@ public sealed record ConfiguredOutput(string? Id, string? Name);
 /// 3. una <b>sortida d'emergència</b>: la primera activa, primer les analògiques, després les digitals i, al final, HDMI.
 /// Mai el «dispositiu predeterminat» de Windows. Si la sortida falla (p. ex. es desendolla), passa a la següent; quan
 /// la configurada torna, hi torna de seguida. El motor crida <see cref="Ensure"/> sovint (fil de control).
+///
+/// <b>Sortida encallada</b> (fase 5, pas 3; D-158): si la sortida és oberta però fa <see cref="StallTimeout"/> que no
+/// demana so (sense cap error), es tanca i es torna a obrir; si continua, es torna a provar cada <see cref="StallRetry"/>
+/// i, després de <see cref="StallAttempts"/> intents, es passa a la sortida següent (la d'emergència). Aquesta sortida
+/// no es torna a fer servir fins que es torna a triar (<see cref="Configure"/>) o es reinicia el motor.
 /// </summary>
 public sealed class OutputManager : IDisposable
 {
@@ -38,11 +43,37 @@ public sealed class OutputManager : IDisposable
     private TimeSpan _latency = DefaultLatency;
     private volatile bool _failed;
     private volatile bool _poked = true;
+    private string? _problem;
+
+    /// <summary>Si la sortida fa aquesta estona que no demana so, es torna a obrir (fase 5, pas 3).</summary>
+    public static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(3);
+
+    /// <summary>Si després de tornar-la a obrir continua sense demanar so, es torna a provar al cap d'aquesta estona.</summary>
+    public static readonly TimeSpan StallRetry = TimeSpan.FromSeconds(10);
+
+    /// <summary>Quantes vegades es torna a obrir la mateixa sortida abans de passar a la següent.</summary>
+    public const int StallAttempts = 3;
+
+    /// <summary>L'avís d'una sortida encallada es manté aquesta estona després que torni el so (perquè quedi anotat).</summary>
+    public static readonly TimeSpan StallNoticeHold = TimeSpan.FromSeconds(5);
+
+    private readonly Func<TimeSpan> _clock;
+    private long _lastFrames = -1;
+    private TimeSpan _progressAt;          // l'última vegada que el mesclador ha avançat (o que s'ha obert la sortida)
+    private bool _stalled;                  // la sortida d'ara està encallada (no ha tornat el so des que s'ha detectat)
+    private int _reopens;                   // quantes vegades s'ha tornat a obrir en aquest episodi
+    private TimeSpan? _recoveredAt;         // quan ha tornat el so després d'un episodi
+    private string? _stallProblem;          // l'avís de la sortida encallada
+    private readonly HashSet<string> _avoid = []; // sortides encallades que no es fan servir fins que es torni a triar
 
     /// <param name="listDevices">Dispositius de Windows (les proves en passen una llista inventada).</param>
     /// <param name="openOutput">Obre una sortida per identificador (les proves en fan servir una de falsa).</param>
-    public OutputManager(Mixer mixer, Func<IReadOnlyList<AudioDevice>>? listDevices = null, Func<string, IAudioOutput>? openOutput = null)
+    /// <param name="clock">Rellotge que només avança (les proves en fan servir un de fals).</param>
+    public OutputManager(Mixer mixer, Func<IReadOnlyList<AudioDevice>>? listDevices = null, Func<string, IAudioOutput>? openOutput = null,
+        Func<TimeSpan>? clock = null)
     {
+        var started = Stopwatch.GetTimestamp();
+        _clock = clock ?? (() => Stopwatch.GetElapsedTime(started));
         _mixer = mixer;
         _listDevices = listDevices ?? DeviceList.GetAll;
         _openOutput = openOutput ?? (id => WasapiAudioOutput.Open(id));
@@ -57,8 +88,8 @@ public sealed class OutputManager : IDisposable
     /// <summary>S'emet per una sortida d'emergència (no és la configurada): cal avisar.</summary>
     public bool IsEmergency { get; private set; }
 
-    /// <summary>L'últim problema (en català), o null si tot va bé.</summary>
-    public string? Problem { get; private set; }
+    /// <summary>L'últim problema (en català), o null si tot va bé. Una sortida encallada passa per davant.</summary>
+    public string? Problem => _stallProblem ?? _problem;
 
     /// <summary>
     /// Quant tarda un fotograma mesclat a sonar per la sortida d'ara: la mediana de les últimes mesures o, si encara
@@ -81,7 +112,11 @@ public sealed class OutputManager : IDisposable
     /// <summary>Canvia la sortida configurada i hi passa de seguida (al pròxim <see cref="Ensure"/>).</summary>
     public void Configure(ConfiguredOutput output)
     {
-        lock (_sync) Configured = output;
+        lock (_sync)
+        {
+            Configured = output;
+            _avoid.Clear(); // tornar a triar la sortida també vol dir tornar a provar la que s'havia encallat
+        }
         Poke();
     }
 
@@ -97,24 +132,31 @@ public sealed class OutputManager : IDisposable
         bool changed = false;
         lock (_sync)
         {
+            changed = CheckStall();
             // Si s'emet per la d'emergència, es mira cada vegada si ha tornat la configurada.
-            if (_output is not null && !_failed && !_poked && !IsEmergency) return;
+            if (_output is not null && !_failed && !_poked && !IsEmergency) goto done;
             _poked = false;
 
             IReadOnlyList<AudioDevice> devices;
             try { devices = _listDevices(); }
             catch (Exception ex)
             {
-                changed = SetProblem($"No s'han pogut llegir els dispositius: {ex.Message}");
+                changed |= SetProblem($"No s'han pogut llegir els dispositius: {ex.Message}");
                 goto done;
             }
 
-            var candidates = Candidates(devices, Configured);
+            var candidates = Candidates(devices, Configured).Where(c => !_avoid.Contains(c.Device.Id)).ToList();
+            if (candidates.Count == 0 && _avoid.Count > 0)
+            {
+                // Totes les que hi ha s'han encallat: es tornen a provar totes (millor que no provar-ne cap)
+                _avoid.Clear();
+                candidates = Candidates(devices, Configured).ToList();
+            }
             if (_output is not null && !_failed && candidates.Count > 0 && candidates[0].Device.Id == Current?.Id)
             {
                 // Ja s'emet per la millor possible; si és la d'emergència, l'avís es manté (D-039)
                 IsEmergency = candidates[0].Emergency;
-                changed = SetProblem(IsEmergency ? EmergencyProblem(candidates[0].Device) : null);
+                changed |= SetProblem(IsEmergency ? EmergencyProblem(candidates[0].Device) : null);
                 goto done;
             }
             if (_output is not null && !_failed && IsEmergency && (candidates.Count == 0 || candidates[0].Emergency))
@@ -136,9 +178,10 @@ public sealed class OutputManager : IDisposable
                     _output = output;
                     _adapter = adapter;
                     _failed = false;
+                    _progressAt = _clock(); // es dona temps a la sortida nova per començar a demanar so
                     Current = candidate.Device;
                     IsEmergency = candidate.Emergency;
-                    Problem = candidate.Emergency ? EmergencyProblem(candidate.Device) : null;
+                    _problem = candidate.Emergency ? EmergencyProblem(candidate.Device) : null;
                     goto done;
                 }
                 catch (Exception ex) when (ex is AudioDeviceException or InvalidOperationException or System.Runtime.InteropServices.COMException)
@@ -148,7 +191,7 @@ public sealed class OutputManager : IDisposable
             }
             Current = null;
             IsEmergency = false;
-            Problem = errors.Count == 0
+            _problem = errors.Count == 0
                 ? "No hi ha cap sortida d'àudio activa: no s'emet res."
                 : "No s'ha pogut obrir cap sortida: " + string.Join("; ", errors);
         }
@@ -189,12 +232,67 @@ public sealed class OutputManager : IDisposable
 
     private string EmergencyProblem(AudioDevice device) =>
         $"S'emet per una sortida d'emergència: {device.Name}" +
-        (Configured.Name is null ? " (no hi ha cap sortida configurada)" : $" (no es troba «{Configured.Name}»)");
+        (Configured.Name is null ? " (no hi ha cap sortida configurada)"
+            : _avoid.Count > 0 ? $" («{Configured.Name}» s'ha encallat: torna-la a triar per tornar-hi)"
+            : $" (no es troba «{Configured.Name}»)");
 
     private bool SetProblem(string? problem)
     {
-        if (Problem == problem) return false;
-        Problem = problem;
+        if (_problem == problem) return false;
+        _problem = problem;
+        return true;
+    }
+
+    /// <summary>
+    /// Sortida encallada (fase 5, pas 3; D-158): mira si el mesclador ha avançat des de l'última vegada. Si fa massa estona
+    /// que no, marca la sortida com a fallada (es tornarà a obrir tot seguit) o, després de diversos intents, l'aparta
+    /// perquè s'obri la següent. Retorna true si ha canviat l'avís. Dins del bloqueig.
+    /// </summary>
+    private bool CheckStall()
+    {
+        bool changed = false;
+        var now = _clock();
+        long frames = _mixer.FramesRendered;
+        if (frames != _lastFrames)
+        {
+            _lastFrames = frames;
+            _progressAt = now;
+            if (_stalled)
+            {
+                _stalled = false;
+                _reopens = 0;
+                _recoveredAt = now;
+            }
+        }
+        if (_stallProblem is not null && !_stalled && _recoveredAt is { } recovered && now - recovered >= StallNoticeHold)
+        {
+            _stallProblem = null;
+            _recoveredAt = null;
+            changed = true;
+        }
+        if (_output is null || _failed) return changed;
+        if (now - _progressAt < (_stalled ? StallRetry : StallTimeout)) return changed;
+
+        string name = Current?.Name ?? "?";
+        if (!_stalled)
+        {
+            _stalled = true;
+            _reopens = 0;
+        }
+        _recoveredAt = null;
+        if (_reopens < StallAttempts)
+        {
+            _reopens++;
+            _stallProblem = $"La sortida «{name}» ha deixat de demanar so sense cap error: s'ha tornat a obrir (intent {_reopens} de {StallAttempts}).";
+        }
+        else
+        {
+            if (Current is { } device) _avoid.Add(device.Id);
+            _reopens = 0;
+            _stallProblem = $"La sortida «{name}» ha deixat de demanar so i no s'ha recuperat tornant-la a obrir: es passa a una altra sortida.";
+        }
+        _failed = true; // el que ve després d'Ensure la torna a obrir (o n'obre una altra)
+        _progressAt = now;
         return true;
     }
 

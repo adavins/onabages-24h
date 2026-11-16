@@ -43,6 +43,10 @@ public static class IncidentRules
         ? $"«{track}» s'ha encallat a {Clock(position)}: el fitxer ha deixat de llegir-se (disc o xarxa) i s'ha passat a la següent"
         : $"«{track}» s'ha acabat abans d'hora a {Clock(position)}: ha fallat la lectura del fitxer ({error})";
 
+    /// <summary>El text d'una pista que sonava en silenci i s'ha saltat (D-158).</summary>
+    public static string SilenceSkipText(string track, TimeSpan position, double seconds) =>
+        $"«{track}» sonava en silenci a {Clock(position)} (més de {seconds:0} s sense so) i s'ha passat a la següent";
+
     /// <summary>El text d'una pista que ha tingut talls (D-157).</summary>
     public static string DropoutsText(string track, int dropouts) =>
         $"«{track}» ha tingut talls de so ({dropouts} {(dropouts == 1 ? "vegada" : "vegades")} sense dades): el disc o la xarxa no han anat prou ràpid";

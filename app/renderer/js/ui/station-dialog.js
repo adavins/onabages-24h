@@ -1,7 +1,8 @@
 // @ts-check
 // Configuració (botó ⚙): les dades de l'emissora (fase 4, pas 4b; D-138), el nom, la freqüència i el logotip que surten
 // a la capçalera dels informes, les dates de la temporada (pas 6a; D-145), per al botó «Temporada», i l'accés a les
-// còpies de seguretat (pas 7b; D-152).
+// còpies de seguretat (pas 7b; D-152), i el silenci a la sortida (fase 5, pas 3; D-158): a partir de quin nivell i quants
+// segons el motor ho considera silenci.
 // Es desen al motor (station.set, season.set); el logotip es tria amb el diàleg de Windows (el procés principal el llegeix).
 
 import { el, icon, statusLabel } from './dom.js';
@@ -18,8 +19,11 @@ export async function openStationDialog(send, chooseImage, openBackups) {
   let station;
   /** @type {{ startDate: string | null, endDate: string | null }} */
   let season;
+  /** @type {{ thresholdDb: number, seconds: number, standardThresholdDb: number, standardSeconds: number }} */
+  let silence;
   try {
-    [station, season] = await Promise.all([send('station.get').then((r) => r.station), send('season.get').then((r) => r.season)]);
+    [station, season, silence] = await Promise.all([send('station.get').then((r) => r.station), send('season.get').then((r) => r.season),
+      send('silence.get')]);
   } catch (err) {
     await confirmAction({ title: 'No s\'han pogut llegir les dades', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
     return;
@@ -87,6 +91,25 @@ export async function openStationDialog(send, chooseImage, openBackups) {
   seasonBox.append(el('h3', 'h6 mt-3 mb-1', 'Temporada'), seasonDates,
     el('div', 'form-text', 'El botó «Temporada» de les dates d\'una pista o d\'una campanya posa aquestes. Buides = sense temporada.'));
 
+  // Silenci a la sortida (D-158): el nivell (dB) i els segons
+  const silenceDb = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
+  silenceDb.type = 'number';
+  silenceDb.min = '-70';
+  silenceDb.max = '-30';
+  silenceDb.step = '1';
+  silenceDb.value = String(silence.thresholdDb);
+  const silenceSeconds = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
+  silenceSeconds.type = 'number';
+  silenceSeconds.min = '5';
+  silenceSeconds.max = '120';
+  silenceSeconds.step = '1';
+  silenceSeconds.value = String(silence.seconds);
+  const silenceFields = el('div', 'st-season');
+  silenceFields.append(dialogField('Nivell (dB, de −70 a −30)', silenceDb), dialogField('Segons (de 5 a 120)', silenceSeconds));
+  const silenceBox = el('div', 'mb-2');
+  silenceBox.append(el('h3', 'h6 mt-3 mb-1', 'Silenci a la sortida'), silenceFields,
+    el('div', 'form-text', `Si el so que surt es queda per sota d'aquest nivell aquests segons seguits, el motor passa a la pista següent i ho anota a les incidències (un stream només s'anota). Per defecte, ${silence.standardThresholdDb} dB i ${silence.standardSeconds} s.`));
+
   // Còpies de seguretat (D-152): es tanca la configuració abans, perquè després de restaurar no es desin les dades
   // d'abans que hi havia a la finestra
   const backups = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
@@ -109,7 +132,7 @@ export async function openStationDialog(send, chooseImage, openBackups) {
       body: [
         el('h3', 'h6 mb-1', 'Dades de l\'emissora'),
         el('div', 'form-text mb-2', 'Surten a la capçalera de l\'informe de programació, del certificat d\'emissió i de l\'historial.'),
-        dialogField('Nom de l\'emissora', name), dialogField('Freqüència', frequency), logoBox, seasonBox, backupsBox,
+        dialogField('Nom de l\'emissora', name), dialogField('Freqüència', frequency), logoBox, seasonBox, silenceBox, backupsBox,
       ],
       confirm: 'Desa',
     });
@@ -121,6 +144,7 @@ export async function openStationDialog(send, chooseImage, openBackups) {
     try {
       await send('station.set', { name: name.value, frequency: frequency.value, logo });
       await send('season.set', { startDate: seasonFrom.value || null, endDate: seasonTo.value || null });
+      await send('silence.set', { thresholdDb: Number(silenceDb.value), seconds: Number(silenceSeconds.value) });
       return;
     } catch (err) {
       // P. ex. una temporada amb una sola data: es torna a obrir amb el que s'havia escrit

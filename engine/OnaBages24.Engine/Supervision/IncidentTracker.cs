@@ -28,6 +28,8 @@ public static class IncidentKind
     public const string Stuck = "ENCALLADA";
     /// <summary>Una pista que ha tingut talls de so: el disc o la xarxa no han anat prou ràpid (D-157).</summary>
     public const string Dropouts = "TALLS";
+    /// <summary>Silenci a la sortida: una pista en silenci que s'ha saltat, o un silenci que dura (D-158).</summary>
+    public const string Silence = "SILENCI";
 }
 
 /// <summary>
