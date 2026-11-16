@@ -1,21 +1,6 @@
 // @ts-check
-// Textos de les carpetes vigilades (fase 3, pas 7c-2; D-090): els avisos per a la barra d'estat i els noms de les
-// accions del registre. Sense res de la pantalla: es prova amb «npm test».
-
-/**
- * Els avisos de les carpetes vigilades: les que no es poden revisar i les que tenen pistes amb el fitxer que falta.
- * @param {any[]} folders  de folders.status o folders.changed (docs/protocol.md, 4.11)
- * @returns {string[]}
- */
-export function folderWarnings(folders) {
-  const list = [];
-  for (const f of folders ?? []) {
-    if (f.problem) list.push(`Carpeta vigilada de «${f.name}»: ${f.problem}`);
-    else if (f.missing > 0)
-      list.push(`Carpeta vigilada de «${f.name}»: ${f.missing} ${f.missing === 1 ? 'pista té' : 'pistes tenen'} el fitxer que falta`);
-  }
-  return list;
-}
+// Textos de les carpetes vigilades (fase 3, pas 7c-2; D-090): els noms de les accions del registre. Els avisos de la
+// barra d'estat ara són incidències del motor (fase 5, pas 1; D-156). Sense res de la pantalla: es prova amb «npm test».
 
 /** Com es diu cada acció del registre, amb icona i color (color + icona + text). */
 const ACTIONS = {

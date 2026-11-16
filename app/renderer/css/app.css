@@ -4394,3 +4394,60 @@ button.pl-chip.is-off {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.5rem;
 }
+
+/* Incidències (fase 5, pas 1b; D-156): la finestra amb l'historial i el botó de la finestra d'avisos */
+.vw-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
+.ob-dialog-wide.inc-dialog {
+  width: min(76rem, 96vw);
+}
+
+.inc-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.inc-select {
+  width: auto;
+}
+
+.inc-summary {
+  margin-left: auto;
+  font-size: 0.85rem;
+}
+
+.inc-scroll {
+  max-height: 60vh;
+  overflow: auto;
+  border: 1px solid var(--ob-border);
+  border-radius: 0.375rem;
+}
+
+.inc-c-time { width: 9rem; }
+.inc-c-severity { width: 6rem; }
+.inc-c-kind { width: 9.5rem; }
+.inc-c-duration { width: 6rem; }
+.inc-c-state { width: 9rem; }
+
+/* El text es veu sencer (pot ser llarg), no retallat com a les altres taules: es parteix per paraules */
+.inc-table td.inc-c-text {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.inc-detail {
+  color: var(--ob-muted);
+  font-family: var(--ob-mono);
+  font-size: 0.78rem;
+}
+
+.inc-more {
+  margin: 0.5rem;
+}

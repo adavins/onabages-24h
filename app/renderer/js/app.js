@@ -12,6 +12,7 @@ import { QueueView, HistoryView } from './ui/queue.js';
 import { AutoDjView } from './ui/autodj.js';
 import { renderOutput, renderNowPlaying } from './ui/statusbar.js';
 import { WarningsView } from './ui/warnings.js';
+import { incidentsChanged } from './ui/incidents.js';
 import { todayIso } from './event-form.js';
 import { openOutputPicker } from './ui/output-picker.js';
 import { CampaignsView } from './ui/campaigns.js';
@@ -28,7 +29,6 @@ import { FoldersView } from './ui/folders.js';
 import { RerootView } from './ui/reroot.js';
 import { RotationsView } from './ui/rotations.js';
 import { CalendarView } from './ui/calendar.js';
-import { folderWarnings } from './folders-text.js';
 import { setupZoom, applyZoom } from './ui/zoom.js';
 import { setupWindowFrame } from './ui/window-frame.js';
 import { CollapsibleCards } from './ui/collapsible.js';
@@ -264,29 +264,6 @@ async function loadUiSettings() {
 
 $('tab-search').addEventListener('click', () => showSideTab('search'));
 $('tab-notes').addEventListener('click', () => showSideTab('notes'));
-/** Els avisos de la sortida (greu), l'AutoDJ, la pausa i les carpetes, a la barra de sota amb els de vigència. */
-function showProblems() {
-  warnings.setGeneral([
-    ...(problems.output ? [{ level: /** @type {const} */ ('danger'), text: problems.output }] : []),
-    ...[problems.autodj, problems.pause, problems.butt, ...problems.folders].filter((t) => !!t)
-      .map((t) => ({ level: /** @type {const} */ ('warning'), text: /** @type {string} */ (t) })),
-  ]);
-}
-const problems = {
-  autodj: /** @type {string | null} */ (null),
-  output: /** @type {string | null} */ (null),
-  /** Les carpetes vigilades que no es poden revisar o tenen fitxers que falten (fase 3, pas 7c-2). @type {string[]} */
-  folders: [],
-  /** Una pausa que ha continuat sola (D-103). @type {string | null} */
-  pause: null,
-  /** El fitxer del títol per a BUTT que no es pot escriure. @type {string | null} */
-  butt: null,
-};
-showProblems();
-folders.onChange((list) => {
-  problems.folders = folderWarnings(list);
-  showProblems();
-});
 
 /** @param {any} queue  docs/protocol.md, 4.2 */
 function showQueue(queue) {
@@ -306,36 +283,23 @@ function showQueue(queue) {
   icon.className = paused ? 'bi bi-play-fill' : 'bi bi-pause-fill';
   icon.setAttribute('aria-hidden', 'true');
   pause.replaceChildren(icon, el('span', '', paused ? 'Continua' : 'Pausa'));
-  if (problems.pause !== (queue.pauseNotice ?? null)) {
-    problems.pause = queue.pauseNotice ?? null;
-    showProblems();
-  }
 }
 
 /** @param {any} state */
 function showAutoDj(state) {
   autoDjView.render(state);
   rotationsView.setActive(state.rotation?.id ?? null);
-  problems.autodj = state.problem;
-  showProblems();
 }
 
 /** @param {any} output */
 function showOutput(output) {
   renderOutput(output);
-  problems.output = output.problem;
-  showProblems();
 }
 
 async function refreshNowPlayingStatus() {
   try {
     const nowPlaying = (await send('nowplaying.get')).nowPlaying;
     renderNowPlaying(nowPlaying);
-    const butt = nowPlaying?.enabled && nowPlaying.problem ? `No es pot escriure el títol per a BUTT: ${nowPlaying.problem}` : null;
-    if (butt !== problems.butt) {
-      problems.butt = butt;
-      showProblems();
-    }
   } catch { /* sense connexió: ja ho diu la capçalera */ }
 }
 
@@ -551,6 +515,11 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   client.addEventListener('ev:processor.changed', (e) => processor.render(detail(e).processor));
   client.addEventListener('ev:library.importProgress', (e) => importView.show(detail(e).import));
   client.addEventListener('ev:folders.changed', (e) => folders.update(detail(e).folders));
+  // Incidències (fase 5, pas 1b; D-156): la barra d'avisos i, si és oberta, la finestra «Incidències»
+  client.addEventListener('ev:incidents.changed', () => {
+    warnings.refresh();
+    incidentsChanged();
+  });
   // Rotacions (fase 3, pas 8a): l'editor, el desplegable de l'AutoDJ i el planificador
   client.addEventListener('ev:rotations.changed', () => {
     rotationsView.refresh();

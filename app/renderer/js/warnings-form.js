@@ -6,7 +6,7 @@
  * @typedef {{ kind: string, subject: 'track' | 'campaign', id: number, name: string, text: string,
  *   events: { id: number, name: string }[], canRemove: boolean }} ValidityWarning  docs/protocol.md, validity.list
  * @typedef {'danger' | 'warning' | 'info'} Level  de més a menys greu
- * @typedef {{ level: Level, text: string }} GeneralWarning  un avís de la sortida, l'AutoDJ, la pausa o les carpetes
+ * @typedef {{ level: Level, text: string }} GeneralWarning  una incidència oberta del motor (sortida, AutoDJ, BUTT, carpetes; D-156)
  * @typedef {{ level: Level, general: GeneralWarning } | { level: Level, validity: ValidityWarning }} WarningItem
  */
 

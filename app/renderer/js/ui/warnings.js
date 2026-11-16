@@ -1,13 +1,15 @@
 // @ts-check
-// Avisos de la barra de sota (fase 4, pas 6b; D-146): un sol botó amb tots els avisos (sortida, AutoDJ, pausa, carpetes i
-// vigència), amb el color del més greu; en clicar-lo, una finestra amb la llista per gravetat. Els de vigència (pistes i
-// campanyes dels esdeveniments acabades, que no sonaran, amb les dates malament o que comencen aviat) els calcula el
-// motor (validity.list) i surten també a la fitxa de la pista i a l'editor de la campanya.
+// Avisos de la barra de sota (fase 4, pas 6b; D-146): un sol botó amb tots els avisos, amb el color del més greu; en
+// clicar-lo, una finestra amb la llista per gravetat i l'accés a l'historial d'incidències. Hi ha les incidències obertes
+// del motor (sortida, AutoDJ, títol per a BUTT, carpetes vigilades; fase 5, pas 1b, D-156: incidents.list) i els avisos de
+// vigència (pistes i campanyes dels esdeveniments acabades, que no sonaran, amb les dates malament o que comencen aviat;
+// validity.list), que surten també a la fitxa de la pista i a l'editor de la campanya.
 
 import { $, el, icon, statusLabel } from './dom.js';
 import { formDialog } from './form-dialog.js';
 import { kindInfo, levelInfo, subjectText, allWarnings, barState, warningsFor } from '../warnings-form.js';
 import { removeFromEvents } from './remove-from-events.js';
+import { incidentsDialog } from './incidents.js';
 
 /**
  * @typedef {import('../warnings-form.js').ValidityWarning} ValidityWarning
@@ -44,15 +46,9 @@ export class WarningsView {
     this.#render();
   }
 
-  /** Els avisos de la sortida, l'AutoDJ, la pausa i les carpetes (els posa app.js quan canvien). @param {GeneralWarning[]} list */
-  setGeneral(list) {
-    this.#general = list;
-    this.#render();
-  }
-
   /**
-   * Torna a demanar els avisos de vigència. Diversos canvis seguits (p. ex. desar un esdeveniment avisa de diverses
-   * coses) en fan una sola petició.
+   * Torna a demanar les incidències obertes i els avisos de vigència. Diversos canvis seguits (p. ex. desar un esdeveniment
+   * avisa de diverses coses) en fan una sola petició.
    */
   refresh() {
     clearTimeout(this.#timer);
@@ -60,16 +56,19 @@ export class WarningsView {
   }
 
   async #load() {
-    try {
-      this.#validity = (await this.#send('validity.list')).warnings;
-    } catch {
-      return; // sense connexió o motor antic: es queda com estava
+    // Si una de les dues no es pot llegir (sense connexió), aquella es queda com estava
+    const [incidents, validity] = await Promise.allSettled([this.#send('incidents.list', { open: true }), this.#send('validity.list')]);
+    if (incidents.status === 'fulfilled') {
+      this.#general = incidents.value.incidents.map((/** @type {{ severity: GeneralWarning['level'], text: string }} */ i) =>
+        ({ level: i.severity, text: i.text }));
     }
+    if (validity.status === 'fulfilled') this.#validity = validity.value.warnings;
     this.#render();
   }
 
-  /** Sense connexió amb el motor: no se sap res dels de vigència. */
+  /** Sense connexió amb el motor: no se sap res (ja ho diu la capçalera). */
   clear() {
+    this.#general = [];
     this.#validity = [];
     this.#render();
   }
@@ -123,7 +122,15 @@ export class WarningsView {
     this.#dialogList = list;
     this.#renderList(list);
     this.refresh(); // per si de cas ha canviat alguna cosa (p. ex. ha passat la mitjanit)
-    await formDialog({ title: 'Avisos', icon: 'bi-exclamation-triangle', body: [list], wide: true });
+    // L'historial d'incidències (D-156): també les que ja s'han resolt i les d'un moment (pistes saltades, esdeveniments omesos…)
+    const history = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    history.type = 'button';
+    history.append(icon('bi-journal-text'), ' Historial d\'incidències…');
+    history.title = 'Tot el que ha anat malament a l\'emissió, també el que ja s\'ha resolt';
+    history.addEventListener('click', () => this.#leave(list, () => incidentsDialog(this.#send)));
+    const tools = el('div', 'vw-tools');
+    tools.append(history);
+    await formDialog({ title: 'Avisos', icon: 'bi-exclamation-triangle', body: [tools, list], wide: true });
     this.#dialogList = null;
   }
 

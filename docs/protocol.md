@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 5, pas 1a (incidències; còpies de seguretat i restauració; paquet de campanya; avisos de vigència; calendaris desats i temporada; cerca a l'historial amb filtres; informes amb «previst i emès» i dades de l'emissora; campanyes, pla de passis, pantalla de campanyes i calendari de la campanya; motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 5, pas 1 (incidències; còpies de seguretat i restauració; paquet de campanya; avisos de vigència; calendaris desats i temporada; cerca a l'historial amb filtres; informes amb «previst i emès» i dades de l'emissora; campanyes, pla de passis, pantalla de campanyes i calendari de la campanya; motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
