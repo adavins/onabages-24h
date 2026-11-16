@@ -29,6 +29,18 @@ public sealed record QueueSettings
     /// xarxa no responen), se salta a la següent.
     /// </summary>
     public TimeSpan StallTimeout { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Pistes d'emergència (fase 5, pas 4; D-159): si la pista següent ja hauria de sonar i fa aquesta estona que encara no
+    /// s'ha pogut obrir, sona una pista d'emergència del disc local.
+    /// </summary>
+    public TimeSpan EmergencyWait { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>Quan la pista que tocava ja és a punt, la d'emergència baixa en aquest temps i entra la que tocava.</summary>
+    public TimeSpan EmergencyFade { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>Un fitxer que fa aquesta estona que s'està obrint es dona per perdut i se salta (fase 5, pas 4).</summary>
+    public TimeSpan OpenTimeout { get; init; } = TimeSpan.FromSeconds(30);
 }
 
 /// <summary>
@@ -57,6 +69,12 @@ public sealed record QueueStuck(QueueItem Item, TimeSpan Position, string? Error
 
 /// <summary>Una pista que no s'ha pogut fer sonar (fitxer que falta o il·legible): se salta.</summary>
 public sealed record QueueFailed(QueueItem Item, string Message);
+
+/// <summary>
+/// Ha començat una pista d'emergència (fase 5, pas 4; D-159): <paramref name="Waiting"/> ja hauria de sonar però encara no
+/// s'ha pogut obrir.
+/// </summary>
+public sealed record QueueEmergency(QueueItem Waiting, QueueItem Emergency);
 
 /// <summary>Posició de la pista que sona: quant ha sonat, quant falta per al final i per al punt de mescla, i quant dura en total.</summary>
 /// <summary>Previsió de la cua: d'aquí a quant s'acaba la que sona i d'aquí a quant comença cada pista que espera (null = no se sap).</summary>
@@ -95,6 +113,19 @@ public sealed class QueuePlayer : IDisposable
     private Playing? _next;
     private PendingCut? _cut;  // tall programat que encara no s'ha pogut aplicar (la següent ja començava abans)
     private long _cutFrame;    // si no és 0: la pròxima pista no pot començar abans d'aquest fotograma (és la del tall)
+
+    // Pistes d'emergència (fase 5, pas 4; D-159)
+    private Playing? _filler;        // la pista d'emergència que s'està obrint (encara no sona)
+    private long _waitingSince = -1; // des de quin fotograma la pista següent ja hauria de sonar i no és a punt (-1 = no espera)
+
+    /// <summary>
+    /// D'on surten les pistes d'emergència (fase 5, pas 4): retorna una pista del disc local, o null si no n'hi ha. Es crida
+    /// des del fil de control i no ha de tocar el disc. Si és null, no n'hi ha.
+    /// </summary>
+    public Func<QueueItem?>? EmergencyPicker { get; set; }
+
+    /// <summary>Ha començat una pista d'emergència perquè la que tocava no s'ha pogut obrir a temps.</summary>
+    public event Action<QueueEmergency>? EmergencyStarted;
 
     // Pausa i salt dins de la pista (D-103)
     private Paused? _paused;   // la pista en pausa (llavors _current és null)
@@ -763,6 +794,20 @@ public sealed class QueuePlayer : IDisposable
                 events.Add(() => Changed?.Invoke());
             }
 
+            // 1b. Un fitxer que fa massa estona que s'està obrint (fase 5, pas 4; D-159): la xarxa no respon. Es dona per perdut
+            // i se salta; el fil de lectura es deixa anar sense esperar-lo (pot estar encallat).
+            if (_next is { HasStarted: false, Scheduled: false, Reader.State: ReaderState.Opening } slow
+                && now - slow.OpenedFrame >= Frames(_settings.OpenTimeout))
+            {
+                var item = slow.Item;
+                string message = $"No s'ha pogut obrir en {_settings.OpenTimeout.TotalSeconds:0} s: el disc o la xarxa no responen.";
+                slow.Stuck = true;
+                Retire(slow);
+                _next = null;
+                events.Add(() => Failed?.Invoke(new QueueFailed(item, message)));
+                events.Add(() => Changed?.Invoke());
+            }
+
             // 2. La següent ja ha començat a sonar: passa a ser l'actual
             if (_next is { HasStarted: true } started)
             {
@@ -936,10 +981,93 @@ public sealed class QueuePlayer : IDisposable
                     ready.CutFrame = _cutFrame;
                     _cutFrame = 0;
                 }
+                else if (_current is { Item.Origin: QueueOrigin.Emergency, Scheduled: true } emergency)
+                {
+                    // Sona una pista d'emergència (D-159): baixa amb un fos i la que tocava entra de seguida
+                    start = margin;
+                    int fade = Frames(_settings.EmergencyFade);
+                    if (emergency.EndFrame > start + fade)
+                    {
+                        emergency.Voice.Stop(start, fade);
+                        emergency.MixFrame = Math.Min(emergency.MixFrame, start);
+                        emergency.EndFrame = start + fade;
+                    }
+                }
                 Schedule(ready, start);
+                DropFiller(); // la que tocava ja és a punt: la d'emergència que s'obria ja no cal
             }
+
+            // 6. Pistes d'emergència (fase 5, pas 4; D-159)
+            TickEmergency(now, events);
         }
         Raise(events);
+    }
+
+    /// <summary>
+    /// Pistes d'emergència (D-159): si la pista següent ja hauria de sonar (no sona res, o la que sona ja és al punt de
+    /// mescla) i fa <see cref="QueueSettings.EmergencyWait"/> que no és a punt, se n'obre una del disc local. Quan és a
+    /// punt, comença de seguida; quan comença, passa a ser la que sona. Dins del bloqueig.
+    /// </summary>
+    private void TickEmergency(long now, List<Action> events)
+    {
+        if (_filler is { } f)
+        {
+            bool timedOut = f.Reader.State == ReaderState.Opening && now - f.OpenedFrame >= Frames(_settings.OpenTimeout);
+            if (f.Reader.State == ReaderState.Failed || timedOut)
+            {
+                var item = f.Item;
+                string message = f.Reader.Error ?? $"No s'ha pogut obrir en {_settings.OpenTimeout.TotalSeconds:0} s.";
+                f.Stuck = timedOut;
+                Retire(f);
+                _filler = null;
+                _waitingSince = now; // es torna a esperar abans de provar-ne una altra
+                events.Add(() => Failed?.Invoke(new QueueFailed(item, message)));
+                return;
+            }
+            if (!f.Scheduled && f.Reader.State is ReaderState.Ready or ReaderState.Finished)
+            {
+                // De seguida; si la que sona és una altra d'emergència, al seu punt de mescla (encadenades, sense silenci)
+                long margin = now + Frames(_settings.StartMargin);
+                Schedule(f, _current is { Scheduled: true } c ? Math.Max(margin, c.MixFrame) : margin);
+            }
+            if (f.HasStarted)
+            {
+                if (_current is not null) _ending.Add(_current); // la d'abans ja feia el fos final
+                _current = f;
+                _filler = null;
+                _waitingSince = -1;
+                var waiting = _next?.Item;
+                var item = f.Item;
+                long frame = f.Voice.ActualStartFrame;
+                events.Add(() => Started?.Invoke(new QueueStarted(item, frame)));
+                if (waiting is not null) events.Add(() => EmergencyStarted?.Invoke(new QueueEmergency(waiting, item)));
+                events.Add(() => Changed?.Invoke());
+            }
+            return;
+        }
+
+        // Si ja sona una pista d'emergència i la que tocava encara no és a punt, la següent d'emergència es prepara abans,
+        // com qualsevol pista, perquè entri al seu punt de mescla
+        bool chaining = _current is { Item.Origin: QueueOrigin.Emergency, Scheduled: true } e && now >= e.MixFrame - Frames(_settings.PrepareAhead);
+        bool needed = _next is { Scheduled: false } && _paused is null && _resume is null
+            && (_current is null || now >= _current.MixFrame || chaining);
+        if (!needed)
+        {
+            _waitingSince = -1;
+            return;
+        }
+        if (_waitingSince < 0) _waitingSince = now;
+        if (!chaining && now - _waitingSince < Frames(_settings.EmergencyWait)) return;
+        _waitingSince = now; // si no n'hi ha cap o no hi ha veu lliure, es torna a provar d'aquí a una estona
+        if (EmergencyPicker?.Invoke() is { } emergencyItem) _filler = Open(emergencyItem);
+    }
+
+    /// <summary>Deixa anar la pista d'emergència que s'estava obrint (si n'hi ha). Dins del bloqueig.</summary>
+    private void DropFiller()
+    {
+        if (_filler is null) return;
+        Retire(_filler);
+        _filler = null;
     }
 
     /// <summary>Reserva una veu i comença a llegir el fitxer. Retorna null si no hi ha cap veu lliure (no hauria de passar).</summary>
@@ -947,8 +1075,9 @@ public sealed class QueuePlayer : IDisposable
     {
         var voice = _mixer.AcquireVoice();
         if (voice is null) return null;
-        var reader = new VoiceReader(voice, item.Path, _mixer.SampleRate, Ms(item.StartMs ?? 0), item.EndMs is { } end ? Ms(end) : null);
-        return new Playing(item, voice, reader);
+        bool hold = HoldOpeningForTests?.Invoke(item.Path) == true;
+        var reader = new VoiceReader(voice, item.Path, _mixer.SampleRate, Ms(item.StartMs ?? 0), item.EndMs is { } end ? Ms(end) : null, hold);
+        return new Playing(item, voice, reader) { OpenedFrame = _mixer.FramesRendered };
     }
 
     /// <summary>
@@ -982,6 +1111,7 @@ public sealed class QueuePlayer : IDisposable
     /// <summary>Deixa de preparar la següent (si encara no ha començat) i la torna al principi de la cua.</summary>
     private void UnprepareNext(List<Action> events)
     {
+        DropFiller();
         if (_next is null || _next.HasStarted) return;
         _upcoming.Insert(0, _next.Item);
         Retire(_next);
@@ -1021,6 +1151,15 @@ public sealed class QueuePlayer : IDisposable
 
     private static TimeSpan Ms(long ms) => TimeSpan.FromMilliseconds(ms);
 
+    /// <summary>Proves de les pistes d'emergència (fase 5, pas 4): els fitxers d'aquestes rutes «tarden» a obrir-se.</summary>
+    internal Func<string, bool>? HoldOpeningForTests { get; set; }
+
+    /// <summary>Proves de les pistes d'emergència: la pista següent, que «tardava», ja s'obre.</summary>
+    internal void ReleaseNextForTests()
+    {
+        lock (_sync) _next?.Reader.ResumeReading();
+    }
+
     /// <summary>Proves de la pista encallada: el fitxer de la que sona deixa de llegir-se (o hi torna).</summary>
     internal void SetCurrentReadingForTests(bool reading)
     {
@@ -1037,6 +1176,7 @@ public sealed class QueuePlayer : IDisposable
         {
             if (_next is not null) Retire(_next);
             if (_current is not null) Retire(_current);
+            DropFiller();
             if (_resume is not null) Retire(_resume);
             _resume = null;
             _paused = null;
@@ -1083,6 +1223,9 @@ public sealed class QueuePlayer : IDisposable
         public long LastProgressFrame { get; set; }
         /// <summary>S'ha encallat (o la lectura ha fallat a mitja pista): ja s'ha avisat.</summary>
         public bool Stuck { get; set; }
+
+        /// <summary>El fotograma en què es va començar a obrir (fase 5, pas 4: un fitxer que no s'obre mai es dona per perdut).</summary>
+        public long OpenedFrame { get; init; }
     }
 
     /// <summary>Fotogrames sonats d'una emissió en veus que ja s'han acabat (D-103).</summary>

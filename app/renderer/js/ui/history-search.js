@@ -15,7 +15,7 @@ import { historyHtml } from '../report-html.js';
 /** @typedef {(content: string, name: string) => Promise<{ path?: string, error?: string } | null>} SaveFile */
 
 /** D'on ve cada emissió: icona i text (mai només el color). */
-const ORIGIN_ICONS = /** @type {Record<string, string>} */ ({ autodj: 'bi-shuffle', manual: 'bi-hand-index', event: 'bi-calendar-event' });
+const ORIGIN_ICONS = /** @type {Record<string, string>} */ ({ autodj: 'bi-shuffle', manual: 'bi-hand-index', event: 'bi-calendar-event', emergency: 'bi-life-preserver' });
 
 /** Espera després d'escriure al cercador abans de buscar. */
 const SEARCH_DELAY_MS = 300;

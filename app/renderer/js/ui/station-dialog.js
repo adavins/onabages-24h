@@ -2,7 +2,7 @@
 // Configuració (botó ⚙): les dades de l'emissora (fase 4, pas 4b; D-138), el nom, la freqüència i el logotip que surten
 // a la capçalera dels informes, les dates de la temporada (pas 6a; D-145), per al botó «Temporada», i l'accés a les
 // còpies de seguretat (pas 7b; D-152), i el silenci a la sortida (fase 5, pas 3; D-158): a partir de quin nivell i quants
-// segons el motor ho considera silenci.
+// segons el motor ho considera silenci; i la carpeta de pistes d'emergència (fase 5, pas 4; D-159).
 // Es desen al motor (station.set, season.set); el logotip es tria amb el diàleg de Windows (el procés principal el llegeix).
 
 import { el, icon, statusLabel } from './dom.js';
@@ -12,18 +12,21 @@ import { confirmAction } from './confirm.js';
 /**
  * @param {(cmd: string, params?: object) => Promise<any>} send
  * @param {() => Promise<{ dataUrl?: string, error?: string } | null>} chooseImage
+ * @param {(defaultPath?: string) => Promise<string | null>} chooseFolder  el diàleg de Windows per triar una carpeta
  * @param {() => Promise<void>} openBackups  la finestra «Còpies de seguretat»
  */
-export async function openStationDialog(send, chooseImage, openBackups) {
+export async function openStationDialog(send, chooseImage, chooseFolder, openBackups) {
   /** @type {{ name: string, frequency: string, logo: string | null }} */
   let station;
   /** @type {{ startDate: string | null, endDate: string | null }} */
   let season;
   /** @type {{ thresholdDb: number, seconds: number, standardThresholdDb: number, standardSeconds: number }} */
   let silence;
+  /** @type {{ folder: string, defaultFolder: string, count: number, problem: string | null }} */
+  let emergency;
   try {
-    [station, season, silence] = await Promise.all([send('station.get').then((r) => r.station), send('season.get').then((r) => r.season),
-      send('silence.get')]);
+    [station, season, silence, emergency] = await Promise.all([send('station.get').then((r) => r.station), send('season.get').then((r) => r.season),
+      send('silence.get'), send('emergency.get')]);
   } catch (err) {
     await confirmAction({ title: 'No s\'han pogut llegir les dades', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
     return;
@@ -110,6 +113,43 @@ export async function openStationDialog(send, chooseImage, openBackups) {
   silenceBox.append(el('h3', 'h6 mt-3 mb-1', 'Silenci a la sortida'), silenceFields,
     el('div', 'form-text', `Si el so que surt es queda per sota d'aquest nivell aquests segons seguits, el motor passa a la pista següent i ho anota a les incidències (un stream només s'anota). Per defecte, ${silence.standardThresholdDb} dB i ${silence.standardSeconds} s.`));
 
+  // Pistes d'emergència (D-159): la carpeta (es desa de seguida en triar-la, com a les carpetes vigilades)
+  const emergencyPath = el('div', 'small text-break');
+  const emergencyState = el('div', 'small');
+  const showEmergency = () => {
+    emergencyPath.textContent = emergency.folder;
+    emergencyState.replaceChildren(emergency.problem
+      ? statusLabel('text-warning', 'bi-exclamation-triangle-fill', emergency.problem)
+      : statusLabel('text-success', 'bi-check-circle', `${emergency.count} ${emergency.count === 1 ? 'pista' : 'pistes'}`));
+  };
+  showEmergency();
+  /** @param {string | null} folder */
+  const setEmergency = async (folder) => {
+    try {
+      emergency = await send('emergency.set', { folder });
+      showEmergency();
+    } catch (err) {
+      emergencyState.replaceChildren(statusLabel('text-danger', 'bi-x-circle', /** @type {Error} */ (err).message));
+    }
+  };
+  const emergencyPick = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+  emergencyPick.type = 'button';
+  emergencyPick.append(icon('bi-folder2-open'), ' Tria la carpeta…');
+  emergencyPick.addEventListener('click', async () => {
+    const folder = await chooseFolder(emergency.folder);
+    if (folder) await setEmergency(folder);
+  });
+  const emergencyDefault = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+  emergencyDefault.type = 'button';
+  emergencyDefault.append(icon('bi-arrow-counterclockwise'), ' La per defecte');
+  emergencyDefault.title = emergency.defaultFolder;
+  emergencyDefault.addEventListener('click', () => setEmergency(null));
+  const emergencyTools = el('div', 'd-flex gap-2 mt-1');
+  emergencyTools.append(emergencyPick, emergencyDefault);
+  const emergencyBox = el('div', 'mb-2');
+  emergencyBox.append(el('h3', 'h6 mt-3 mb-1', 'Pistes d\'emergència'), emergencyPath, emergencyState, emergencyTools,
+    el('div', 'form-text', 'Cançons d\'un disc d\'aquest ordinador (no de xarxa). Si una pista tarda a obrir-se, en sona una d\'aquestes fins que la que tocava és a punt. Posa-n\'hi unes quantes: el canvi de carpeta es desa de seguida.'));
+
   // Còpies de seguretat (D-152): es tanca la configuració abans, perquè després de restaurar no es desin les dades
   // d'abans que hi havia a la finestra
   const backups = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
@@ -132,7 +172,7 @@ export async function openStationDialog(send, chooseImage, openBackups) {
       body: [
         el('h3', 'h6 mb-1', 'Dades de l\'emissora'),
         el('div', 'form-text mb-2', 'Surten a la capçalera de l\'informe de programació, del certificat d\'emissió i de l\'historial.'),
-        dialogField('Nom de l\'emissora', name), dialogField('Freqüència', frequency), logoBox, seasonBox, silenceBox, backupsBox,
+        dialogField('Nom de l\'emissora', name), dialogField('Freqüència', frequency), logoBox, seasonBox, silenceBox, emergencyBox, backupsBox,
       ],
       confirm: 'Desa',
     });

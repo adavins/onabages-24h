@@ -103,7 +103,7 @@ public sealed record FilterOption(long Id, string Name, int Count, TrackType? Ma
 public sealed record CategoryFilter(long Id, string Name, int Count, IReadOnlyList<FilterOption> Subcategories, TrackType? MainType = null);
 
 /// <summary>D'on ve un element de la cua (D-034).</summary>
-public enum QueueOrigin { AutoDj, Manual, Event }
+public enum QueueOrigin { AutoDj, Manual, Event, Emergency }
 
 /// <summary>Una pista de la biblioteca. Els temps van en mil·lisegons; null = encara no se sap.</summary>
 public sealed record Track
@@ -1072,6 +1072,7 @@ public sealed partial class Library(Database database)
     {
         QueueOrigin.Manual => "MANUAL",
         QueueOrigin.Event => "ESDEVENIMENT",
+        QueueOrigin.Emergency => "EMERGENCIA",
         _ => "AUTODJ",
     };
 
@@ -1079,6 +1080,7 @@ public sealed partial class Library(Database database)
     {
         "MANUAL" => QueueOrigin.Manual,
         "ESDEVENIMENT" => QueueOrigin.Event,
+        "EMERGENCIA" => QueueOrigin.Emergency,
         _ => QueueOrigin.AutoDj,
     };
 

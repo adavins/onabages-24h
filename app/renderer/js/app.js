@@ -59,7 +59,7 @@ const bridge = /** @type {Bridge} */ (/** @type {any} */ (window).onabages);
 
 // Informes (fase 4, pas 4b; D-138): les dades de l'emissora (botó ⚙ de la capçalera) i la finestra d'un informe
 // ⚙ Configuració, i des d'allà les còpies de seguretat (D-152)
-const openStation = () => openStationDialog(send, () => bridge.chooseImage(),
+const openStation = () => openStationDialog(send, () => bridge.chooseImage(), (path) => bridge.chooseFolder(path),
   () => backupsDialog(send, { chooseFile: () => bridge.chooseBackup(), showFile: (path) => bridge.showFile(path) }));
 /**
  * @param {'programming' | 'certificate'} kind

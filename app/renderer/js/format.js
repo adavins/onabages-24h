@@ -46,7 +46,7 @@ export function typeName(type) {
 }
 
 /** D'on ve un element de la cua (D-034). */
-const ORIGIN_NAMES = { autodj: 'AutoDJ', manual: 'Manual', event: 'Esdeveniment' };
+const ORIGIN_NAMES = { autodj: 'AutoDJ', manual: 'Manual', event: 'Esdeveniment', emergency: 'Emergència' };
 
 /** @param {string | null | undefined} origin */
 export function originName(origin) {

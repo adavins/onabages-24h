@@ -14,6 +14,8 @@ export const KINDS = [
   ['ENCALLADA', 'Pista encallada'],
   ['TALLS', 'Talls de so'],
   ['SILENCI', 'Silenci a la sortida'],
+  ['EMERGENCIA', 'Pista d\'emergència'],
+  ['REINICI', 'Reinici inesperat'],
   ['ESDEVENIMENT_OMES', 'Esdeveniment omès'],
   ['ESDEVENIMENT_ERROR', 'Esdeveniment fallat'],
   ['ESDEVENIMENT_TARD', 'Esdeveniment tard'],

@@ -60,9 +60,10 @@ public sealed partial class CommandRouter
         SweeperOverlay? sweepers = null, OutputProcessor? processor = null, LibraryTools.LibraryImporter? importer = null,
         LibraryTools.FolderWatcher? watcher = null, Campaigns? campaigns = null, SavedCalendars? savedCalendars = null,
         Backups? backups = null, IncidentStore? incidentStore = null, Supervision.IncidentTracker? incidents = null,
-        Supervision.SilenceDetector? silence = null)
+        Supervision.SilenceDetector? silence = null, EmergencyTracks? emergency = null)
     {
         _silence = silence;
+        _emergency = emergency;
         _backups = backups;
         _incidentStore = incidentStore;
         _incidents = incidents;
@@ -227,6 +228,8 @@ public sealed partial class CommandRouter
                 "incidents.list" => IncidentsList(msg),
                 "silence.get" => SilenceJson(ReadSilence(_library)),
                 "silence.set" => SilenceSet(msg),
+                "emergency.get" => EmergencyJson(),
+                "emergency.set" => EmergencySet(msg),
                 "nowplaying.get" => new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(NowPlayingOrError()) },
                 "nowplaying.set" => NowPlayingSet(msg),
                 "scheduler.list" => SchedulerList(),
@@ -1958,7 +1961,8 @@ public sealed partial class CommandRouter
             "autodj" => QueueOrigin.AutoDj,
             "manual" => QueueOrigin.Manual,
             "event" => QueueOrigin.Event,
-            _ => throw new BadParamsException($"Origen desconegut: «{o}» (ha de ser autodj, manual o event)."),
+            "emergency" => QueueOrigin.Emergency,
+            _ => throw new BadParamsException($"Origen desconegut: «{o}» (ha de ser autodj, manual, event o emergency)."),
         }).ToList();
         List<TrackType> types;
         try { types = Texts("types").Select(NowPlayingSettings.ParseType).ToList(); }

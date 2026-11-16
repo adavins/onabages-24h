@@ -367,11 +367,12 @@ public static class QueueJson
         return char.ToLowerInvariant(name[0]) + name[1..];
     }
 
-    /// <summary>D'on ve un element de la cua (D-034): <c>autodj</c>, <c>manual</c> o <c>event</c>.</summary>
+    /// <summary>D'on ve un element de la cua (D-034): <c>autodj</c>, <c>manual</c>, <c>event</c> o <c>emergency</c> (D-159).</summary>
     public static string Origin(QueueOrigin origin) => origin switch
     {
         QueueOrigin.AutoDj => "autodj",
         QueueOrigin.Event => "event",
+        QueueOrigin.Emergency => "emergency",
         _ => "manual",
     };
 }

@@ -107,6 +107,16 @@ public static class EngineServer
             Broadcast(ev);
         };
 
+        // Aturada que no ha estat voluntària (fase 5, pas 4; D-159): si el fitxer «en marxa» de la vegada anterior encara
+        // hi és, el motor no es va tancar bé
+        var runMarker = new RunMarker(Path.Combine(RuntimeFile.DirectoryPath, RunMarker.FileName));
+        if (runMarker.Start() is { } unexpected)
+        {
+            string text = RunMarker.Text(unexpected, DateTimeOffset.Now);
+            log.LogWarning("{Text}", text);
+            incidents.Report(IncidentKind.Restart, "reinici", IncidentSeverity.Danger, text);
+        }
+
         // Àudio (D-005, D-039): mesclador estèreo a 48 kHz, una sola sortida i la cua d'emissió
         var mixer = new Mixer(sampleRate: 48000);
         // Processador de sortida (fase 3, pas 6): el desat o «Suau», i el sostre de seguretat sempre. Es desa i s'avisa en canviar.
@@ -131,6 +141,11 @@ public static class EngineServer
         // Silenci a la sortida (fase 5, pas 3; D-158): el llindar i els segons desats
         var silence = new Supervision.SilenceDetector(mixer, queue);
         ConfigureSilence(silence, library);
+        // Pistes d'emergència (fase 5, pas 4; D-159): la carpeta desada o dades\emergencia; la llista es llegeix ara i cada minut
+        var emergency = new EmergencyTracks(CommandRouter.ReadEmergencyFolder(library));
+        CommandRouter.EnsureDefaultEmergencyFolder(emergency.Folder);
+        emergency.Refresh();
+        queue.EmergencyPicker = emergency.Pick;
         // Rellotge de mostres (fase 2, pas 4): l'hora en què sona cada fotograma, amb la latència mesurada de la sortida (pas 4b)
         var sampleClock = new SampleClock(mixer, () => outputs.Latency);
         // Reproductors auxiliars (fase 2, pas 5): senyals horaris per sobre de la música, amb atenuació opcional
@@ -265,7 +280,7 @@ public static class EngineServer
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
             events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher,
             campaigns: campaigns, savedCalendars: new SavedCalendars(database), backups: backups,
-            incidentStore: incidentStore, incidents: incidents, silence: silence);
+            incidentStore: incidentStore, incidents: incidents, silence: silence, emergency: emergency);
         // Editor de rotacions (fase 3, pas 8a): les interfícies tornen a demanar les rotacions
         router.RotationsChanged += () => Broadcast(Messages.Event("rotations.changed"));
         // Calendaris desats (fase 4, pas 6a): les interfícies tornen a demanar la llista
@@ -315,6 +330,7 @@ public static class EngineServer
             sweepers.DuckingDb = ducking.Sweepers;
             ConfigureProcessor(processor, library, log);
             ConfigureSilence(silence, library);
+            _ = Task.Run(() => emergency.SetFolder(CommandRouter.ReadEmergencyFolder(library)));
             nowPlaying.Configure(ReadNowPlayingSettings(library, log));
             // Els esdeveniments i el pla de les campanyes (scheduler.changed)
             scheduler.Reload();
@@ -424,6 +440,7 @@ public static class EngineServer
             aux.Dispose();
             outputs.Dispose();
             RuntimeFile.DeleteIfOwned();
+            runMarker.Stop(); // tancament net: no és una aturada inesperada
         });
 
         var stopping = app.Lifetime.ApplicationStopping;
@@ -447,6 +464,24 @@ public static class EngineServer
                 _ = Task.Run(() => incidents.Report(IncidentKind.Dropouts, $"fitxer:{e.Item.Path}", IncidentSeverity.Warning,
                     IncidentRules.DropoutsText(e.Item.ToString(), e.Dropouts), e.Item.Path));
         };
+        // Pistes d'emergència (fase 5, pas 4; D-159)
+        queue.EmergencyStarted += e => _ = Task.Run(() => incidents.Report(IncidentKind.Emergency, $"fitxer:{e.Waiting.Path}", IncidentSeverity.Warning,
+            IncidentRules.EmergencyText(e.Waiting.ToString(), e.Emergency.ToString()), e.Waiting.Path, recovered: true));
+        _ = Task.Run(async () =>
+        {
+            // La carpeta d'emergència cada minut (algú hi pot afegir o treure cançons) i el fitxer «en marxa» cada 10 s
+            using var timer = new PeriodicTimer(RunMarker.TouchInterval);
+            int ticks = 0;
+            try
+            {
+                while (await timer.WaitForNextTickAsync(stopping))
+                {
+                    runMarker.Touch();
+                    if (++ticks % 6 == 0) emergency.Refresh();
+                }
+            }
+            catch (OperationCanceledException) { }
+        });
         // Silenci a la sortida (fase 5, pas 3; D-158): una pista en silenci que s'ha saltat
         silence.Skipped += e => _ = Task.Run(() => incidents.Report(IncidentKind.Silence, $"fitxer:{e.Item.Path}", IncidentSeverity.Warning,
             IncidentRules.SilenceSkipText(e.Item.ToString(), e.Position, silence.Seconds), e.Item.Path, recovered: true));
@@ -464,6 +499,7 @@ public static class EngineServer
                     {
                         incidents.Set(IncidentKind.Output, "sortida", IncidentSeverity.Danger, outputs.Problem);
                         incidents.Set(IncidentKind.AutoDj, "autodj", IncidentSeverity.Warning, autoDj.Problem);
+                        incidents.Set(IncidentKind.Emergency, "carpeta", IncidentSeverity.Warning, emergency.Problem);
                         var silent = silence.Problem;
                         incidents.Set(IncidentKind.Silence, "silenci", silent?.Severity ?? IncidentSeverity.Danger, silent?.Text);
                         incidents.Set(IncidentKind.Butt, "butt", IncidentSeverity.Warning,

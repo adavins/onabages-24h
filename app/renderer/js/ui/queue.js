@@ -23,7 +23,7 @@ const TYPE_BADGES = {
   stream: 'text-bg-info',
 };
 
-const ORIGIN_ICONS = { autodj: 'bi-shuffle', manual: 'bi-hand-index', event: 'bi-calendar-event' };
+const ORIGIN_ICONS = { autodj: 'bi-shuffle', manual: 'bi-hand-index', event: 'bi-calendar-event', emergency: 'bi-life-preserver' };
 
 /**
  * Etiqueta del tipus de pista.

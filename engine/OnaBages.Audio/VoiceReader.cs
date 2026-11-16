@@ -39,14 +39,22 @@ public sealed class VoiceReader : IDisposable
     private readonly ManualResetEventSlim _reading = new(true);
     private readonly Thread _thread;
     private int _state = (int)ReaderState.Opening;
+
+    // Fase 5, pas 4 (D-159): un cop deslligat (Cancel, o Dispose que no ha pogut esperar el fil), el fil de lectura ja no
+    // toca mai més la veu, encara que es desperti més tard (p. ex. la xarxa respon al cap d'un minut): la veu pot ser
+    // d'una altra pista. Les escriptures a la veu es fan dins d'aquest bloqueig (no bloqueja mai el fil d'àudio).
+    private readonly object _voiceGate = new();
+    private bool _detached;
     private string? _error;
     private long _durationTicks = -1;
 
     /// <summary>Comença a llegir en un fil nou.</summary>
     /// <param name="startAt">Punt del fitxer on comença (normalment, l'inici de la pista).</param>
     /// <param name="endAt">Punt del fitxer on s'acaba (null = fins al final del fitxer).</param>
-    public VoiceReader(MixerVoice voice, string path, int sampleRate, TimeSpan startAt, TimeSpan? endAt)
+    /// <param name="startPaused">Comença com si el disc no respongués, fins a <see cref="ResumeReading"/> (per a les proves).</param>
+    public VoiceReader(MixerVoice voice, string path, int sampleRate, TimeSpan startAt, TimeSpan? endAt, bool startPaused = false)
     {
+        if (startPaused) _reading.Reset();
         _voice = voice;
         _path = path;
         _sampleRate = sampleRate;
@@ -129,17 +137,17 @@ public sealed class VoiceReader : IDisposable
                 Stream(source, totalSamples, readySamples);
             }
 
-            _voice.MarkSourceFinished();
+            MarkVoiceFinished();
             Volatile.Write(ref _state, (int)ReaderState.Finished);
         }
         catch (OperationCanceledException)
         {
-            _voice.MarkSourceFinished(); // ja no hi haurà més dades: que la veu s'acabi, si sonava
+            MarkVoiceFinished(); // ja no hi haurà més dades: que la veu s'acabi, si sonava
         }
         catch (Exception ex)
         {
             Volatile.Write(ref _error, ex is AudioFileException ? ex.Message : $"No s'ha pogut llegir {System.IO.Path.GetFileName(_path)}: {AudioErrors.Message(ex)}");
-            _voice.MarkSourceFinished();
+            MarkVoiceFinished();
             Volatile.Write(ref _state, (int)ReaderState.Failed);
         }
     }
@@ -152,7 +160,7 @@ public sealed class VoiceReader : IDisposable
         {
             _stop.Token.ThrowIfCancellationRequested();
             _reading.Wait(_stop.Token);
-            written += _voice.Buffer.Write(samples[written..]);
+            written += WriteToVoice(samples[written..]);
             MarkReadyIf(written >= readySamples);
             if (written < samples.Length) Thread.Sleep(10); // la memòria de la veu és plena: que en consumeixi
         }
@@ -175,13 +183,38 @@ public sealed class VoiceReader : IDisposable
             while (written < read)
             {
                 _stop.Token.ThrowIfCancellationRequested();
-                written += _voice.Buffer.Write(chunk.AsSpan(written, read - written));
+                written += WriteToVoice(chunk.AsSpan(written, read - written));
                 if (written < read) Thread.Sleep(10);
             }
             done += read;
             MarkReadyIf(done >= readySamples);
         }
         MarkReadyIf(true);
+    }
+
+    /// <summary>Escriu a la veu, si encara és nostra; si no, s'acaba la lectura.</summary>
+    private int WriteToVoice(ReadOnlySpan<float> samples)
+    {
+        lock (_voiceGate)
+        {
+            if (_detached) throw new OperationCanceledException();
+            return _voice.Buffer.Write(samples);
+        }
+    }
+
+    /// <summary>Diu a la veu que no hi haurà més dades, si encara és nostra.</summary>
+    private void MarkVoiceFinished()
+    {
+        lock (_voiceGate)
+        {
+            if (!_detached) _voice.MarkSourceFinished();
+        }
+    }
+
+    /// <summary>A partir d'ara el fil de lectura no tocarà més la veu.</summary>
+    private void Detach()
+    {
+        lock (_voiceGate) _detached = true;
     }
 
     private void MarkReadyIf(bool condition)
@@ -193,13 +226,17 @@ public sealed class VoiceReader : IDisposable
     /// Demana que s'aturi la lectura sense esperar el fil (p. ex. si està encallat esperant la xarxa): ja no escriurà res
     /// més a la veu. Després cal <see cref="Dispose"/>, que pot esperar fins a 2 s (millor fora del fil de control).
     /// </summary>
-    public void Cancel() => _stop.Cancel();
+    public void Cancel()
+    {
+        Detach();
+        _stop.Cancel();
+    }
 
     /// <summary>Atura la lectura (si encara llegia) i espera que el fil acabi. Després, la veu es pot alliberar.</summary>
     public void Dispose()
     {
         _stop.Cancel();
-        _thread.Join(TimeSpan.FromSeconds(2));
+        if (!_thread.Join(TimeSpan.FromSeconds(2))) Detach(); // encallat: la veu es pot alliberar, però el fil ja no hi ha de tocar
         _stop.Dispose();
         _reading.Dispose();
     }

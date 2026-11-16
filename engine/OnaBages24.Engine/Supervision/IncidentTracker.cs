@@ -30,6 +30,10 @@ public static class IncidentKind
     public const string Dropouts = "TALLS";
     /// <summary>Silenci a la sortida: una pista en silenci que s'ha saltat, o un silenci que dura (D-158).</summary>
     public const string Silence = "SILENCI";
+    /// <summary>Ha sonat una pista d'emergència (una pista no s'ha pogut obrir a temps), o la carpeta no va bé (D-159).</summary>
+    public const string Emergency = "EMERGENCIA";
+    /// <summary>El motor s'ha reiniciat després d'una aturada que no ha estat voluntària (D-159).</summary>
+    public const string Restart = "REINICI";
 }
 
 /// <summary>

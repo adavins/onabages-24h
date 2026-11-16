@@ -10,6 +10,64 @@ public sealed partial class CommandRouter
     private IncidentStore? _incidentStore;
     private IncidentTracker? _incidents;
     private SilenceDetector? _silence;
+    private OnaBages24.Engine.Playback.EmergencyTracks? _emergency;
+
+    // --- Pistes d'emergència (fase 5, pas 4; D-159) ---
+
+    public const string EmergencySettingKey = "emergencia";
+
+    /// <summary>La carpeta per defecte: <c>emergencia</c> dins de la carpeta de dades.</summary>
+    public static string DefaultEmergencyFolder => Path.Combine(RuntimeFile.DirectoryPath, "emergencia");
+
+    /// <summary>La carpeta desada, o la per defecte.</summary>
+    public static string ReadEmergencyFolder(Library? library)
+    {
+        try
+        {
+            if (library?.GetSetting(EmergencySettingKey) is { } json && JsonNode.Parse(json) is JsonObject saved
+                && saved["carpeta"]?.GetValue<string>() is { Length: > 0 } folder)
+                return folder;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or FormatException) { }
+        return DefaultEmergencyFolder;
+    }
+
+    /// <summary>Si és la carpeta per defecte i no hi és, es crea (buida: l'avís dirà que s'hi han de posar cançons).</summary>
+    public static void EnsureDefaultEmergencyFolder(string folder)
+    {
+        if (!string.Equals(Path.GetFullPath(folder), Path.GetFullPath(DefaultEmergencyFolder), StringComparison.OrdinalIgnoreCase)) return;
+        try { Directory.CreateDirectory(folder); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+    }
+
+    private JsonObject EmergencyJson()
+    {
+        var tracks = _emergency ?? throw new BadParamsException("El motor no té pistes d'emergència.");
+        return new JsonObject
+        {
+            ["folder"] = tracks.Folder,
+            ["defaultFolder"] = DefaultEmergencyFolder,
+            ["count"] = tracks.Count,
+            ["problem"] = tracks.Problem,
+        };
+    }
+
+    /// <summary><c>emergency.set</c>: <c>folder</c> (ruta completa; <c>null</c> o buida = la per defecte). Es torna a llegir de seguida.</summary>
+    private JsonObject EmergencySet(JsonObject msg)
+    {
+        var library = _library ?? throw new BadParamsException("El motor no té biblioteca.");
+        var tracks = _emergency ?? throw new BadParamsException("El motor no té pistes d'emergència.");
+        if (msg["folder"] is not null && msg["folder"] is not JsonValue)
+            throw new BadParamsException("El camp 'folder' ha de ser un text o null.");
+        string? folder = msg["folder"] is JsonValue v && v.TryGetValue(out string? text) ? text?.Trim() : null;
+        if (!string.IsNullOrEmpty(folder) && !Path.IsPathFullyQualified(folder))
+            throw new BadParamsException("La carpeta ha de ser una ruta completa (p. ex. D:\\Emergència).");
+        library.SetSetting(EmergencySettingKey, System.Text.Json.JsonSerializer.Serialize(new { carpeta = string.IsNullOrEmpty(folder) ? null : folder }));
+        string target = string.IsNullOrEmpty(folder) ? DefaultEmergencyFolder : folder;
+        EnsureDefaultEmergencyFolder(target);
+        tracks.SetFolder(target);
+        return EmergencyJson();
+    }
 
     // --- Silenci a la sortida (fase 5, pas 3; D-158) ---
 
