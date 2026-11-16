@@ -25,6 +25,22 @@ public sealed class ControlLoop : IDisposable
 
     private readonly SweeperOverlay? _sweepers;
 
+    /// <summary>Quan ha començat l'última volta (ticks de <see cref="Environment.TickCount64"/>, en ms); 0 = encara cap.</summary>
+    private long _lastLoopMs;
+
+    /// <summary>
+    /// Quant fa que el fil de control no fa cap volta (fase 5, pas 2): si es pengés, la cua s'aturaria. Ho mira <c>/health</c>,
+    /// perquè un vigilant de fora el pugui reiniciar. Abans d'arrencar, zero.
+    /// </summary>
+    public TimeSpan SinceLastLoop
+    {
+        get
+        {
+            long last = Interlocked.Read(ref _lastLoopMs);
+            return last == 0 ? TimeSpan.Zero : TimeSpan.FromMilliseconds(Environment.TickCount64 - last);
+        }
+    }
+
     public ControlLoop(QueuePlayer queue, OutputManager outputs, ILogger log, AutoDj? autoDj = null, Scheduling.Scheduler? scheduler = null,
         AuxPlayers? aux = null, SweeperOverlay? sweepers = null)
     {
@@ -49,6 +65,7 @@ public sealed class ControlLoop : IDisposable
         var lastError = DateTime.MinValue;
         while (!token.IsCancellationRequested)
         {
+            Interlocked.Exchange(ref _lastLoopMs, Environment.TickCount64);
             try
             {
                 if (DateTime.UtcNow - lastOutputCheck >= OutputInterval)

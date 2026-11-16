@@ -23,6 +23,12 @@ public sealed record QueueSettings
 
     /// <summary>Encadenament en anar a un altre punt de la pista (D-103): la veu vella baixa i la nova puja en aquest temps, sense clic.</summary>
     public TimeSpan SeekCrossfade { get; init; } = TimeSpan.FromMilliseconds(20);
+
+    /// <summary>
+    /// Pista encallada (fase 5, pas 2; D-157): si la que sona fa aquesta estona que no rep dades del fitxer (el disc o la
+    /// xarxa no responen), se salta a la següent.
+    /// </summary>
+    public TimeSpan StallTimeout { get; init; } = TimeSpan.FromSeconds(5);
 }
 
 /// <summary>
@@ -37,8 +43,17 @@ public sealed record QueuePause(QueueItem Item, TimeSpan Position, TimeSpan Unti
 /// </summary>
 public sealed record QueueStarted(QueueItem Item, long StartFrame, long? CutFrame = null);
 
-/// <summary>Una pista que s'ha acabat: quant ha sonat i si ha arribat al final previst.</summary>
-public sealed record QueueEnded(QueueItem Item, TimeSpan Played, bool Complete);
+/// <summary>
+/// Una pista que s'ha acabat: quant ha sonat i si ha arribat al final previst. <paramref name="Dropouts"/>: quantes
+/// vegades la veu s'ha quedat sense dades a mitja pista (talls: el disc o la xarxa no han anat prou ràpid; fase 5, pas 2).
+/// </summary>
+public sealed record QueueEnded(QueueItem Item, TimeSpan Played, bool Complete, int Dropouts = 0);
+
+/// <summary>
+/// Una pista encallada (fase 5, pas 2; D-157): ha deixat de rebre dades del fitxer a <paramref name="Position"/> i s'ha
+/// passat a la següent; o la lectura ha fallat a mitja pista (<paramref name="Error"/>) i s'ha acabat abans d'hora.
+/// </summary>
+public sealed record QueueStuck(QueueItem Item, TimeSpan Position, string? Error);
 
 /// <summary>Una pista que no s'ha pogut fer sonar (fitxer que falta o il·legible): se salta.</summary>
 public sealed record QueueFailed(QueueItem Item, string Message);
@@ -107,6 +122,11 @@ public sealed class QueuePlayer : IDisposable
     public event Action<QueueStarted>? Started;
     public event Action<QueueEnded>? Ended;
     public event Action<QueueFailed>? Failed;
+    /// <summary>Una pista encallada, o que ha deixat de llegir-se a mitja pista (fase 5, pas 2).</summary>
+    public event Action<QueueStuck>? Stuck;
+
+    /// <summary>Una veu que encara sona aquesta estona després del seu final previst s'atura de cop (fase 5, pas 2).</summary>
+    private static readonly TimeSpan OverdueMargin = TimeSpan.FromSeconds(1);
     /// <summary>La cua ha canviat (pistes afegides, tretes, començades o acabades).</summary>
     public event Action? Changed;
 
@@ -756,9 +776,41 @@ public sealed class QueuePlayer : IDisposable
                 events.Add(() => Changed?.Invoke());
             }
 
-            // 3. Les veus que han acabat: s'alliberen
+            // 3. Xarxa de seguretat (fase 5, pas 2; D-157): una veu que encara sona més d'un segon després del seu final previst
+            // s'atura de cop. Passa si es queda sense dades durant el fos (el fos només avança amb dades): si no, no s'acabaria
+            // mai i es quedaria la veu ocupada.
+            if (_current is { Scheduled: true } overdue && overdue.Voice.State == VoiceState.Playing && now > overdue.EndFrame + Frames(OverdueMargin))
+            {
+                overdue.Voice.Stop(now);
+                if (!overdue.Stuck)
+                {
+                    overdue.Stuck = true;
+                    var item = overdue.Item;
+                    var position = FramesToTime(Math.Max(0, now - overdue.StartFrame));
+                    events.Add(() => Stuck?.Invoke(new QueueStuck(item, position, null)));
+                }
+            }
+            foreach (var ending in _ending)
+            {
+                if (ending.Voice.State == VoiceState.Playing && now > ending.EndFrame + Frames(OverdueMargin))
+                {
+                    ending.Voice.Stop(now);
+                    ending.Stuck = true; // el fil de lectura pot estar encallat: no s'espera en retirar-la
+                }
+            }
+
+            // 3b. Les veus que han acabat: s'alliberen
             if (_current is not null && _current.Voice.State == VoiceState.Finished)
             {
+                // La lectura ha fallat a mitja pista: s'ha acabat abans d'hora (la següent es prepara de seguida, més avall)
+                if (_current.Reader.State == ReaderState.Failed && !_current.Stuck)
+                {
+                    _current.Stuck = true;
+                    var item = _current.Item;
+                    var position = FramesToTime(Math.Max(0, now - _current.StartFrame));
+                    string? error = _current.Reader.Error;
+                    events.Add(() => Stuck?.Invoke(new QueueStuck(item, position, error)));
+                }
                 _ending.Add(_current);
                 _current = null;
             }
@@ -770,11 +822,34 @@ public sealed class QueuePlayer : IDisposable
                 long playedFrames = ending.Played.Frames + ending.Voice.FramesPlayed; // també el que havia sonat abans d'una pausa o d'un salt
                 var played = TimeSpan.FromSeconds((double)playedFrames / _mixer.SampleRate);
                 bool complete = ending.PlannedEndFrame - ending.StartFrame <= playedFrames + Frames(TimeSpan.FromMilliseconds(50));
+                // Els talls d'una encallada ja surten com a encallada
+                int dropouts = ending.Stuck ? 0 : ending.Voice.Underruns;
                 bool silent = ending.Silent;
                 if (silent) ending.Played.Frames = playedFrames; // la continua una altra veu (D-103): encara no s'ha acabat
                 Retire(ending);
                 _ending.RemoveAt(i);
-                if (!silent) events.Add(() => Ended?.Invoke(new QueueEnded(item, played, complete)));
+                if (!silent) events.Add(() => Ended?.Invoke(new QueueEnded(item, played, complete, dropouts)));
+            }
+
+            // 4. Pista encallada (fase 5, pas 2; D-157): la que sona fa estona que no rep dades del fitxer (el rellotge del
+            // mesclador avança però no sona res). Es passa a la següent. Després del punt de mescla ja no cal: la següent hi és.
+            if (_current is { Scheduled: true, HasStarted: true, Stuck: false } cur && cur.Voice.State == VoiceState.Playing && now < cur.MixFrame)
+            {
+                long playedNow = cur.Voice.FramesPlayed;
+                if (playedNow != cur.LastPlayed)
+                {
+                    cur.LastPlayed = playedNow;
+                    cur.LastProgressFrame = now;
+                }
+                else if (now - cur.LastProgressFrame >= Frames(_settings.StallTimeout))
+                {
+                    cur.Stuck = true;
+                    var item = cur.Item;
+                    var position = FramesToTime(Math.Max(0, now - cur.StartFrame));
+                    SkipLocked(TimeSpan.Zero, events); // de cop: no té dades (un fos sense dades no avançaria)
+                    events.Add(() => Stuck?.Invoke(new QueueStuck(item, position, null)));
+                    events.Add(() => Changed?.Invoke());
+                }
             }
 
             _toRelease.RemoveAll(v => _mixer.ReleaseVoice(v));
@@ -919,7 +994,14 @@ public sealed class QueuePlayer : IDisposable
     /// </summary>
     private void Retire(Playing p)
     {
-        p.Reader.Dispose();
+        if (p.Stuck)
+        {
+            // El fil de lectura pot estar encallat esperant la xarxa: no s'espera aquí (fil de control). Després de Cancel
+            // ja no escriu res més a la veu.
+            p.Reader.Cancel();
+            _ = Task.Run(p.Reader.Dispose);
+        }
+        else p.Reader.Dispose();
         p.Voice.Cancel();
         if (_mixer.ReleaseVoice(p.Voice)) return;
         p.Voice.Stop(_mixer.FramesRendered);
@@ -938,6 +1020,16 @@ public sealed class QueuePlayer : IDisposable
     private TimeSpan FramesToTime(long frames) => TimeSpan.FromSeconds((double)frames / _mixer.SampleRate);
 
     private static TimeSpan Ms(long ms) => TimeSpan.FromMilliseconds(ms);
+
+    /// <summary>Proves de la pista encallada: el fitxer de la que sona deixa de llegir-se (o hi torna).</summary>
+    internal void SetCurrentReadingForTests(bool reading)
+    {
+        lock (_sync)
+        {
+            if (reading) _current?.Reader.ResumeReading();
+            else _current?.Reader.PauseReading();
+        }
+    }
 
     public void Dispose()
     {
@@ -985,6 +1077,12 @@ public sealed class QueuePlayer : IDisposable
 
         /// <summary>Si continua una emissió (D-103), el punt on comença (fotogrames des de l'inici de la pista); si no, -1.</summary>
         public long ResumeOffset { get; init; } = -1;
+
+        /// <summary>Pista encallada (fase 5, pas 2): els fotogrames sonats a l'última comprovació i quan han canviat per última vegada.</summary>
+        public long LastPlayed { get; set; } = -1;
+        public long LastProgressFrame { get; set; }
+        /// <summary>S'ha encallat (o la lectura ha fallat a mitja pista): ja s'ha avisat.</summary>
+        public bool Stuck { get; set; }
     }
 
     /// <summary>Fotogrames sonats d'una emissió en veus que ja s'han acabat (D-103).</summary>

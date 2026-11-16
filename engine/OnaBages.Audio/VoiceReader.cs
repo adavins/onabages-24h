@@ -35,6 +35,8 @@ public sealed class VoiceReader : IDisposable
     private readonly TimeSpan _startAt;
     private readonly TimeSpan? _endAt;
     private readonly CancellationTokenSource _stop = new();
+    /// <summary>Obert = llegeix; tancat = s'espera (per simular un disc o una xarxa que deixen de respondre).</summary>
+    private readonly ManualResetEventSlim _reading = new(true);
     private readonly Thread _thread;
     private int _state = (int)ReaderState.Opening;
     private string? _error;
@@ -77,6 +79,15 @@ public sealed class VoiceReader : IDisposable
             return ticks < 0 ? null : TimeSpan.FromTicks(ticks);
         }
     }
+
+    /// <summary>
+    /// Deixa de llegir fins a <see cref="ResumeReading"/>, com si el disc o la xarxa no responguessin: la veu es queda sense
+    /// dades. Per a les proves de la pista encallada (Ona Bages 24h, fase 5, pas 2).
+    /// </summary>
+    public void PauseReading() => _reading.Reset();
+
+    /// <summary>Torna a llegir després de <see cref="PauseReading"/>.</summary>
+    public void ResumeReading() => _reading.Set();
 
     /// <summary>Espera (com a molt <paramref name="timeout"/>) que estigui a punt, acabat o fallat. Per a les proves i les eines.</summary>
     public bool WaitUntilReady(TimeSpan timeout)
@@ -140,6 +151,7 @@ public sealed class VoiceReader : IDisposable
         while (written < samples.Length)
         {
             _stop.Token.ThrowIfCancellationRequested();
+            _reading.Wait(_stop.Token);
             written += _voice.Buffer.Write(samples[written..]);
             MarkReadyIf(written >= readySamples);
             if (written < samples.Length) Thread.Sleep(10); // la memòria de la veu és plena: que en consumeixi
@@ -155,6 +167,7 @@ public sealed class VoiceReader : IDisposable
         while (done < totalSamples)
         {
             _stop.Token.ThrowIfCancellationRequested();
+            _reading.Wait(_stop.Token);
             int wanted = (int)Math.Min(chunk.Length, totalSamples - done);
             int read = source.Read(chunk.AsSpan(0, wanted));
             if (read == 0) break;
@@ -176,11 +189,18 @@ public sealed class VoiceReader : IDisposable
         if (condition) Interlocked.CompareExchange(ref _state, (int)ReaderState.Ready, (int)ReaderState.Opening);
     }
 
+    /// <summary>
+    /// Demana que s'aturi la lectura sense esperar el fil (p. ex. si està encallat esperant la xarxa): ja no escriurà res
+    /// més a la veu. Després cal <see cref="Dispose"/>, que pot esperar fins a 2 s (millor fora del fil de control).
+    /// </summary>
+    public void Cancel() => _stop.Cancel();
+
     /// <summary>Atura la lectura (si encara llegia) i espera que el fil acabi. Després, la veu es pot alliberar.</summary>
     public void Dispose()
     {
         _stop.Cancel();
         _thread.Join(TimeSpan.FromSeconds(2));
         _stop.Dispose();
+        _reading.Dispose();
     }
 }

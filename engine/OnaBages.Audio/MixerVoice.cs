@@ -217,7 +217,9 @@ public sealed class MixerVoice
         for (int i = 0; i < target.Length; i++) target[i] += samples[i];
         Interlocked.Add(ref _framesPlayed, got);
 
-        if (dataEnded || position + got >= end) Finish();
+        // S'acaba quan arriba el final programat, encara que no hi hagi dades (un tall: el temps passa igual, D-157).
+        // Abans es comptava només el que havia sonat i una veu sense dades no s'acabava mai (es quedava ocupada).
+        if (dataEnded || position + wanted >= end) Finish();
     }
 
     private void BeginPlaying(long atFrame)

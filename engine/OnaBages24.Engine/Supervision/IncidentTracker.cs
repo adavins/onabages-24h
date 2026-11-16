@@ -24,6 +24,10 @@ public static class IncidentKind
     public const string Butt = "BUTT";
     /// <summary>L'AutoDJ no troba res per posar a la cua (o hi posa la reserva).</summary>
     public const string AutoDj = "AUTODJ";
+    /// <summary>Una pista que ha deixat de rebre dades del fitxer a mitja pista i s'ha saltat, o la lectura ha fallat (D-157).</summary>
+    public const string Stuck = "ENCALLADA";
+    /// <summary>Una pista que ha tingut talls de so: el disc o la xarxa no han anat prou ràpid (D-157).</summary>
+    public const string Dropouts = "TALLS";
 }
 
 /// <summary>

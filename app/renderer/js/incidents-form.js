@@ -11,6 +11,8 @@
 export const KINDS = [
   ['SORTIDA', 'Sortida d\'àudio'],
   ['FITXER', 'Fitxer que no sona'],
+  ['ENCALLADA', 'Pista encallada'],
+  ['TALLS', 'Talls de so'],
   ['ESDEVENIMENT_OMES', 'Esdeveniment omès'],
   ['ESDEVENIMENT_ERROR', 'Esdeveniment fallat'],
   ['ESDEVENIMENT_TARD', 'Esdeveniment tard'],

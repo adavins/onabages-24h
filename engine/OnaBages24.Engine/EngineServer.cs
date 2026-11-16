@@ -333,17 +333,6 @@ public static class EngineServer
 
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15) });
 
-        // Comprovació de vida (sense testimoni). Només diu «ok» si el mesclador ha enviat àudio a la sortida en els
-        // últims 2 segons (D-045): un motor penjat o sense sortida respon 503, i el vigilant el pot reiniciar.
-        app.MapGet("/health", () =>
-        {
-            var since = mixer.SinceLastRender;
-            return since < TimeSpan.FromSeconds(2)
-                ? Results.Text("ok")
-                : Results.Text(since == TimeSpan.MaxValue ? "sense àudio: la sortida no ha començat" : $"sense àudio fa {since.TotalSeconds:0} s",
-                    statusCode: StatusCodes.Status503ServiceUnavailable);
-        });
-
         // Canal principal amb la interfície.
         app.Map("/ws", async (HttpContext ctx) =>
         {
@@ -377,6 +366,21 @@ public static class EngineServer
 
         // Fil de control (docs/disseny-motor.md, 3): la cua cada 10 ms i la sortida cada 0,5 s. Mai no fa esperar el fil d'àudio.
         var control = new ControlLoop(queue, outputs, log, autoDj, scheduler, aux, sweepers);
+
+        // Comprovació de vida (sense testimoni). Només diu «ok» si el mesclador ha enviat àudio a la sortida en els
+        // últims 2 segons (D-045) i el fil de control ha fet alguna volta en els últims 5 (fase 5, pas 2; D-157): un motor
+        // penjat o sense sortida respon 503, i el vigilant el pot reiniciar.
+        app.MapGet("/health", () =>
+        {
+            var since = mixer.SinceLastRender;
+            if (since >= TimeSpan.FromSeconds(2))
+                return Results.Text(since == TimeSpan.MaxValue ? "sense àudio: la sortida no ha començat" : $"sense àudio fa {since.TotalSeconds:0} s",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            var loop = control.SinceLastLoop;
+            if (loop >= TimeSpan.FromSeconds(5))
+                return Results.Text($"el fil de control no respon fa {loop.TotalSeconds:0} s", statusCode: StatusCodes.Status503ServiceUnavailable);
+            return Results.Text("ok");
+        });
         var deviceWatcher = new DeviceWatcher();
         deviceWatcher.Changed += _ => outputs.Poke();
         try { deviceWatcher.Start(); }
@@ -430,6 +434,15 @@ public static class EngineServer
                 ? $"No s'ha pogut fer sonar el sweeper «{e.Item}» (la pista ha sonat sense): {e.Message}"
                 : $"No s'ha pogut fer sonar «{e.Item}» al reproductor auxiliar {e.Player}: {e.Message}", e.Item.Path));
         queue.Problem += message => _ = Task.Run(() => incidents.Report(IncidentKind.Pause, "pausa", IncidentSeverity.Warning, message, recovered: true));
+        // Pista encallada i talls (fase 5, pas 2; D-157)
+        queue.Stuck += e => _ = Task.Run(() => incidents.Report(IncidentKind.Stuck, $"fitxer:{e.Item.Path}", IncidentSeverity.Warning,
+            IncidentRules.StuckText(e.Item.ToString(), e.Position, e.Error), e.Item.Path, recovered: true));
+        queue.Ended += e =>
+        {
+            if (e.Dropouts > 0)
+                _ = Task.Run(() => incidents.Report(IncidentKind.Dropouts, $"fitxer:{e.Item.Path}", IncidentSeverity.Warning,
+                    IncidentRules.DropoutsText(e.Item.ToString(), e.Dropouts), e.Item.Path));
+        };
         // Les carpetes, només després de la primera revisió: abans no se'n sap res, i es tancarien les que continuen d'abans
         bool foldersScanned = false;
         watcher.Scanned += _ => foldersScanned = true;

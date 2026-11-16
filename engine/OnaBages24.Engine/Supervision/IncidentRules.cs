@@ -35,6 +35,18 @@ public static class IncidentRules
         };
     }
 
+    /// <summary>«m:ss» o «h:mm:ss».</summary>
+    private static string Clock(TimeSpan t) => t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes}:{t.Seconds:00}";
+
+    /// <summary>El text d'una pista encallada (D-157): s'ha saltat, o la lectura ha fallat i s'ha acabat abans d'hora.</summary>
+    public static string StuckText(string track, TimeSpan position, string? error) => error is null
+        ? $"«{track}» s'ha encallat a {Clock(position)}: el fitxer ha deixat de llegir-se (disc o xarxa) i s'ha passat a la següent"
+        : $"«{track}» s'ha acabat abans d'hora a {Clock(position)}: ha fallat la lectura del fitxer ({error})";
+
+    /// <summary>El text d'una pista que ha tingut talls (D-157).</summary>
+    public static string DropoutsText(string track, int dropouts) =>
+        $"«{track}» ha tingut talls de so ({dropouts} {(dropouts == 1 ? "vegada" : "vegades")} sense dades): el disc o la xarxa no han anat prou ràpid";
+
     /// <summary>Les carpetes vigilades amb problemes (clau <c>carpeta:id</c> → text), com les mostrava la interfície.</summary>
     public static Dictionary<string, string> Folders(IEnumerable<FolderWatchStatus> folders)
     {
