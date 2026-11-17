@@ -489,7 +489,9 @@ public static class EngineServer
         // quan passen, fora del fil de control.
         queue.Failed += e => _ = Task.Run(() => incidents.Report(e.Item.IsStream ? IncidentKind.Stream : IncidentKind.File, $"fitxer:{e.Item.Path}",
             IncidentSeverity.Warning, e.Item.IsStream
-                ? $"No s'ha pogut connectar al stream «{e.Item}» i s'ha saltat (sona la pista següent): {e.Message}"
+                ? e.Fallback is { } fallback
+                    ? $"No s'ha pogut connectar al stream «{e.Item}»: {e.Sentence} Ha sonat la pista de reserva, «{fallback}»."
+                    : $"No s'ha pogut connectar al stream «{e.Item}» i s'ha saltat (sona la pista següent): {e.Message}"
                 : $"No s'ha pogut fer sonar «{e.Item}» i s'ha saltat: {e.Message}", e.Item.Path, recovered: true));
         // Streams (fase 2, pas 7b; D-030): talls (oberta fins que es recupera o se salta), recuperacions i final per silenci
         queue.StreamNotice += e => _ = Task.Run(() =>

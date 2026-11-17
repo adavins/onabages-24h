@@ -195,14 +195,14 @@ public sealed class QueueStreamTests : IDisposable
             port = ((IPEndPoint)free.LocalEndpoint).Port;
         }
         var player = NewPlayer();
-        var reserve = File(Wav(3, 0.3f)) with { Title = "Reserva" };
+        var reserve = File(Wav(8, 0.3f)) with { Title = "Reserva" };
         var stream = new QueueItem { Path = $"http://127.0.0.1:{port}/", Title = "Directe", Type = TrackType.Stream }.AsStream(10_000)
             with { StreamFallback = reserve };
-        player.Enqueue(stream, File(Wav(3, 0.2f)));
+        player.Enqueue(stream, File(Wav(5, 0.2f)));
 
-        var peaks = Run(player, 4);
+        var peaks = Run(player, 6); // Windows triga uns 2 s a dir que el port és tancat (més, amb l'ordinador carregat)
 
-        Assert.Contains("Sona la pista de reserva, «Reserva»", Assert.Single(_failed).Message);
+        Assert.Equal("Reserva", Assert.Single(_failed).Fallback?.Title);
         Assert.Equal("Reserva", _started[0].Item.Title);
         Assert.InRange(peaks[^5], 0.25f, 0.35f); // sona la reserva (0,3), no la següent (0,2)
     }

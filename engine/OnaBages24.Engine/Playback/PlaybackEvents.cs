@@ -103,7 +103,9 @@ public sealed class PlaybackEvents
 
         queue.Failed += e =>
         {
-            log.LogWarning("No es pot fer sonar {Track}: {Message}. Se salta.", e.Item, e.Message);
+            if (e.Fallback is { } fallback)
+                log.LogWarning("No es pot fer sonar {Track}: {Message} Sona la pista de reserva, «{Fallback}».", e.Item, e.Sentence, fallback);
+            else log.LogWarning("No es pot fer sonar {Track}: {Message} Se salta.", e.Item, e.Sentence);
             var ev = Messages.Event("player.trackFailed");
             ev["item"] = QueueJson.Item(e.Item);
             ev["message"] = e.Message;

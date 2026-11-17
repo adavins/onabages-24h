@@ -80,7 +80,12 @@ public sealed record QueueEnded(QueueItem Item, TimeSpan Played, bool Complete, 
 public sealed record QueueStuck(QueueItem Item, TimeSpan Position, string? Error);
 
 /// <summary>Una pista que no s'ha pogut fer sonar (fitxer que falta o il·legible): se salta.</summary>
-public sealed record QueueFailed(QueueItem Item, string Message);
+/// <summary>Una pista que no s'ha pogut obrir i s'ha saltat; si és un stream amb pista de reserva, <paramref name="Fallback"/> sona al seu lloc (D-178).</summary>
+public sealed record QueueFailed(QueueItem Item, string Message, QueueItem? Fallback = null)
+{
+    /// <summary>El motiu acabat en punt (per posar-hi una frase darrere sense «..»).</summary>
+    public string Sentence => Message.TrimEnd() is var m && m.EndsWith('.') ? m : m + ".";
+}
 
 /// <summary>
 /// Un stream que sona (fase 2, pas 7b; D-030): s'ha tallat (<see cref="Kind"/> «tall»; es prova de reconnectar), s'ha
@@ -813,12 +818,9 @@ public sealed class QueuePlayer : IDisposable
                 Retire(failed);
                 _next = null;
                 // Un stream que no connecta i té pista de reserva (D-010): sona la reserva al seu lloc
-                if (item.StreamFallback is { } fallback)
-                {
-                    _upcoming.Insert(0, fallback);
-                    message += $" Sona la pista de reserva, «{fallback}».";
-                }
-                events.Add(() => Failed?.Invoke(new QueueFailed(item, message)));
+                var fallback = item.StreamFallback;
+                if (fallback is not null) _upcoming.Insert(0, fallback);
+                events.Add(() => Failed?.Invoke(new QueueFailed(item, message, fallback)));
                 events.Add(() => Changed?.Invoke());
             }
 
