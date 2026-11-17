@@ -27,6 +27,7 @@ public static class Program
                 "desfes-importacio" => UndoImport(args[1..]),
                 "compara-punts" => CompareCues(args[1..]),
                 "comprova-emissio" => CheckBroadcast(args[1..]),
+                "restableix-administrador" => ResetAdministrator(args[1..]),
                 "ajuda" or "--help" or "-h" or "/?" => Help(),
                 _ => EngineServer.Run(args),
             };
@@ -80,6 +81,10 @@ public static class Program
                   motor en marxa.
                   --des, --fins   «2026-11-11» o «2026-11-11 22:00» (hora local). Per defecte, les últimes 72 hores
                   --forat         forats a partir de quants segons (per defecte, 1)
+
+              restableix-administrador [--bd RUTA]
+                  Si s'ha oblidat la contrasenya de l'administrador: n'hi posa una de provisional (o crea l'usuari
+                  «admin» si no n'hi ha cap d'actiu), que s'haurà de canviar en iniciar sessió. Amb el motor aturat.
             """);
         return 2;
     }
@@ -310,6 +315,54 @@ public static class Program
     /// Desfà una importació (fase 3, pas 7b): esborra les pistes d'una carpeta que no venen de RadioDJ, no han sonat mai i
     /// no fa servir cap esdeveniment. Per defecte només ho diu; amb <c>--aplica</c>, les esborra.
     /// </summary>
+    /// <summary>
+    /// <c>restableix-administrador [--bd RUTA]</c> (D-164): si s'ha oblidat la contrasenya de l'administrador, en posa una de
+    /// provisional (o crea l'usuari «admin» si no n'hi ha cap d'actiu). S'ha de fer des de l'ordinador, amb el motor aturat.
+    /// </summary>
+    private static int ResetAdministrator(string[] args)
+    {
+        string databasePath = DefaultDatabasePath;
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--bd") databasePath = Value(args, ++i, "--bd");
+            else return Help();
+        }
+        if (EngineIsRunning())
+        {
+            Console.Error.WriteLine("El motor està en marxa: atura'l abans (la contrasenya nova no la veuria fins que es reiniciés).");
+            return 1;
+        }
+        Console.WriteLine($"Base de dades: {databasePath}");
+        using var database = Database.Open(databasePath);
+        var users = new UserStore(database);
+        var (name, password) = Security.SessionManager.ResetAdministrator(users, DateTimeOffset.UtcNow);
+        users.AddChange(new ChangeEntry
+        {
+            At = DateTimeOffset.UtcNow, Command = "restableix-administrador",
+            Summary = $"S'ha restablert la contrasenya de l'administrador «{name}» des de l'ordinador",
+        });
+        Console.WriteLine();
+        Console.WriteLine($"Usuari: {name}");
+        Console.WriteLine($"Contrasenya provisional: {password}");
+        Console.WriteLine();
+        Console.WriteLine("Inicia sessió amb aquesta contrasenya: l'aplicació et demanarà que la canviïs de seguida.");
+        return 0;
+    }
+
+    /// <summary>Si hi ha un motor en marxa amb aquesta carpeta de dades (segons engine.json).</summary>
+    private static bool EngineIsRunning()
+    {
+        try
+        {
+            if (!File.Exists(RuntimeFile.FilePath)) return false;
+            var info = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(RuntimeFile.FilePath));
+            int pid = info?["pid"]?.GetValue<int>() ?? 0;
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return !process.HasExited && process.ProcessName.StartsWith("OnaBages24.Engine", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception) { return false; }
+    }
+
     private static int UndoImport(string[] args)
     {
         string? folder = null;

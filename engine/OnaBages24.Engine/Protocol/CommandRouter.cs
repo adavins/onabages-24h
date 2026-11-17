@@ -61,9 +61,11 @@ public sealed partial class CommandRouter
         LibraryTools.FolderWatcher? watcher = null, Campaigns? campaigns = null, SavedCalendars? savedCalendars = null,
         Backups? backups = null, IncidentStore? incidentStore = null, Supervision.IncidentTracker? incidents = null,
         Supervision.SilenceDetector? silence = null, EmergencyTracks? emergency = null,
-        Supervision.MailNotifier? mail = null)
+        Supervision.MailNotifier? mail = null, Security.SessionManager? sessions = null, UserStore? users = null)
     {
         _mail = mail;
+        _sessions = sessions;
+        _users = users;
         _silence = silence;
         _emergency = emergency;
         _backups = backups;
@@ -89,7 +91,11 @@ public sealed partial class CommandRouter
         _aux = aux;
     }
 
-    public JsonObject Handle(string text)
+    /// <summary>
+    /// Atén una ordre. <paramref name="client"/>: la connexió que l'envia, amb la seva sessió (D-164); sense (les proves, el
+    /// motor mateix), no es comproven els permisos.
+    /// </summary>
+    public JsonObject Handle(string text, ClientContext? client = null)
     {
         JsonNode? node;
         try
@@ -115,6 +121,11 @@ public sealed partial class CommandRouter
         string? cmd = ReadString(msg["cmd"]);
         if (string.IsNullOrWhiteSpace(cmd))
             return Messages.Error(id, "missing_cmd", "Falta el camp 'cmd'.");
+
+        // Usuaris i rols (fase 5, pas 8; D-164): la sessió, i qui pot fer cada ordre
+        if (cmd.StartsWith("session.", StringComparison.Ordinal)) return SessionCommand(id, cmd, msg, client);
+        var (session, denied) = Authorize(id, cmd, client);
+        if (denied is not null) return denied;
 
         try
         {
@@ -235,6 +246,11 @@ public sealed partial class CommandRouter
                 "mail.get" => MailGet(),
                 "mail.set" => MailSet(msg),
                 "mail.test" => MailTest(msg),
+                "users.list" => UsersList(),
+                "users.save" => UsersSave(msg),
+                "security.get" => SecurityGet(),
+                "security.set" => SecuritySet(msg),
+                "changes.list" => ChangesList(msg),
                 "nowplaying.get" => new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(NowPlayingOrError()) },
                 "nowplaying.set" => NowPlayingSet(msg),
                 "scheduler.list" => SchedulerList(),
@@ -250,9 +266,9 @@ public sealed partial class CommandRouter
                 _ => null,
             };
 
-            return result is null
-                ? Messages.Error(id, "unknown_command", $"Ordre desconeguda: {cmd}")
-                : Messages.Ok(id, result);
+            if (result is null) return Messages.Error(id, "unknown_command", $"Ordre desconeguda: {cmd}");
+            LogChange(cmd, msg, session);
+            return Messages.Ok(id, result);
         }
         catch (BadParamsException ex)
         {

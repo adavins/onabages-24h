@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 5, pas 7 (aturades amb el motiu; avisos per correu; pistes d'emergència i reinici inesperat; silenci a la sortida i sortida encallada; pista encallada i talls; incidències; còpies de seguretat i restauració; paquet de campanya; avisos de vigència; calendaris desats i temporada; cerca a l'historial amb filtres; informes amb «previst i emès» i dades de l'emissora; campanyes, pla de passis, pantalla de campanyes i calendari de la campanya; motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 5, pas 8a (usuaris, sessions, permisos i registre de canvis; aturades amb el motiu; avisos per correu; pistes d'emergència i reinici inesperat; silenci a la sortida i sortida encallada; pista encallada i talls; incidències; còpies de seguretat i restauració; paquet de campanya; avisos de vigència; calendaris desats i temporada; cerca a l'historial amb filtres; informes amb «previst i emès» i dades de l'emissora; campanyes, pla de passis, pantalla de campanyes i calendari de la campanya; motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -67,6 +67,11 @@ El `message` és en català i es pot mostrar a l'operador.
 | `database_error` | La base de dades no ha pogut fer l'operació. El missatge n'explica el motiu |
 | `unknown_command` | L'ordre no existeix |
 | `internal` | Error inesperat del motor (el motor continua funcionant) |
+| `not_logged_in` | Cal iniciar sessió per fer aquesta ordre (o la sessió ja s'ha tancat). Només quan hi ha usuaris (D-164) |
+| `forbidden` | El rol de la sessió no permet aquesta ordre. El missatge diu quin rol cal (D-164) |
+| `must_change_password` | La sessió té una contrasenya provisional: cal canviar-la (`session.changePassword`) abans de fer res més (D-164) |
+| `bad_login` | El nom o la contrasenya no són correctes (el mateix error en tots dos casos) (D-164) |
+| `locked` | Massa intents fallits amb aquest nom: s'ha d'esperar uns minuts (D-164) |
 
 ## 4. Ordres
 
@@ -492,6 +497,39 @@ Tot el que va malament a l'emissió, desat a la base de dades (migració 009) i 
 - `severity`: `danger`, `warning` o `info`. `recovered`: el motor ho ha resolt sol (p. ex. ha saltat la pista i l'emissió ha continuat).
 - En arrencar, el motor **continua** les que havien quedat obertes (un reinici no les resol): les tanca quan comprova que el problema ja no hi és (les carpetes, després de la primera revisió).
 
+### 4.14. Usuaris, sessions i registre de canvis (fase 5, pas 8; D-035, D-164)
+
+**Permisos.** Cada connexió té la seva sessió. Mentre no hi ha cap usuari actiu, no cal iniciar sessió: tot es pot fer com abans. Quan n'hi ha, sense sessió (mode de consulta) només es poden fer les ordres de consulta; les altres responen `not_logged_in`, i les que el rol no permet, `forbidden`. Rols: `operator` (la cua, el reproductor, els auxiliars, les notes, l'AutoDJ, pausar el planificador, la sortida d'àudio), `programmer` (a més: biblioteca, esdeveniments, campanyes, rotacions, bosses, calendaris, temporada, reserva) i `administrator` (tot: configuració, usuaris, còpies, `engine.shutdown`). La llista de cada ordre és a `engine/OnaBages24.Engine/Security/Permissions.cs` (una prova comprova que hi són totes; una ordre que no hi és només la pot fer l'administrador). Les ordres `session.*` són per a tothom.
+
+**Sessió.** Es tanca sola després dels minuts d'inactivitat (per defecte 30; `security.set`). Compten com a activitat `session.touch` (la interfície l'envia quan es fa servir el teclat o el ratolí) i les ordres que canvien alguna cosa. Quan es tanca per inactivitat, el motor envia `session.changed` a aquella connexió. Si la connexió es perd, la interfície la recupera amb `session.resume` (si el motor s'ha reiniciat, cal tornar a entrar). Cinc intents fallits seguits amb el mateix nom el bloquegen 5 minuts (`locked`).
+
+**Estat de la sessió** (resposta de `session.*` i esdeveniment `session.changed`):
+
+```json
+{ "usersExist": true, "inactivityMinutes": 30,
+  "session": { "id": "…", "user": "joan", "displayName": "Joan Puig", "role": "operator", "roleName": "Operador", "mustChangePassword": false } }
+```
+
+`session` és `null` sense sessió.
+
+| Ordre | Paràmetres | Resultat |
+|---|---|---|
+| `session.get` | — | L'estat de la sessió d'aquesta connexió |
+| `session.login` | `user` (sense distingir majúscules), `password` | L'estat. Si no és correcte, `bad_login` (amb 1 s d'espera) o `locked` |
+| `session.resume` | `sessionId` | L'estat, si la sessió encara és oberta; si no, `not_logged_in` |
+| `session.logout` | — | L'estat (sense sessió) |
+| `session.touch` | — | L'estat (si ja s'havia tancat, sense sessió) |
+| `session.changePassword` | `current`, `new` (mínim 8 caràcters, diferent de la d'ara) | L'estat; la contrasenya ja no és provisional. Si `current` no és bona, `bad_login` |
+| `users.list` | — | `{ users: [{ id, name, fullName, role, roleName, active, provisional, createdAt, lastLoginAt }] }` (administrador) |
+| `users.save` | `userId` (cap = nou), `name`, `fullName`, `role`, `active`, `password` (obligatòria per a un de nou; si no, només si es canvia) | `{ user }`. El primer usuari ha de ser administrador; ha de quedar com a mínim un administrador actiu; un nom repetit, `database_error`. Els usuaris no s'esborren: es desactiven (se'ls tanca la sessió). Una sessió oberta pren el rol nou de seguida (administrador) |
+| `security.get` | — | `{ inactivityMinutes, standardInactivityMinutes }` (administrador) |
+| `security.set` | `inactivityMinutes` (de 5 a 240) | Com `security.get` (administrador) |
+| `changes.list` | Opcionals: `from`, `to` (ISO 8601), `userId`, `commands` (prefixos, p. ex. `["scheduler."]`), `offset`, `limit` (fins a 500; per defecte 100) | `{ total, entries: [{ id, at, userId, user, command, summary, detail }] }`, dels més nous als més antics (administrador) |
+
+**Registre de canvis.** Cada ordre que canvia alguna cosa i acaba bé s'anota amb qui, quan, l'ordre, un resum («Ha desat l'esdeveniment «Butlletí 13 h»») i els paràmetres (sense contrasenyes; el logotip com a «(imatge)»; els textos llargs retallats). No s'anoten les consultes, `ui.set` ni `notes.set` (es desa sol mentre s'escriu). Es conserva 2 anys. Els usuaris i el registre de canvis són d'aquest ordinador: restaurar una còpia no els toca.
+
+**Contrasenya oblidada.** Amb el motor aturat: `OnaBages24.Engine restableix-administrador` posa una contrasenya provisional a l'administrador (o crea l'usuari `admin`) i la mostra; s'ha de canviar en iniciar sessió.
+
 ## 5. Esdeveniments
 
 | Esdeveniment | Camps | Freqüència | Des de |
@@ -521,6 +559,7 @@ Tot el que va malament a l'emissió, desat a la base de dades (migració 009) i 
 | `scheduler.fired` | `entry` (línia del registre, 4.7) | quan el planificador executa o omet una emissió, i quan comença la primera pista d'un TALLA o l'auxiliar d'un SUPERPOSA (la mateixa línia, completada) | fase 2, passos 3 a 5 |
 | `scheduler.paused` | `paused` (com a `scheduler.status`) | quan s'aturen o es reactiven els esdeveniments (també quan tornen a funcionar sols) | fase 3, pas 2c |
 | `incidents.changed` | `incident` (4.13) | quan s'obre, canvia o es tanca una incidència, o se n'anota una d'un moment | fase 5, pas 1a (D-156) |
+| `session.changed` | l'estat de la sessió (4.14) i `reason` (`inactivity`) | només a la connexió afectada, quan se li tanca la sessió per inactivitat | fase 5, pas 8a (D-164) |
 | `scheduler.changed` | — | quan es desa o s'esborra un esdeveniment (la interfície torna a demanar el que mostra) | fase 2, pas 3 |
 
 ### 5.1. Mesuradors i posició

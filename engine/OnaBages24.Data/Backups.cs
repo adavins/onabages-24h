@@ -149,7 +149,9 @@ public sealed class Backups(Database database, string folder)
     /// 4. si es demana, hi torna a posar l'historial i el registre d'execució d'ara que són posteriors a la còpia (perquè no
     ///    es perdin emissions dels certificats, D-011) i els valors d'ara de les claus de configuració indicades (les que
     ///    depenen de l'ordinador, com la sortida d'àudio);
-    /// 5. les incidències es queden totes com ara (són el registre d'aquest ordinador, D-156), també les obertes.
+    /// 5. les incidències es queden totes com ara (són el registre d'aquest ordinador, D-156), també les obertes; i també
+    ///    els usuaris i el registre de canvis (D-164: una còpia antiga no pot tornar a activar un usuari ni deixar fora
+    ///    l'administrador d'ara).
     /// Tot dins del mateix bloqueig: cap altre codi escriu a mig fer. L'àudio no depèn de la base de dades.
     /// </summary>
     public RestoreResult Restore(string backupPath, RestoreOptions options, DateTime? now = null)
@@ -169,7 +171,7 @@ public sealed class Backups(Database database, string folder)
         lock (database.Sync)
         {
             using var copy = ReadableCopy.Of(backupPath);
-            List<object?[]> history = [], executions = [], incidents = [];
+            List<object?[]> history = [], executions = [], incidents = [], users = [], changes = [];
             var settings = new Dictionary<string, string?>();
             using (var source = OpenFile(copy.Path, SqliteOpenMode.ReadWrite))
             {
@@ -188,6 +190,9 @@ public sealed class Backups(Database database, string folder)
                 // Les incidències d'ara, totes (D-156)
                 incidents = Rows(database.Connection,
                     "SELECT id, tipus, clau, gravetat, text, detall, inici, fi, recuperada FROM incidencia WHERE $after IS NULL ORDER BY id;", null);
+                // Els usuaris i el registre de canvis d'ara, tots (D-164)
+                users = Rows(database.Connection, $"SELECT {UserColumns} FROM usuari WHERE $after IS NULL ORDER BY id;", null);
+                changes = Rows(database.Connection, $"SELECT {ChangeColumns} FROM registre_canvis WHERE $after IS NULL ORDER BY id;", null);
                 foreach (string key in options.KeepSettings)
                 {
                     using var read = database.Command("SELECT valor FROM configuracio WHERE clau = $k;");
@@ -211,6 +216,9 @@ public sealed class Backups(Database database, string folder)
                 for (int i = 0; i < names.Length; i++) insert.Parameters.AddWithValue(names[i], row[i] ?? DBNull.Value);
                 insert.ExecuteNonQuery();
             }
+            using (var clear = database.Command("DELETE FROM registre_canvis; DELETE FROM usuari;", transaction)) clear.ExecuteNonQuery();
+            foreach (var row in users) InsertRow("usuari", UserColumns, row, transaction);
+            foreach (var row in changes) InsertRow("registre_canvis", ChangeColumns, row, transaction);
             foreach (var (key, value) in settings)
             {
                 using var write = database.Command(value is null
@@ -223,6 +231,19 @@ public sealed class Backups(Database database, string folder)
             transaction.Commit();
             return new RestoreResult(safety, history.Count, executions.Count);
         }
+    }
+
+    private const string UserColumns = "id, nom, nom_complet, rol, empremta, sal, iteracions, actiu, provisional, creat, darrer_acces";
+    private const string ChangeColumns = "id, moment, usuari_id, usuari_nom, ordre, resum, detall";
+
+    /// <summary>Torna a posar una fila tal com era (amb el mateix id), a la taula i les columnes indicades.</summary>
+    private void InsertRow(string table, string columns, object?[] row, Microsoft.Data.Sqlite.SqliteTransaction transaction)
+    {
+        string[] names = columns.Split(", ");
+        using var insert = database.Command(
+            $"INSERT INTO {table} ({columns}) VALUES ({string.Join(", ", names.Select((_, i) => $"$c{i}"))});", transaction);
+        for (int i = 0; i < names.Length; i++) insert.Parameters.AddWithValue($"$c{i}", row[i] ?? DBNull.Value);
+        insert.ExecuteNonQuery();
     }
 
     /// <summary>

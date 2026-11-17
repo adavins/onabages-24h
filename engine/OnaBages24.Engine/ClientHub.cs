@@ -66,13 +66,13 @@ public sealed class ClientHub
                         // client no l'hagin d'esperar. La resposta porta l'id: pot arribar després d'altres respostes.
                         _ = Task.Run(async () =>
                         {
-                            try { await client.SendAsync(router.Handle(text), ct); }
+                            try { await client.SendAsync(router.Handle(text, client.Context), ct); }
                             catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { }
                         });
                     }
                     else
                     {
-                        JsonObject response = router.Handle(text);
+                        JsonObject response = router.Handle(text, client.Context);
                         await client.SendAsync(response, ct);
                     }
                 }
@@ -94,6 +94,24 @@ public sealed class ClientHub
             _clientsChanged(_clients.Count);
             await client.TryCloseAsync();
             _log.LogInformation("Client desconnectat ({Count} en total)", _clients.Count);
+        }
+    }
+
+    /// <summary>
+    /// Les sessions que s'han tancat per inactivitat (D-164): a les connexions que les tenien, se'ls treu i se'ls envia
+    /// <c>session.changed</c> amb l'estat nou (mode de consulta).
+    /// </summary>
+    public async Task EndSessionsAsync(IReadOnlyCollection<string> sessionIds, CommandRouter router, CancellationToken ct)
+    {
+        foreach (var client in _clients.Values)
+        {
+            if (client.Context.SessionId is not { } id || !sessionIds.Contains(id)) continue;
+            client.Context.SessionId = null;
+            var ev = Messages.Event("session.changed");
+            foreach (var (key, value) in router.SessionJson(client.Context)) ev[key] = value?.DeepClone();
+            ev["reason"] = "inactivity";
+            try { await client.SendAsync(ev, ct); }
+            catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException) { }
         }
     }
 
@@ -121,6 +139,9 @@ public sealed class ClientHub
         public Client(WebSocket socket) => Socket = socket;
 
         public Guid Id { get; } = Guid.NewGuid();
+
+        /// <summary>La sessió d'aquesta connexió (D-164).</summary>
+        public ClientContext Context { get; } = new();
 
         public WebSocket Socket { get; }
 

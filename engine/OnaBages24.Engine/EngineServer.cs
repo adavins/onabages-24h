@@ -112,6 +112,11 @@ public static class EngineServer
         CommandRouter.ConfigureMail(mail, library);
         incidents.Changed += mail.Add;
 
+        // Usuaris i sessions (fase 5, pas 8; D-164): sense cap usuari actiu, no cal iniciar sessió
+        var userStore = new UserStore(database);
+        var sessions = new OnaBages24.Engine.Security.SessionManager(userStore) { Inactivity = CommandRouter.ReadInactivity(library) };
+        log.LogInformation("Usuaris: {State}", sessions.UsersExist ? "cal iniciar sessió per operar" : "no n'hi ha cap (tot es pot fer sense sessió)");
+
         // Aturades (fase 5, passos 4 i 7; D-159, D-162): el motor no s'ha d'aturar mai, per tant qualsevol aturada anterior
         // és una incidència, amb el motiu que va deixar escrit al fitxer «en marxa» o, si no en va poder deixar cap, el
         // que diu el registre de Windows (reinici demanat, tall de llum…)
@@ -304,7 +309,7 @@ public static class EngineServer
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
             events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher,
             campaigns: campaigns, savedCalendars: new SavedCalendars(database), backups: backups,
-            incidentStore: incidentStore, incidents: incidents, silence: silence, emergency: emergency, mail: mail);
+            incidentStore: incidentStore, incidents: incidents, silence: silence, emergency: emergency, mail: mail, sessions: sessions, users: userStore);
         // Editor de rotacions (fase 3, pas 8a): les interfícies tornen a demanar les rotacions
         router.RotationsChanged += () => Broadcast(Messages.Event("rotations.changed"));
         // Calendaris desats (fase 4, pas 6a): les interfícies tornen a demanar la llista
@@ -356,6 +361,8 @@ public static class EngineServer
             ConfigureSilence(silence, library);
             _ = Task.Run(() => emergency.SetFolder(CommandRouter.ReadEmergencyFolder(library)));
             CommandRouter.ConfigureMail(mail, library);
+            sessions.Refresh(); // els usuaris no canvien en restaurar (D-164), però per si de cas
+            sessions.Inactivity = CommandRouter.ReadInactivity(library);
             nowPlaying.Configure(ReadNowPlayingSettings(library, log));
             // Els esdeveniments i el pla de les campanyes (scheduler.changed)
             scheduler.Reload();
@@ -508,6 +515,19 @@ public static class EngineServer
             }
             catch (OperationCanceledException) { }
         });
+        // Sessions (D-164): cada 15 s es tanquen les que fa massa estona que no tenen activitat, i se n'avisa la interfície
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
+            try
+            {
+                while (await timer.WaitForNextTickAsync(stopping))
+                {
+                    if (sessions.ExpireDue() is { Count: > 0 } expired) await hub.EndSessionsAsync(expired, router, stopping);
+                }
+            }
+            catch (OperationCanceledException) { }
+        });
         // Avisos per correu (D-160): cada 5 s es mira si toca enviar (l'enviament no bloqueja res més)
         _ = Task.Run(async () =>
         {
@@ -614,8 +634,10 @@ public static class EngineServer
                     {
                         if (backups.CreateIfDue() is { } copy)
                             log.LogInformation("Còpia de seguretat: {Path}", copy);
-                        // Les incidències es conserven 1 any (D-156)
+                        // Les incidències es conserven 1 any (D-156); el registre de canvis, 2 anys (D-164)
                         incidents.Purge();
+                        if (userStore.PurgeChanges(DateTimeOffset.UtcNow.AddYears(-2)) is var removed and > 0)
+                            log.LogInformation("Registre de canvis: {Count} entrades de fa més de 2 anys, esborrades", removed);
                     }
                     catch (Exception ex)
                     {
