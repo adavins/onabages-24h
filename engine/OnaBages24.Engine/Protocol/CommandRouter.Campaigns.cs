@@ -120,7 +120,11 @@ public sealed partial class CommandRouter
 
         var names = new Dictionary<long, string?>();
         string? EventName(long eventId) => names.TryGetValue(eventId, out var n) ? n : names[eventId] = _events?.Get(eventId)?.Name;
-        var titles = campaign.Spots.ToDictionary(s => s.TrackId, s => _library?.GetTrack(s.TrackId)?.Title);
+        // La mateixa pista pot ser en diversos períodes (D-172): un títol per pista
+        var titles = campaign.Spots.DistinctBy(s => s.TrackId).ToDictionary(s => s.TrackId, s => _library?.GetTrack(s.TrackId)?.Title);
+        // De quina falca (posició) és un passi: la de la pista que és vàlida aquell dia
+        int SpotOf(long? trackId, DateTimeOffset at) => trackId is { } t
+            ? Campaigns.SpotIndexOn(campaign, t, DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(at, TimeZoneInfo.Local).DateTime)) : -1;
         return new JsonObject
         {
             ["campaignId"] = id,
@@ -138,12 +142,13 @@ public sealed partial class CommandRouter
                 ["trackId"] = p.TrackId,
                 ["title"] = p.TrackId is { } t ? titles.GetValueOrDefault(t) ?? _library?.GetTrack(t)?.Title : null,
             }).ToArray()),
-            ["bySpot"] = new JsonArray(campaign.Spots.Select(s => (JsonNode)new JsonObject
+            // Una fila per falca (posició): si la mateixa pista hi és en dos períodes, cada fila compta els seus passis
+            ["bySpot"] = new JsonArray(campaign.Spots.Select((s, index) => (JsonNode)new JsonObject
             {
                 ["trackId"] = s.TrackId,
                 ["title"] = titles[s.TrackId],
-                ["count"] = plan.Count(p => p.TrackId == s.TrackId),
-                ["played"] = played.Count(p => p.TrackId == s.TrackId),
+                ["count"] = plan.Count(p => SpotOf(p.TrackId, p.At) == index),
+                ["played"] = played.Count(p => SpotOf(p.TrackId, p.At) == index),
             }).ToArray()),
             ["empty"] = plan.Count(p => p.TrackId is null),
         };

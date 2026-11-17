@@ -297,4 +297,44 @@ public sealed class CampaignPlanTests : IDisposable
         Assert.Equal([15, 15], result["bySpot"]!.AsArray().Select(s => s!["count"]!.GetValue<int>()));
         Assert.Equal(0, result["empty"]!.GetValue<int>());
     }
+
+    [Fact]
+    public void La_mateixa_falca_en_dos_periodes_es_desa_amb_la_posicio_i_la_sequencia_la_respecta()
+    {
+        // A de l'1 al 15, B, A del 16 al 30 i C: a partir del 16, la seqüència és B, A, C, B, A, C…
+        var c = Campaign(CampaignSelection.Sequence,
+            new CampaignSpot { TrackId = _a, EndDate = new DateOnly(2026, 11, 15) }, new CampaignSpot { TrackId = _b },
+            new CampaignSpot { TrackId = _a, StartDate = new DateOnly(2026, 11, 16) }, new CampaignSpot { TrackId = _c });
+        Assert.Equal([_a, _b, _a, _c], c.Spots.Select(s => s.TrackId));
+        Assert.Equal(new DateOnly(2026, 11, 16), c.Spots[2].StartDate);
+        Assert.Equal(2, Campaigns.SpotIndexOn(c, _a, new DateOnly(2026, 11, 20)));
+        Assert.Equal(0, Campaigns.SpotIndexOn(c, _a, new DateOnly(2026, 11, 3)));
+        Event(c.Id, new TimeOnly(8, 0));
+        Event(c.Id, new TimeOnly(12, 0));
+        Event(c.Id, new TimeOnly(16, 0));
+
+        var plan = Compute(c);
+        var late = plan.Where(p => p.At.Day >= 16).Select(p => p.TrackId).ToList();
+        Assert.Equal(15, late.Count(t => t == _c)); // abans de D-172, C no hauria sonat mai (tornava a la primera A)
+        Assert.Equal(15, late.Count(t => t == _a));
+        Assert.Equal(15, late.Count(t => t == _b));
+    }
+
+    [Fact]
+    public void Campaigns_plan_compta_cada_periode_de_la_mateixa_falca_a_part()
+    {
+        var c = Campaign(CampaignSelection.Alternate,
+            new CampaignSpot { TrackId = _a, EndDate = new DateOnly(2026, 11, 10) }, new CampaignSpot { TrackId = _b },
+            new CampaignSpot { TrackId = _a, StartDate = new DateOnly(2026, 11, 21) });
+        Event(c.Id, new TimeOnly(10, 0));
+        Plans().RecalculateAll();
+        var router = new CommandRouter(new EngineState(), () => { }, _library, events: _events, campaigns: _campaigns) { CampaignClock = () => _now };
+
+        var msg = new JsonObject { ["v"] = 1, ["id"] = 1, ["cmd"] = "campaigns.plan", ["campaignId"] = c.Id };
+        var bySpot = router.Handle(msg.ToJsonString())["result"]!["bySpot"]!.AsArray();
+        // De l'1 al 10: A i B a parts iguals (5 i 5); de l'11 al 20 només B (10); del 21 al 30, «Alterna» equilibra tota la
+        // campanya i A les fa totes (10): en total, 15 i 15. Cada fila compta els passis del seu període
+        Assert.Equal([5, 15, 10], bySpot.Select(s => s!["count"]!.GetValue<int>()));
+        Assert.Equal(["Falca A", "Falca B", "Falca A"], bySpot.Select(s => s!["title"]!.GetValue<string>()));
+    }
 }

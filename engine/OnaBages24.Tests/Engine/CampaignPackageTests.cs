@@ -125,6 +125,31 @@ public sealed class CampaignPackageTests : IDisposable
     }
 
     [Fact]
+    public void La_mateixa_falca_en_dos_periodes_s_exporta_dues_vegades_i_s_importa_com_una_sola_pista()
+    {
+        long puig = Spot(_drive, "puig-1.mp3", "Puig");
+        long other = Spot(_drive, "puig-2.mp3", "Puig, l'altra");
+        long campaign = _a.Campaigns.Save(new Campaign
+        {
+            Name = "Ferreteria Puig", StartDate = _today, EndDate = _today.AddDays(30), State = CampaignState.Active,
+            Spots = [new CampaignSpot { TrackId = puig, EndDate = _today.AddDays(9) }, new CampaignSpot { TrackId = other },
+                new CampaignSpot { TrackId = puig, StartDate = _today.AddDays(20) }],
+        }, DateTimeOffset.UtcNow);
+        string package = Path.Combine(_drive, "ferreteria-puig.json");
+
+        var exported = _a.Ok(new() { ["cmd"] = "campaigns.exportPackage", ["campaignId"] = campaign, ["path"] = package });
+        Assert.Equal(3, exported["spots"]!.GetValue<int>());
+        Assert.Empty(exported["notInFolder"]!.AsArray());
+
+        var imported = _b.Ok(new() { ["cmd"] = "campaigns.importPackage", ["path"] = package });
+        var created = _b.Campaigns.Get(imported["campaignId"]!.GetValue<long>())!;
+        Assert.Equal(3, created.Spots.Count);
+        Assert.Equal(created.Spots[0].TrackId, created.Spots[2].TrackId);
+        Assert.Equal((_today.AddDays(9), _today.AddDays(20)), (created.Spots[0].EndDate, created.Spots[2].StartDate));
+        Assert.Equal(2, _b.Library.CountTracks()); // la falca repetida és una sola pista
+    }
+
+    [Fact]
     public void Una_falca_que_no_es_a_la_carpeta_es_diu_en_exportar_i_no_entra_en_importar()
     {
         long campaign = CampaignInA(Spot(_drive, "puig-1.mp3", "Al Drive"), Spot(Path.Combine(_temp.Path, "local"), "puig-local.mp3", "Només a l'ordinador"));

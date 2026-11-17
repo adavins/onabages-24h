@@ -487,7 +487,7 @@ public sealed partial class Library(Database database)
         lock (database.Sync)
         {
             using var command = database.Command(
-                "SELECT c.nom FROM campanya_falca f JOIN campanya c ON c.id = f.campanya_id WHERE f.pista_id = $id ORDER BY c.nom COLLATE NOCASE, c.id;");
+                "SELECT c.nom FROM campanya c WHERE c.id IN (SELECT campanya_id FROM campanya_falca WHERE pista_id = $id) ORDER BY c.nom COLLATE NOCASE, c.id;");
             command.Parameters.AddWithValue("$id", trackId);
             using var r = command.ExecuteReader();
             var list = new List<string>();

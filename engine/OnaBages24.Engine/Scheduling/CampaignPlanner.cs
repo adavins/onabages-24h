@@ -110,9 +110,11 @@ public static class CampaignPlanner
         {
             if (pass.TrackId is not { } id) return;
             _total[id] = _total.GetValueOrDefault(id) + 1;
-            int hour = TimeZoneInfo.ConvertTime(pass.At, zone).Hour;
+            var local = TimeZoneInfo.ConvertTime(pass.At, zone);
+            int hour = local.Hour;
             _byHour[(id, hour)] = _byHour.GetValueOrDefault((id, hour)) + 1;
-            int index = IndexOf(id);
+            // La posició de la falca d'aquell dia (la mateixa pista pot ser en diversos períodes, D-172)
+            int index = Campaigns.SpotIndexOn(campaign, id, DateOnly.FromDateTime(local.DateTime));
             if (index >= 0) _lastIndex = index;
         }
 
@@ -126,7 +128,7 @@ public static class CampaignPlanner
                 for (int step = 1; step <= n; step++)
                 {
                     var spot = campaign.Spots[(_lastIndex + step + n) % n];
-                    if (valid.Any(v => v.TrackId == spot.TrackId)) return spot.TrackId;
+                    if (valid.Contains(spot)) return spot.TrackId; // aquesta falca (amb el seu període), no una altra de la mateixa pista
                 }
                 return valid[0].TrackId;
             }
@@ -135,15 +137,8 @@ public static class CampaignPlanner
                 .Select((s, order) => (s, order))
                 .OrderBy(x => (_total.GetValueOrDefault(x.s.TrackId) + 1) / Weight(x.s))
                 .ThenBy(x => (_byHour.GetValueOrDefault((x.s.TrackId, hour)) + 1) / Weight(x.s))
-                .ThenBy(x => IndexOf(x.s.TrackId))
+                .ThenBy(x => x.order) // l'ordre de la campanya
                 .First().s.TrackId;
-        }
-
-        private int IndexOf(long trackId)
-        {
-            for (int i = 0; i < campaign.Spots.Count; i++)
-                if (campaign.Spots[i].TrackId == trackId) return i;
-            return -1;
         }
     }
 }

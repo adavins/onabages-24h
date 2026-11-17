@@ -149,9 +149,24 @@ public sealed class CampaignsTests : IDisposable
         Assert.Contains("el pes", Error(new JsonObject { ["trackId"] = _a, ["weight"] = 0 }));
         Assert.Contains("No existeix la pista 999", Error(new JsonObject { ["trackId"] = 999 }));
 
+        // La mateixa falca dues vegades (D-172): només amb períodes que no se solapin
         var twice = Ferreteria();
         twice["spots"] = new JsonArray(new JsonObject { ["trackId"] = _a }, new JsonObject { ["trackId"] = _a });
-        Assert.Contains("repetida", Send(twice)["error"]!["message"]!.GetValue<string>());
+        Assert.Contains("Les falques 1 i 2 són la mateixa pista i els seus períodes se solapen", Send(twice)["error"]!["message"]!.GetValue<string>());
+        Assert.Contains("se solapen", Error2(new JsonObject { ["trackId"] = _a, ["endDate"] = "2026-11-10" },
+            new JsonObject { ["trackId"] = _a, ["startDate"] = "2026-11-10" }));
+        // Els dies de la setmana no compten: les dates se solapen
+        Assert.Contains("se solapen", Error2(new JsonObject { ["trackId"] = _a, ["daysMask"] = 1 },
+            new JsonObject { ["trackId"] = _a, ["daysMask"] = 2 }));
+        Assert.Equal("", Error2(new JsonObject { ["trackId"] = _a, ["endDate"] = "2026-11-10" },
+            new JsonObject { ["trackId"] = _b }, new JsonObject { ["trackId"] = _a, ["startDate"] = "2026-11-11" }));
+
+        string Error2(params JsonObject[] spots)
+        {
+            var msg = Ferreteria();
+            msg["spots"] = new JsonArray(spots.Select(s => (JsonNode)s).ToArray());
+            return Send(msg)["error"]?["message"]?.GetValue<string>() ?? "";
+        }
     }
 
     [Fact]

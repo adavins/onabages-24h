@@ -157,7 +157,8 @@ public sealed partial class CommandRouter
         var passes = PlannedPasses(campaign, track, events, from, to);
 
         // Les falques (o la pista): quants passis previstos en té cadascuna
-        var spotIds = campaign is not null ? campaign.Spots.Select(s => s.TrackId).ToList() : [track!.Id];
+        // Una vegada cada pista, encara que sigui a la campanya en diversos períodes (D-172): tots els passis junts
+        var spotIds = campaign is not null ? campaign.Spots.Select(s => s.TrackId).Distinct().ToList() : [track!.Id];
         var tracks = spotIds.Distinct().ToDictionary(id => id, id => library.GetTrack(id));
         JsonObject SpotJson(long id, int count)
         {

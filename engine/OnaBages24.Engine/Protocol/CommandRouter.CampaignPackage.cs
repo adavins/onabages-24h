@@ -32,7 +32,8 @@ public sealed partial class CommandRouter
 
         var spots = new JsonArray();
         var notInFolder = new JsonArray();
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // El nom de fitxer de cada pista (la mateixa pista hi pot ser en diversos períodes, D-172)
+        var names = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         foreach (var spot in campaign.Spots)
         {
             var track = library.GetTrack(spot.TrackId) ?? throw new BadParamsException($"No existeix la pista {spot.TrackId}.");
@@ -40,8 +41,11 @@ public sealed partial class CommandRouter
                 throw new BadParamsException($"«{ValidityWarnings.TrackName(track)}» és un stream: no es pot posar en un paquet.");
             string file = Path.GetFileName(track.Path);
             // A l'altra emissora es busquen pel nom: dos fitxers amb el mateix nom serien el mateix
-            if (!names.Add(file)) throw new BadParamsException($"Hi ha dues falques amb el mateix nom de fitxer ({file}): canvia'n el nom d'una.");
-            if (!File.Exists(Path.Combine(folder, file))) notInFolder.Add((JsonNode)file);
+            if (names.TryGetValue(file, out long other) && other != track.Id)
+                throw new BadParamsException($"Hi ha dues falques amb el mateix nom de fitxer ({file}): canvia'n el nom d'una.");
+            bool repeated = names.ContainsKey(file);
+            names[file] = track.Id;
+            if (!repeated && !File.Exists(Path.Combine(folder, file))) notInFolder.Add((JsonNode)file);
             spots.Add((JsonNode)new JsonObject
             {
                 ["file"] = file,
@@ -195,10 +199,16 @@ public sealed partial class CommandRouter
         // Les pistes noves, apuntant al fitxer de la carpeta del paquet (no es copia, D-150)
         var spotsMsg = new JsonArray();
         bool libraryChanged = false;
+        // La mateixa falca en diversos períodes (D-172): el mateix fitxer, una sola pista
+        var created = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         foreach (var (spot, full, existing) in found)
         {
-            long trackId = existing?.Id ?? AddPackageTrack(library, spot, full, subcategoryId);
-            libraryChanged |= existing is null;
+            if (existing is null && !created.ContainsKey(full))
+            {
+                created[full] = AddPackageTrack(library, spot, full, subcategoryId);
+                libraryChanged = true;
+            }
+            long trackId = existing?.Id ?? created[full];
             spotsMsg.Add((JsonNode)new JsonObject
             {
                 ["trackId"] = trackId,

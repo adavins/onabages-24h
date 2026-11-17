@@ -325,8 +325,6 @@ public sealed class Campaigns(Database database)
         if (c.Notes is { Length: > 2000 }) throw new DatabaseException("Les notes poden tenir com a molt 2.000 caràcters.");
         if (c.EndDate < c.StartDate) throw new DatabaseException("La data de fi de la campanya és anterior a la d'inici.");
         if (c.ContractedTotal is < 0 || c.ContractedPerDay is < 0) throw new DatabaseException("Els passis contractats no poden ser negatius.");
-        if (c.Spots.Select(s => s.TrackId).Distinct().Count() != c.Spots.Count) throw new DatabaseException("Hi ha una falca repetida a la campanya.");
-
         int number = 0;
         foreach (var spot in c.Spots)
         {
@@ -338,6 +336,41 @@ public sealed class Campaigns(Database database)
             if (end < start) throw new DatabaseException($"{which}: la data de fi és anterior a la d'inici.");
             if (start < c.StartDate || end > c.EndDate) throw new DatabaseException($"{which}: les dates han de ser dins de les de la campanya.");
         }
+
+        // La mateixa pista pot ser més d'una vegada (D-172), però amb períodes que no se solapin: un dia concret només
+        // n'hi pot haver una de vàlida (el pla i els recomptes van per pista). Compten les dates, no els dies de la setmana.
+        for (int i = 0; i < c.Spots.Count; i++)
+        {
+            for (int j = i + 1; j < c.Spots.Count; j++)
+            {
+                if (c.Spots[i].TrackId != c.Spots[j].TrackId) continue;
+                var (a, b) = (c.Spots[i], c.Spots[j]);
+                var (aStart, aEnd) = (a.StartDate ?? c.StartDate, a.EndDate ?? c.EndDate);
+                var (bStart, bEnd) = (b.StartDate ?? c.StartDate, b.EndDate ?? c.EndDate);
+                if (aStart <= bEnd && bStart <= aEnd)
+                    throw new DatabaseException($"Les falques {i + 1} i {j + 1} són la mateixa pista i els seus períodes se solapen " +
+                        $"({DbTime.ToText(aStart)} – {DbTime.ToText(aEnd)} i {DbTime.ToText(bStart)} – {DbTime.ToText(bEnd)}). " +
+                        "Posa-hi dates que no coincideixin.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// La posició de la falca d'aquesta pista que és vàlida aquest dia per dates (D-172: la mateixa pista hi pot ser en
+    /// diversos períodes que no se solapen). Si cap no ho és, la primera d'aquesta pista; si la pista no hi és, -1. No mira
+    /// els dies de la setmana ni la pista.
+    /// </summary>
+    public static int SpotIndexOn(Campaign c, long trackId, DateOnly date)
+    {
+        int first = -1;
+        for (int i = 0; i < c.Spots.Count; i++)
+        {
+            var spot = c.Spots[i];
+            if (spot.TrackId != trackId) continue;
+            if (first < 0) first = i;
+            if (date >= (spot.StartDate ?? c.StartDate) && date <= (spot.EndDate ?? c.EndDate)) return i;
+        }
+        return first;
     }
 
     public static string SelectionText(CampaignSelection selection) => selection switch
@@ -373,7 +406,7 @@ public sealed class Campaigns(Database database)
     private IReadOnlyList<CampaignSpot> Spots(long campaignId)
     {
         using var command = database.Command(
-            "SELECT pista_id, data_inici, data_fi, dies_mask, pes FROM campanya_falca WHERE campanya_id = $id ORDER BY ordre, pista_id;");
+            "SELECT pista_id, data_inici, data_fi, dies_mask, pes FROM campanya_falca WHERE campanya_id = $id ORDER BY ordre;");
         command.Parameters.AddWithValue("$id", campaignId);
         using var r = command.ExecuteReader();
         var list = new List<CampaignSpot>();
