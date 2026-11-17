@@ -11,29 +11,10 @@ namespace OnaBages24.Tests;
 /// </summary>
 public sealed class RadioStreamTests
 {
-    private const int Rate = 44100;
     private const int Output = 48000;
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
 
-    /// <summary>Un MP3 de 128 kbps, estèreo: un to de 440 Hz (amplitud <paramref name="level"/>; 0 = silenci).</summary>
-    private static byte[] Mp3(double seconds, float level = 0.5f)
-    {
-        using var encoder = new LameEncoder(Rate, 128);
-        using var data = new MemoryStream();
-        int total = (int)(seconds * Rate);
-        var block = new float[Rate / 10 * 2];
-        for (int start = 0; start < total; start += block.Length / 2)
-        {
-            for (int i = 0; i < block.Length / 2; i++)
-                block[i * 2] = block[i * 2 + 1] = (float)(level * Math.Sin(2 * Math.PI * 440 * (start + i) / Rate));
-            data.Write(encoder.Encode(block, block.Length));
-        }
-        data.Write(encoder.Flush());
-        return data.ToArray();
-    }
-
-    /// <summary>Bytes per segon d'un MP3 de 128 kbps.</summary>
-    private const int BytesPerSecond = 128_000 / 8;
+    private const int BytesPerSecond = FakeRadio.BytesPerSecond;
 
     private static bool Until(Func<bool> condition)
     {
@@ -52,7 +33,7 @@ public sealed class RadioStreamTests
     [Fact]
     public void Un_Shoutcast_amb_ICY_200_i_titol_se_sent_a_48_kHz()
     {
-        var mp3 = Mp3(3);
+        var mp3 = FakeRadio.Mp3(3);
         using var radio = new FakeRadio(async (client, request) =>
         {
             await FakeRadio.Send(client, "ICY 200 OK\r\nicy-name:Ràdio Prova\r\nicy-br:128\r\nicy-metaint:4096\r\ncontent-type:audio/mpeg\r\n\r\n");
@@ -76,7 +57,7 @@ public sealed class RadioStreamTests
     [Fact]
     public void Segueix_una_redireccio_i_accepta_HTTP_1_0()
     {
-        var mp3 = Mp3(1);
+        var mp3 = FakeRadio.Mp3(1);
         using var radio = new FakeRadio(async (client, request) =>
         {
             if (request.StartsWith("GET /vell"))
@@ -136,7 +117,7 @@ public sealed class RadioStreamTests
     [Fact]
     public void Si_el_servidor_tanca_el_stream_es_diu()
     {
-        var mp3 = Mp3(1);
+        var mp3 = FakeRadio.Mp3(1);
         using var radio = new FakeRadio(async (client, request) =>
         {
             await FakeRadio.Send(client, "ICY 200 OK\r\ncontent-type:audio/mpeg\r\n\r\n");
@@ -152,7 +133,7 @@ public sealed class RadioStreamTests
     [Fact]
     public void Si_deixen_d_arribar_dades_es_dona_per_tallat()
     {
-        var mp3 = Mp3(1);
+        var mp3 = FakeRadio.Mp3(1);
         using var radio = new FakeRadio(async (client, request) =>
         {
             await FakeRadio.Send(client, "ICY 200 OK\r\ncontent-type:audio/mpeg\r\n\r\n");
@@ -169,7 +150,7 @@ public sealed class RadioStreamTests
     public void Mesura_la_rafega_inicial_del_servidor()
     {
         // Com un Icecast: en connectar-s'hi, envia de cop els últims 3 s; després, al ritme del directe
-        var mp3 = Mp3(5);
+        var mp3 = FakeRadio.Mp3(5);
         using var radio = new FakeRadio(async (client, request) =>
         {
             await FakeRadio.Send(client, "HTTP/1.0 200 OK\r\nContent-Type: audio/mpeg\r\n\r\n");
@@ -192,7 +173,7 @@ public sealed class RadioStreamTests
     [Fact]
     public void Mesura_el_silenci()
     {
-        var silent = Mp3(3, level: 0);
+        var silent = FakeRadio.Mp3(3, level: 0);
         using var radio = new FakeRadio(async (client, request) =>
         {
             await FakeRadio.Send(client, "ICY 200 OK\r\ncontent-type:audio/mpeg\r\n\r\n");
@@ -213,83 +194,5 @@ public sealed class RadioStreamTests
         Assert.Equal("Cançó", IcyMetadataStream.ParseTitle(Encoding.Latin1.GetBytes("StreamTitle='Cançó';")));
         Assert.Null(IcyMetadataStream.ParseTitle(Encoding.UTF8.GetBytes("StreamTitle='';")));
         Assert.Null(IcyMetadataStream.ParseTitle(Encoding.UTF8.GetBytes("StreamUrl='x';")));
-    }
-
-    /// <summary>
-    /// Un servidor de ràdio fals a 127.0.0.1: per a cada connexió, llegeix la petició (fins a la línia buida), l'apunta a
-    /// <see cref="Requests"/> i crida <c>serve</c>. En acabar <c>serve</c>, tanca la connexió.
-    /// </summary>
-    private sealed class FakeRadio : IDisposable
-    {
-        private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
-        private readonly CancellationTokenSource _stop = new();
-        public List<string> Requests { get; } = [];
-
-        public FakeRadio(Func<TcpClient, string, Task> serve)
-        {
-            _listener.Start();
-            Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
-            _ = Task.Run(async () =>
-            {
-                while (!_stop.IsCancellationRequested)
-                {
-                    TcpClient client;
-                    try { client = await _listener.AcceptTcpClientAsync(_stop.Token); }
-                    catch (Exception) { return; }
-                    _ = Task.Run(async () =>
-                    {
-                        using (client)
-                        {
-                            try
-                            {
-                                string request = await ReadRequest(client.GetStream());
-                                lock (Requests) Requests.Add(request);
-                                await serve(client, request);
-                            }
-                            catch (Exception) { /* el lector ha tancat: és normal */ }
-                        }
-                    });
-                }
-            });
-        }
-
-        public int Port { get; }
-
-        private static async Task<string> ReadRequest(NetworkStream stream)
-        {
-            var text = new StringBuilder();
-            var one = new byte[1];
-            while (!text.ToString().EndsWith("\r\n\r\n") && await stream.ReadAsync(one) > 0) text.Append((char)one[0]);
-            return text.ToString();
-        }
-
-        public static Task Send(TcpClient client, string text) => client.GetStream().WriteAsync(Encoding.UTF8.GetBytes(text)).AsTask();
-
-        /// <summary>L'àudio amb un bloc de títol cada <paramref name="metaInt"/> bytes (el primer, amb el títol; els altres, buits).</summary>
-        public static async Task SendWithTitles(TcpClient client, byte[] audio, int metaInt, string title)
-        {
-            var stream = client.GetStream();
-            var meta = Encoding.UTF8.GetBytes($"StreamTitle='{title}';");
-            int blocks = (meta.Length + 15) / 16;
-            var block = new byte[1 + blocks * 16];
-            block[0] = (byte)blocks;
-            meta.CopyTo(block, 1);
-            bool first = true;
-            for (int at = 0; at < audio.Length; at += metaInt)
-            {
-                int n = Math.Min(metaInt, audio.Length - at);
-                await stream.WriteAsync(audio.AsMemory(at, n));
-                if (n < metaInt) break;
-                await stream.WriteAsync(first ? block : new byte[1]);
-                first = false;
-            }
-            await Task.Delay(3000);
-        }
-
-        public void Dispose()
-        {
-            _stop.Cancel();
-            _listener.Stop();
-        }
     }
 }

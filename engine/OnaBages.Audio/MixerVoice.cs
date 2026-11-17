@@ -75,6 +75,12 @@ public sealed class MixerVoice
     /// <summary>Fotograma del mesclador on ha començat a sonar de debò (-1 = encara no). Si és més tard que el programat, el fil de control va arribar tard.</summary>
     public long ActualStartFrame => Interlocked.Read(ref _actualStartFrame);
 
+    /// <summary>
+    /// Fotograma del mesclador on està programada per començar, o -1 si encara no s'ha programat (o ja sona). El fa servir
+    /// el lector d'un stream (D-175) per omplir-la just abans de començar, amb el més recent.
+    /// </summary>
+    public long ScheduledStartFrame => State == VoiceState.Scheduled ? Interlocked.Read(ref _startFrame) : -1;
+
     /// <summary>Vegades que la memòria s'ha buidat abans d'hora (el disc no ha anat prou ràpid). Ha de ser 0.</summary>
     public int Underruns => Volatile.Read(ref _underruns);
 

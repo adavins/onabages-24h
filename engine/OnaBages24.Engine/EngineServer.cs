@@ -487,16 +487,46 @@ public static class EngineServer
         // Incidències que duren (fase 5, pas 1): cada 2 s es mira com estan la sortida, l'AutoDJ, el títol per a BUTT i les
         // carpetes vigilades, i s'obren o es tanquen. Les d'un moment (una pista saltada, una pausa que continua sola) s'anoten
         // quan passen, fora del fil de control.
-        queue.Failed += e => _ = Task.Run(() => incidents.Report(IncidentKind.File, $"fitxer:{e.Item.Path}", IncidentSeverity.Warning,
-            $"No s'ha pogut fer sonar «{e.Item}» i s'ha saltat: {e.Message}", e.Item.Path, recovered: true));
+        queue.Failed += e => _ = Task.Run(() => incidents.Report(e.Item.IsStream ? IncidentKind.Stream : IncidentKind.File, $"fitxer:{e.Item.Path}",
+            IncidentSeverity.Warning, e.Item.IsStream
+                ? $"No s'ha pogut connectar al stream «{e.Item}» i s'ha saltat (sona la pista següent): {e.Message}"
+                : $"No s'ha pogut fer sonar «{e.Item}» i s'ha saltat: {e.Message}", e.Item.Path, recovered: true));
+        // Streams (fase 2, pas 7b; D-030): talls (oberta fins que es recupera o se salta), recuperacions i final per silenci
+        queue.StreamNotice += e => _ = Task.Run(() =>
+        {
+            string key = $"stream:{e.Item.Path}";
+            switch (e.Kind)
+            {
+                case "tall":
+                    incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, $"El stream «{e.Item}» s'ha tallat: {e.Message} Es prova de reconnectar.", e.Item.Path);
+                    break;
+                case "recuperat":
+                    incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, null);
+                    break;
+                default:
+                    incidents.Report(IncidentKind.Stream, key + ":silenci", IncidentSeverity.Warning, $"El stream «{e.Item}» s'ha acabat abans d'hora. {e.Message}", e.Item.Path, recovered: true);
+                    break;
+            }
+        });
         aux.Failed += e => _ = Task.Run(() => incidents.Report(IncidentKind.File, $"fitxer:{e.Item.Path}", IncidentSeverity.Warning,
             e.Player == AuxPlayers.SweeperPlayer
                 ? $"No s'ha pogut fer sonar el sweeper «{e.Item}» (la pista ha sonat sense): {e.Message}"
                 : $"No s'ha pogut fer sonar «{e.Item}» al reproductor auxiliar {e.Player}: {e.Message}", e.Item.Path));
         queue.Problem += message => _ = Task.Run(() => incidents.Report(IncidentKind.Pause, "pausa", IncidentSeverity.Warning, message, recovered: true));
         // Pista encallada i talls (fase 5, pas 2; D-157)
-        queue.Stuck += e => _ = Task.Run(() => incidents.Report(IncidentKind.Stuck, $"fitxer:{e.Item.Path}", IncidentSeverity.Warning,
-            IncidentRules.StuckText(e.Item.ToString(), e.Position, e.Error), e.Item.Path, recovered: true));
+        queue.Stuck += e => _ = Task.Run(() =>
+        {
+            if (!e.Item.IsStream)
+            {
+                incidents.Report(IncidentKind.Stuck, $"fitxer:{e.Item.Path}", IncidentSeverity.Warning,
+                    IncidentRules.StuckText(e.Item.ToString(), e.Position, e.Error), e.Item.Path, recovered: true);
+                return;
+            }
+            // Un stream tallat que no s'ha recuperat a temps: s'ha passat a la següent (el tall queda tancat amb aquest text)
+            incidents.Set(IncidentKind.Stream, $"stream:{e.Item.Path}", IncidentSeverity.Warning, null);
+            incidents.Report(IncidentKind.Stream, $"stream:{e.Item.Path}:saltat", IncidentSeverity.Warning,
+                $"El stream «{e.Item}» s'ha tallat al minut {(int)e.Position.TotalMinutes}:{e.Position.Seconds:00} i no s'ha recuperat a temps: ha passat a la pista següent.", e.Item.Path, recovered: true);
+        });
         queue.Ended += e =>
         {
             if (e.Dropouts > 0)

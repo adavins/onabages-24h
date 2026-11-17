@@ -86,7 +86,7 @@ public sealed class SilenceDetector(Mixer mixer, QueuePlayer queue)
         if (silentFor < Seconds) return;
 
         var current = queue.CurrentStart;
-        if (current is { } c && c.Item.Type != TrackType.Stream && _skips < MaxSkips)
+        if (current is { } c && !c.Item.IsStream && _skips < MaxSkips)
         {
             var position = TimeSpan.FromSeconds(Math.Max(0, frames - c.StartFrame) / (double)mixer.SampleRate);
             queue.Skip(SkipFade);
@@ -98,7 +98,7 @@ public sealed class SilenceDetector(Mixer mixer, QueuePlayer queue)
 
         _problem = current switch
         {
-            { Item.Type: TrackType.Stream } s => new SilenceProblem($"El stream «{s.Item}» arriba en silenci (sense so des de fa més de {Seconds:0} s)", IncidentSeverity.Warning),
+            { Item.IsStream: true } s => new SilenceProblem($"El stream «{s.Item}» arriba en silenci (sense so des de fa més de {Seconds:0} s)", IncidentSeverity.Warning),
             not null => new SilenceProblem($"Silenci a la sortida: s'han saltat {_skips} pistes seguides que sonaven en silenci i continua sense so", IncidentSeverity.Danger),
             null => new SilenceProblem("Silenci a la sortida: no sona res", IncidentSeverity.Danger),
         };

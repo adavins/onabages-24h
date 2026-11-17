@@ -21,7 +21,7 @@ public enum ReaderState
 /// - si la memòria de la veu és plena, espera i torna a provar. No toca mai el fil d'àudio.
 /// Un error en aquest fitxer no afecta cap altra veu: el lector queda a <see cref="ReaderState.Failed"/>.
 /// </summary>
-public sealed class VoiceReader : IDisposable
+public sealed class VoiceReader : IVoiceReader
 {
     /// <summary>Les pistes més curtes que això es llegeixen senceres a memòria (D-018).</summary>
     public static readonly TimeSpan MemoryLimit = TimeSpan.FromMinutes(3);

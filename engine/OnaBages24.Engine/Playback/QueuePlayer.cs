@@ -41,6 +41,18 @@ public sealed record QueueSettings
 
     /// <summary>Un fitxer que fa aquesta estona que s'està obrint es dona per perdut i se salta (fase 5, pas 4).</summary>
     public TimeSpan OpenTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Un stream que no connecta abans de començar es torna a provar aquesta estona; després se salta (D-030). Si es talla
+    /// mentre sona, el temps per recuperar-se és <see cref="StallTimeout"/> (com una pista encallada).
+    /// </summary>
+    public TimeSpan StreamConnectFor { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Sense rebre dades d'un stream aquesta estona, es dona per tallat i s'hi torna a connectar (cada intent també espera
+    /// com a molt això). Ha de ser més curt que <see cref="StallTimeout"/>, perquè la reconnexió hi càpiga.
+    /// </summary>
+    public TimeSpan StreamTimeout { get; init; } = TimeSpan.FromSeconds(2);
 }
 
 /// <summary>
@@ -69,6 +81,12 @@ public sealed record QueueStuck(QueueItem Item, TimeSpan Position, string? Error
 
 /// <summary>Una pista que no s'ha pogut fer sonar (fitxer que falta o il·legible): se salta.</summary>
 public sealed record QueueFailed(QueueItem Item, string Message);
+
+/// <summary>
+/// Un stream que sona (fase 2, pas 7b; D-030): s'ha tallat (<see cref="Kind"/> «tall»; es prova de reconnectar), s'ha
+/// recuperat («recuperat») o s'ha acabat perquè arribava en silenci («silenci»).
+/// </summary>
+public sealed record QueueStreamNotice(QueueItem Item, string Kind, string Message);
 
 /// <summary>
 /// Ha començat una pista d'emergència (fase 5, pas 4; D-159): <paramref name="Waiting"/> ja hauria de sonar però encara no
@@ -153,6 +171,8 @@ public sealed class QueuePlayer : IDisposable
     public event Action<QueueStarted>? Started;
     public event Action<QueueEnded>? Ended;
     public event Action<QueueFailed>? Failed;
+    /// <summary>Talls, recuperacions i final per silenci dels streams (fase 2, pas 7b).</summary>
+    public event Action<QueueStreamNotice>? StreamNotice;
     /// <summary>Una pista encallada, o que ha deixat de llegir-se a mitja pista (fase 5, pas 2).</summary>
     public event Action<QueueStuck>? Stuck;
 
@@ -666,6 +686,7 @@ public sealed class QueuePlayer : IDisposable
             if (_paused is not null) return null;
             if (_cut is not null || _cutFrame > 0) return "Hi ha un tall programat d'aquí a uns segons: no es pot fer pausa ara.";
             if (_current is not { HasStarted: true } c || c.Voice.State == VoiceState.Finished) return "No sona cap pista.";
+            if (c.Item.IsStream) return "Un stream en directe no es pot posar en pausa.";
             if (_next is { HasStarted: true }) return "La pista següent ja ha començat a sonar.";
             long now = _mixer.FramesRendered;
             long stop = now + Frames(_settings.StartMargin);
@@ -716,6 +737,7 @@ public sealed class QueuePlayer : IDisposable
                 if (_cut is not null || _cutFrame > 0) return "Hi ha un tall programat d'aquí a uns segons: no es pot moure la pista ara.";
                 if (_current is not { HasStarted: true } c || c.Item.Id != itemId || c.Voice.State == VoiceState.Finished)
                     return "Aquesta pista ja no és la que sona.";
+                if (c.Item.IsStream) return "Un stream en directe no es pot moure.";
                 if (_next is { HasStarted: true }) return "La pista següent ja ha començat a sonar.";
                 if (_next is { Scheduled: true } n && FramesToTime(n.StartFrame - _mixer.FramesRendered) < LockedBeforeStart)
                     return "La pista següent està a punt de començar.";
@@ -897,6 +919,28 @@ public sealed class QueuePlayer : IDisposable
                 }
             }
 
+            // 4c. Streams (fase 2, pas 7b; D-030): els talls i les recuperacions, i el final per silenci
+            foreach (var p in new[] { _current, _next })
+            {
+                if (p?.Reader is not StreamVoiceReader stream) continue;
+                foreach (var notice in stream.TakeNotices())
+                {
+                    var item = p.Item;
+                    events.Add(() => StreamNotice?.Invoke(new QueueStreamNotice(item, notice.Cut ? "tall" : "recuperat", notice.Message)));
+                }
+            }
+            if (_current is { Scheduled: true, HasStarted: true, Stuck: false, Reader: StreamVoiceReader live } quiet
+                && quiet.Item.StreamSilenceSeconds is int silenceSeconds and > 0 && now < quiet.MixFrame
+                && live.SilentFor >= TimeSpan.FromSeconds(silenceSeconds))
+            {
+                var item = quiet.Item;
+                var position = FramesToTime(Math.Max(0, now - quiet.StartFrame));
+                SkipLocked(TimeSpan.FromMilliseconds(QueueItem.StreamFadeMs), events);
+                events.Add(() => StreamNotice?.Invoke(new QueueStreamNotice(item, "silenci",
+                    $"Arribava en silenci des de fa {silenceSeconds} s: s'ha acabat al minut {(int)position.TotalMinutes}:{position.Seconds:00} i ha passat a la següent.")));
+                events.Add(() => Changed?.Invoke());
+            }
+
             _toRelease.RemoveAll(v => _mixer.ReleaseVoice(v));
 
             // Un tall que esperava que comencés la pista següent: ara ja es pot aplicar
@@ -1076,9 +1120,20 @@ public sealed class QueuePlayer : IDisposable
         var voice = _mixer.AcquireVoice();
         if (voice is null) return null;
         bool hold = HoldOpeningForTests?.Invoke(item.Path) == true;
-        var reader = new VoiceReader(voice, item.Path, _mixer.SampleRate, Ms(item.StartMs ?? 0), item.EndMs is { } end ? Ms(end) : null, hold);
+        IVoiceReader reader = item.IsStream && Uri.TryCreate(item.Path, UriKind.Absolute, out var url) && url.Scheme is "http" or "https"
+            ? new StreamVoiceReader(voice, url, _mixer.SampleRate, StreamOptionsFor(item), () => _mixer.FramesRendered)
+            : new VoiceReader(voice, item.Path, _mixer.SampleRate, Ms(item.StartMs ?? 0), item.EndMs is { } end ? Ms(end) : null, hold);
         return new Playing(item, voice, reader) { OpenedFrame = _mixer.FramesRendered };
     }
+
+    /// <summary>Com ha de sonar un stream de la cua (D-030, D-175).</summary>
+    private StreamOptions StreamOptionsFor(QueueItem item) => new()
+    {
+        Duration = Ms(item.EndMs ?? QueueItem.DefaultStreamMs),
+        LiveEdge = item.StreamLiveEdge,
+        Timeout = _settings.StreamTimeout,
+        ConnectFor = _settings.StreamConnectFor,
+    };
 
     /// <summary>
     /// Programa una pista preparada per començar al fotograma <paramref name="start"/>, i també el seu final:
@@ -1191,11 +1246,11 @@ public sealed class QueuePlayer : IDisposable
     }
 
     /// <summary>Una pista amb la seva veu i el seu lector.</summary>
-    private sealed class Playing(QueueItem item, MixerVoice voice, VoiceReader reader)
+    private sealed class Playing(QueueItem item, MixerVoice voice, IVoiceReader reader)
     {
         public QueueItem Item { get; } = item;
         public MixerVoice Voice { get; } = voice;
-        public VoiceReader Reader { get; } = reader;
+        public IVoiceReader Reader { get; } = reader;
         public bool Scheduled { get; set; }
         public long StartFrame { get; set; }
         public long MixFrame { get; set; } = long.MaxValue;

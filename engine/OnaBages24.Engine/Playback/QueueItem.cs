@@ -20,6 +20,22 @@ public sealed record QueueItem
     /// <summary>Durada del fitxer (de la biblioteca), si se sap.</summary>
     public long? FileDurationMs { get; init; }
 
+    // --- Streams (fase 2, pas 7b; D-030, D-175) ---
+
+    /// <summary>Quant sona un stream si no se'n sap la durada (la fitxa de la pista no en té): una hora.</summary>
+    public const long DefaultStreamMs = 60 * 60 * 1000;
+    /// <summary>El fos de sortida d'un stream quan arriba a la durada (la següent entra a sobre del fos).</summary>
+    public const long StreamFadeMs = 2000;
+
+    /// <summary>Un stream de ràdio per internet (la pista és de tipus Stream o la ruta és una adreça).</summary>
+    public bool IsStream => Type == TrackType.Stream || Path.Contains("://", StringComparison.Ordinal);
+
+    /// <summary>Si arriba en silenci aquests segons seguits, s'acaba i passa a la següent (D-030). Null = no (per defecte).</summary>
+    public int? StreamSilenceSeconds { get; init; }
+
+    /// <summary>«Comença pel directe» (D-175): sense la ràfega inicial del servidor. Per defecte, sí.</summary>
+    public bool StreamLiveEdge { get; init; } = true;
+
     /// <summary>Quant sonarà, de l'inici al final (sense comptar el solapament amb la següent), o null si no se sap.</summary>
     public long? PlannedMs => (EndMs ?? FileDurationMs) is { } end ? Math.Max(0, end - (StartMs ?? 0)) : null;
     public QueueOrigin Origin { get; init; } = QueueOrigin.Manual;
@@ -48,20 +64,34 @@ public sealed record QueueItem
     /// <summary>Com era el pas quan s'ha triat, p. ex. «Bossa «Generalista A» (Music / Adult 6)», per mostrar-ho a la cua.</summary>
     public string? RotationStepName { get; init; }
 
-    public static QueueItem FromTrack(Track track, QueueOrigin origin, string? eventName = null) => new()
+    public static QueueItem FromTrack(Track track, QueueOrigin origin, string? eventName = null)
     {
-        TrackId = track.Id,
-        Path = track.Path,
-        Artist = track.Artist,
-        Title = track.Title,
-        Type = track.Type,
-        StartMs = track.StartMs,
-        MixMs = track.MixMs,
-        EndMs = track.EndMs,
-        FileDurationMs = track.DurationMs,
-        Origin = origin,
-        EventName = eventName,
-    };
+        var item = new QueueItem
+        {
+            TrackId = track.Id,
+            Path = track.Path,
+            Artist = track.Artist,
+            Title = track.Title,
+            Type = track.Type,
+            StartMs = track.StartMs,
+            MixMs = track.MixMs,
+            EndMs = track.EndMs,
+            FileDurationMs = track.DurationMs,
+            Origin = origin,
+            EventName = eventName,
+        };
+        return item.IsStream ? item.AsStream(track.DurationMs ?? DefaultStreamMs) : item;
+    }
+
+    /// <summary>
+    /// Un stream que ha de sonar <paramref name="durationMs"/>: del principi, amb el fos de <see cref="StreamFadeMs"/> al
+    /// final (la següent entra a sobre del fos).
+    /// </summary>
+    public QueueItem AsStream(long durationMs)
+    {
+        long duration = Math.Max(StreamFadeMs + 1000, durationMs);
+        return this with { StartMs = 0, EndMs = duration, MixMs = duration - StreamFadeMs, FileDurationMs = duration };
+    }
 
     public override string ToString() => string.IsNullOrEmpty(Artist) ? Title : $"{Artist} - {Title}";
 }

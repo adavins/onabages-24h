@@ -36,6 +36,8 @@ public static class IncidentKind
     public const string Restart = "REINICI";
     /// <summary>Els avisos per correu no es poden enviar (D-160). No s'envia mai per correu.</summary>
     public const string Mail = "CORREU";
+    /// <summary>Un stream que no connecta (i s'ha saltat), que s'ha tallat o que s'ha acabat perquè arribava en silenci (D-030, D-175).</summary>
+    public const string Stream = "STREAM";
 
     /// <summary>El nom de cada tipus en català, per als correus (els mateixos que a la interfície, <c>incidents-form.js</c>).</summary>
     public static string Name(string kind) => kind switch
@@ -55,6 +57,7 @@ public static class IncidentKind
         Pause => "Pausa",
         Butt => "Títol per a BUTT",
         Mail => "Avisos per correu",
+        Stream => "Stream",
         _ => kind,
     };
 }
