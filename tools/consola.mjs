@@ -211,23 +211,25 @@ async function main() {
     const choice = await menu('Menú principal', [
       ['1', 'Arrencar tot (compila el motor i obre la interfície)'],
       ['2', 'Arrencar només el motor (amb el registre a la vista)'],
-      ['3', 'Aturar el motor'],
-      ['4', 'Compilar el motor'],
-      ['5', 'Proves automàtiques…'],
-      ['6', 'Diagnòstic del motor…'],
-      ['7', 'Empaquetar la versió portable'],
-      ['8', 'Obrir la carpeta de dades'],
+      ['3', 'Aturar-ho tot (interfície i motor)'],
+      ['4', 'Aturar només el motor'],
+      ['5', 'Compilar el motor'],
+      ['6', 'Proves automàtiques…'],
+      ['7', 'Diagnòstic del motor…'],
+      ['8', 'Empaquetar la versió portable'],
+      ['9', 'Obrir la carpeta de dades'],
       ['0', 'Sortir'],
     ]);
     switch (choice) {
       case '1': await startAll(); break;
       case '2': await startEngine(); break;
-      case '3': await stopEngine(); break;
-      case '4': await buildEngine(); break;
-      case '5': await testsMenu(); break;
-      case '6': await diagnosticsMenu(); break;
-      case '7': await packageApp(); break;
-      case '8': spawn('explorer.exe', [DATA], { detached: true, stdio: 'ignore' }).unref(); break;
+      case '3': await stopAll(); break;
+      case '4': await stopEngine(); break;
+      case '5': await buildEngine(); break;
+      case '6': await testsMenu(); break;
+      case '7': await diagnosticsMenu(); break;
+      case '8': await packageApp(); break;
+      case '9': spawn('explorer.exe', [DATA], { detached: true, stdio: 'ignore' }).unref(); break;
       case '0': case 'q': return;
       default: break;
     }
@@ -237,7 +239,7 @@ async function main() {
 async function startAll() {
   if (runtimeInfo()) {
     console.log(color.yellow('\nEl motor ja està en marxa: no es podrà recompilar i la interfície es connectarà al que funciona.'));
-    console.log('Si vols l\'última versió del motor, primer atura\'l (opció 3).');
+    console.log('Si vols l\'última versió del motor, primer atura-ho tot (opció 3).');
     if (!(await confirm('Obro la interfície igualment?'))) return;
   }
   openWindow('Ona Bages 24h - interficie', 'arrencar-tot.cmd');
@@ -256,6 +258,40 @@ async function startEngine() {
   await pause();
 }
 
+/**
+ * Els processos de la interfície d'aquest repositori (Electron des de app\node_modules, o la versió empaquetada si és dins
+ * del repositori), per PID. Es busquen pel programa, no pel títol de la finestra.
+ */
+function interfaceProcesses() {
+  const script = 'Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($env:OB24_ROOT, ' +
+    "[StringComparison]::OrdinalIgnoreCase) -and $_.Name -ne 'OnaBages24.Engine.exe' } | ForEach-Object { $_.ProcessId }";
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8', env: { ...process.env, OB24_ROOT: ROOT + '\\' },
+  });
+  if (result.status !== 0) return [];
+  return result.stdout.split(/\s+/).filter(Boolean).map(Number).filter((pid) => pid !== process.pid);
+}
+
+/** Aturar-ho tot: primer es tanca la interfície (perquè no torni a engegar el motor) i després s'atura el motor. */
+async function stopAll() {
+  const ui = interfaceProcesses();
+  const info = runtimeInfo();
+  if (ui.length === 0 && !info) {
+    console.log(color.yellow('\nNo hi ha res en marxa.'));
+    await pause();
+    return;
+  }
+  const what = [ui.length > 0 ? 'tanca la interfície' : null, info ? 'atura el motor i l\'emissió' : null].filter(Boolean).join(' i ');
+  if (!(await confirm(color.yellow(`\nAixò ${what}. Segur?`)))) return;
+  if (ui.length > 0) {
+    // A la força: la X de la finestra preguntaria què fer. La interfície no té res per desar (D-162: tot és al motor).
+    spawnSync('taskkill.exe', ['/F', '/T', ...ui.flatMap((pid) => ['/PID', String(pid)])], { stdio: 'ignore' });
+    console.log(color.green('\nInterfície tancada.'));
+  }
+  if (info) await shutdownEngine();
+  await pause();
+}
+
 async function stopEngine() {
   const info = runtimeInfo();
   if (!info) {
@@ -264,6 +300,12 @@ async function stopEngine() {
     return;
   }
   if (!(await confirm(color.yellow('\nAturar el motor atura l\'emissió. Segur que el vols aturar?')))) return;
+  await shutdownEngine();
+  await pause();
+}
+
+/** Demana al motor que s'aturi (engine.shutdown: la vegada següent hi haurà l'avís «s'ha aturat amb l'ordre d'aturada»). */
+async function shutdownEngine() {
   await withEngine(async (engine) => {
     // El motor pot tancar la connexió abans de respondre: no és un error
     await engine.send('engine.shutdown').catch(() => {});
@@ -271,7 +313,6 @@ async function stopEngine() {
   // Espera que el procés acabi (com a molt 10 s)
   for (let i = 0; i < 50 && runtimeInfo(); i++) await new Promise((resolve) => setTimeout(resolve, 200));
   console.log(runtimeInfo() ? color.red('\nEl motor encara no s\'ha aturat. Mira la seva finestra.') : color.green('\nMotor aturat.'));
-  await pause();
 }
 
 /** Abans de compilar: si el motor funciona, els seus fitxers estan en ús i la compilació fallarà. */
@@ -490,7 +531,7 @@ async function listenEvents() {
 
 function checkBroadcast() {
   if (!existsSync(ENGINE_EXE)) {
-    console.log(color.yellow('\nEl motor encara no està compilat (opció 4 del menú principal).'));
+    console.log(color.yellow('\nEl motor encara no està compilat (opció 5 del menú principal).'));
     return;
   }
   // Només llegeix: es pot fer amb el motor en marxa (les últimes 72 hores)

@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('onabages', {
   /** Avisa quan l'operador vol tancar la finestra (la interfície pregunta què vol fer). */
   onCloseRequested: (callback) => ipcRenderer.on('app:close-requested', () => callback()),
 
+  /** Si funciona en desenvolupament (des del repositori, no empaquetada): només llavors es pot aturar el motor (D-162). */
+  isDevelopment: () => ipcRenderer.invoke('app:is-development'),
+
   /** Tanca la finestra (el motor no s'atura si no se li ha demanat abans). */
   closeWindow: () => ipcRenderer.invoke('app:close'),
 

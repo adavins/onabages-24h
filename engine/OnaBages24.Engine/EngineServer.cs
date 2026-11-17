@@ -112,15 +112,30 @@ public static class EngineServer
         CommandRouter.ConfigureMail(mail, library);
         incidents.Changed += mail.Add;
 
-        // Aturada que no ha estat voluntària (fase 5, pas 4; D-159): si el fitxer «en marxa» de la vegada anterior encara
-        // hi és, el motor no es va tancar bé
+        // Aturades (fase 5, passos 4 i 7; D-159, D-162): el motor no s'ha d'aturar mai, per tant qualsevol aturada anterior
+        // és una incidència, amb el motiu que va deixar escrit al fitxer «en marxa» o, si no en va poder deixar cap, el
+        // que diu el registre de Windows (reinici demanat, tall de llum…)
         var runMarker = new RunMarker(Path.Combine(RuntimeFile.DirectoryPath, RunMarker.FileName));
-        if (runMarker.Start() is { } unexpected)
+        if (runMarker.Start() is { } previous)
         {
-            string text = RunMarker.Text(unexpected, DateTimeOffset.Now);
+            var now = DateTimeOffset.Now;
+            var windowsEvents = previous.LastAlive is { } lastAlive
+                ? WindowsRestarts.Read(lastAlive - TimeSpan.FromMinutes(1), now)
+                : [];
+            var (severity, text) = RunMarker.Describe(previous, now, WindowsRestarts.BootTime(), windowsEvents);
             log.LogWarning("{Text}", text);
-            incidents.Report(IncidentKind.Restart, "reinici", IncidentSeverity.Danger, text);
+            incidents.Report(IncidentKind.Restart, "reinici", severity, text);
         }
+        // Per què s'atura aquesta vegada: l'ordre engine.shutdown o els senyals de la consola i de Windows. El senyal no
+        // s'atura (Cancel = false): el motor es tanca igual que abans.
+        using var onCtrlC = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+            System.Runtime.InteropServices.PosixSignal.SIGINT, _ => runMarker.Stop(StopReason.CtrlC));
+        using var onCtrlBreak = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+            System.Runtime.InteropServices.PosixSignal.SIGQUIT, _ => runMarker.Stop(StopReason.CtrlBreak));
+        using var onConsoleClosed = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+            System.Runtime.InteropServices.PosixSignal.SIGHUP, _ => runMarker.Stop(StopReason.ConsoleClosed));
+        using var onWindowsShutdown = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+            System.Runtime.InteropServices.PosixSignal.SIGTERM, _ => runMarker.Stop(StopReason.WindowsShutdown));
 
         // Àudio (D-005, D-039): mesclador estèreo a 48 kHz, una sola sortida i la cua d'emissió
         var mixer = new Mixer(sampleRate: 48000);
@@ -281,7 +296,11 @@ public static class EngineServer
         };
 
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
-        var router = new CommandRouter(state, () => _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication()), library,
+        var router = new CommandRouter(state, () =>
+            {
+                runMarker.Stop(StopReason.Command);
+                _ = Task.Delay(300).ContinueWith(_ => app.Lifetime.StopApplication());
+            }, library,
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
             events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher,
             campaigns: campaigns, savedCalendars: new SavedCalendars(database), backups: backups,
@@ -446,7 +465,8 @@ public static class EngineServer
             aux.Dispose();
             outputs.Dispose();
             RuntimeFile.DeleteIfOwned();
-            runMarker.Stop(); // tancament net: no és una aturada inesperada
+            runMarker.Stop(StopReason.Other); // si no n'hi ha cap de més concret (el senyal o l'ordre), per a la vegada següent (D-162)
+            log.LogInformation("Motiu de l'aturada: {Reason}", runMarker.Reason);
         });
 
         var stopping = app.Lifetime.ApplicationStopping;

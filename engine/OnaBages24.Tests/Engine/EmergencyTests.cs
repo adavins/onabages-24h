@@ -261,65 +261,119 @@ public sealed class EmergencyTests : IDisposable
     }
 }
 
-/// <summary>El fitxer «en marxa» (fase 5, pas 4; D-159): detectar que el motor no es va tancar bé.</summary>
+/// <summary>
+/// El fitxer «en marxa» (fase 5, passos 4 i 7; D-159, D-162): qualsevol aturada anterior és una incidència, amb el motiu
+/// que va deixar escrit o el que diu el registre de Windows.
+/// </summary>
 public sealed class RunMarkerTests : IDisposable
 {
     private readonly TempFolder _temp = new();
     private DateTimeOffset _now = new(2026, 11, 16, 3, 12, 40, TimeSpan.FromHours(1));
+    private static readonly DateTimeOffset LastAlive = new(2026, 11, 16, 3, 13, 0, TimeSpan.FromHours(1));
 
     public void Dispose() => _temp.Dispose();
 
+    private string MarkerPath => _temp.File(RunMarker.FileName);
+
     [Fact]
-    public void Un_tancament_net_no_es_una_aturada_i_un_que_no_ho_es_si()
+    public void Una_aturada_amb_motiu_el_deixa_escrit_i_una_que_peta_no()
     {
-        string path = _temp.File(RunMarker.FileName);
-
         // Primera vegada: no hi ha fitxer
-        var first = new RunMarker(path, () => _now);
+        var first = new RunMarker(MarkerPath, () => _now);
         Assert.Null(first.Start(_ => false));
-        Assert.True(File.Exists(path));
+        Assert.True(File.Exists(MarkerPath));
         _now = _now.AddSeconds(10);
-        first.Touch();
-        first.Stop();
-        Assert.False(File.Exists(path));
+        first.Stop(StopReason.Other); // el tancament, abans que arribi el senyal de la consola
+        first.Stop(StopReason.CtrlC); // el motiu més concret es queda
+        first.Stop(StopReason.Other);
+        Assert.Equal(StopReason.CtrlC, first.Reason);
+        first.Touch(); // una senyal de vida tardana no l'esborra
 
-        // Tancament net: res a dir
-        var second = new RunMarker(path, () => _now);
-        Assert.Null(second.Start(_ => false));
+        // La vegada següent ho sap
+        var second = new RunMarker(MarkerPath, () => _now);
+        var stop = second.Start(_ => false);
+        Assert.Equal(new PreviousStop(LastAlive.AddSeconds(-10), StopReason.CtrlC), stop);
         _now = _now.AddSeconds(10);
-        second.Touch(); // l'última senyal de vida: 03:13:00
+        second.Touch(); // 03:13:00
 
-        // Peta (no crida Stop): el següent ho detecta, amb l'hora de l'última senyal
+        // Peta (no crida Stop): el següent ho detecta, sense motiu i amb l'hora de l'última senyal
         _now = _now.AddMinutes(4);
-        var third = new RunMarker(path, () => _now);
-        var stop = third.Start(_ => false);
-        Assert.NotNull(stop);
-        Assert.Equal(new DateTimeOffset(2026, 11, 16, 3, 13, 0, TimeSpan.FromHours(1)), stop.LastAlive);
-        string text = RunMarker.Text(stop, _now);
-        Assert.Contains("aturada inesperada", text);
-        Assert.Contains("16/11/2026", text);
-        Assert.Contains("(ha estat aturat 4 min)", text);
+        stop = new RunMarker(MarkerPath, () => _now).Start(_ => false);
+        Assert.Equal(new PreviousStop(LastAlive, null), stop);
     }
 
     [Fact]
     public void Si_el_fitxer_es_d_un_altre_motor_que_funciona_no_es_una_aturada()
     {
-        string path = _temp.File(RunMarker.FileName);
-        File.WriteAllText(path, """{ "pid": 999999, "lastAlive": "2026-11-16T03:13:00+01:00" }""");
+        File.WriteAllText(MarkerPath, """{ "pid": 999999, "lastAlive": "2026-11-16T03:13:00+01:00" }""");
 
-        Assert.Null(new RunMarker(path, () => _now).Start(pid => pid == 999999));
+        Assert.Null(new RunMarker(MarkerPath, () => _now).Start(pid => pid == 999999));
     }
 
     [Fact]
     public void Un_fitxer_malmes_compta_com_a_aturada_sense_hora()
     {
-        string path = _temp.File(RunMarker.FileName);
-        File.WriteAllText(path, "{ això no és json");
+        File.WriteAllText(MarkerPath, "{ això no és json");
 
-        var stop = new RunMarker(path, () => _now).Start(_ => false);
+        var stop = new RunMarker(MarkerPath, () => _now).Start(_ => false);
 
-        Assert.NotNull(stop);
-        Assert.Null(stop.LastAlive);
-        Assert.Contains("no se sap", RunMarker.Text(stop, _now));
+        Assert.Equal(new PreviousStop(null, null), stop);
+        var (severity, text) = RunMarker.Describe(stop!, _now, null, []);
+        Assert.Equal(IncidentSeverity.Danger, severity);
+        Assert.Contains("no se sap", text);
+    }
+
+    private (IncidentSeverity Severity, string Text) Describe(StopReason? reason, DateTimeOffset? boot = null, params WindowsShutdownEvent[] events) =>
+        RunMarker.Describe(new PreviousStop(LastAlive, reason), LastAlive.AddMinutes(4), boot, events);
+
+    [Fact]
+    public void Les_aturades_demanades_son_un_avis_amb_el_motiu()
+    {
+        Assert.Equal((IncidentSeverity.Warning, "El motor es va aturar amb l'ordre d'aturada (manteniment o desenvolupament) el 16/11/2026 a les 03:13:00 (ha estat aturat 4 min)"),
+            Describe(StopReason.Command));
+        Assert.Equal((IncidentSeverity.Warning, "El motor es va aturar amb Ctrl+C a la consola el 16/11/2026 a les 03:13:00 (ha estat aturat 4 min)"),
+            Describe(StopReason.CtrlC));
+        Assert.Contains("es va tancar la seva consola", Describe(StopReason.ConsoleClosed).Text);
+        Assert.Equal(IncidentSeverity.Warning, Describe(StopReason.Other).Severity);
+    }
+
+    [Fact]
+    public void Si_peta_sense_que_Windows_s_hagi_reiniciat_es_greu()
+    {
+        var (severity, text) = Describe(null, boot: LastAlive.AddDays(-3));
+        Assert.Equal(IncidentSeverity.Danger, severity);
+        Assert.Equal("El motor s'ha reiniciat després d'una aturada inesperada (ha petat o l'han tancat a la força): l'última senyal de vida va ser el 16/11/2026 a les 03:13:00 (ha estat aturat 4 min)", text);
+    }
+
+    [Fact]
+    public void Un_reinici_de_l_ordinador_diu_qui_l_ha_demanat_o_si_no_es_va_tancar_be()
+    {
+        var boot = LastAlive.AddMinutes(2);
+        var at = LastAlive.AddSeconds(30);
+        // Demanat per un usuari: Windows n'anota dos (el de l'usuari i el del sistema)
+        var byUser = Describe(null, boot,
+            new WindowsShutdownEvent(1074, at, "albertdavins", "Explorer.EXE", false),
+            new WindowsShutdownEvent(1074, at, "SYSTEM", @"C:\WINDOWS\system32\winlogon.exe (PC24H)", true));
+        Assert.Equal((IncidentSeverity.Warning, "L'ordinador es va apagar o reiniciar (ho va demanar albertdavins) el 16/11/2026 a les 03:13:00 (ha estat aturat 4 min)"), byUser);
+        // Una actualització de Windows, amb el motor avisat (senyal de Windows) o sense
+        foreach (var reason in new StopReason?[] { StopReason.WindowsShutdown, null })
+        {
+            var update = Describe(reason, boot, new WindowsShutdownEvent(1074, at, "SYSTEM", @"C:\Windows\servicing\TrustedInstaller.exe (PC24H)", true));
+            Assert.Equal(IncidentSeverity.Warning, update.Severity);
+            Assert.Contains("per una actualització de Windows", update.Text);
+        }
+        // Tall de llum o penjada
+        var power = Describe(null, boot, new WindowsShutdownEvent(41, boot.AddMinutes(1), null, null, true));
+        Assert.Equal(IncidentSeverity.Danger, power.Severity);
+        Assert.StartsWith("L'ordinador es va apagar sense tancar-se bé (tall de llum o penjada)", power.Text);
+        // Windows no en diu res
+        Assert.Equal(IncidentSeverity.Danger, Describe(null, boot).Severity);
+    }
+
+    [Fact]
+    public void L_hora_d_arrencada_de_Windows_es_d_abans_d_ara()
+    {
+        Assert.True(WindowsRestarts.BootTime() < DateTimeOffset.Now);
+        WindowsRestarts.Read(DateTimeOffset.Now.AddDays(-30), DateTimeOffset.Now); // no ha de petar (si no es pot llegir, cap)
     }
 }

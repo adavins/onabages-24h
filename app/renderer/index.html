@@ -792,13 +792,13 @@
   <dialog id="close-dialog" class="ob-dialog">
     <form method="dialog">
       <h2 class="h5">Tancar Ona Bages 24h</h2>
-      <p class="ob-dialog-message">Si només tanques la finestra, l'emissió continua: el motor segueix sonant i la pots tornar a obrir quan vulguis.
-Si atures l'emissió, la ràdio es quedarà en silenci.</p>
+      <p class="ob-dialog-message">Si tanques la finestra, l'emissió continua: el motor segueix sonant i la pots tornar a obrir quan vulguis.</p>
+      <p id="close-dev" class="text-info d-none"><i class="bi bi-code-slash"></i> En desenvolupament també pots aturar el motor (la ràdio es quedarà en silenci). A l'emissora aquesta opció no hi és: el motor no s'atura mai.</p>
       <p id="close-import" class="text-warning d-none"><i class="bi bi-exclamation-triangle-fill"></i> <span id="close-import-text"></span></p>
       <p id="close-offline" class="text-warning d-none"><i class="bi bi-exclamation-triangle-fill"></i> No hi ha connexió amb el motor: des d'aquí no es pot aturar l'emissió.</p>
       <div class="d-flex justify-content-end gap-2 flex-wrap">
         <button class="btn btn-secondary" value="cancel">Cancel·la</button>
-        <button id="close-stop" class="btn btn-danger" value="stop"><i class="bi bi-stop-circle-fill"></i> Atura l'emissió i tanca</button>
+        <button id="close-stop" class="btn btn-danger d-none" value="stop"><i class="bi bi-stop-circle-fill"></i> Atura el motor i tanca (només en desenvolupament)</button>
         <button id="close-window" class="btn btn-primary" value="window"><i class="bi bi-box-arrow-right"></i> Tanca només la finestra</button>
       </div>
     </form>

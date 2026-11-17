@@ -57,6 +57,7 @@ Ara hi ha un detector de silencis amb avís per correu, però no hi ha manera de
 
 Com que el motor sap en tot moment què sona i on és, la supervisió pot ser interna:
 - **Pista encallada:** la posició no avança, o la pista ha durat més que la seva durada més un marge.
+- **El motor no s'atura mai** (D-162): Ona Bages 24h ha d'estar sempre oberta i funcionant, i cap operador no la pot tancar. L'única excepció és un manteniment breu i supervisat d'un administrador: ara es fa amb la pausa de 10 minuts de l'Inicialitzador, i per reiniciar l'ordinador n'hi ha prou amb aquesta pausa (Windows tanca el motor). Cada aturada queda com a incidència amb el motiu. Quan es reescrigui l'Inicialitzador, es decidirà com es demana una aturada de manteniment.
 - **Motor penjat:** un vigilant extern comprova cada pocs segons que el motor respon (`/health`, que només diu «ok» si el mesclador funciona). Si no respon, el reinicia. **A l'emissora ja hi ha l'Inicialitzador** (`D:\apps\Inicialitzador`, VB.NET): arrenca tots els programes amb Windows i torna a obrir els que es tanquen, però només mira si el procés existeix, cada minut. Mentrestant arrencarà el motor com un programa més. Quan Ona Bages 24h estigui acabat es decidirà si s'hi afegeix la comprovació de `/health` amb un interval curt o si es reescriu (D-045).
 - **Qui avisa:** Ona Bages 24h gestiona les seves incidències i envia ell mateix els avisos per correu (D-045), sense dependre de l'Inicialitzador.
 - **Silenci a la sortida:** el motor mesura el nivell que envia a la taula.

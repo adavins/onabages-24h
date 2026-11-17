@@ -207,6 +207,9 @@ ipcMain.handle('engine:start', () => startEngine());
 // No se n'arrenca cap sense que l'operador ho demani.
 ipcMain.handle('engine:find', () => findEngine());
 
+// En desenvolupament (no empaquetada), la X també deixa aturar el motor; a l'emissora, no (D-162: el motor no s'atura mai).
+ipcMain.handle('app:is-development', () => !app.isPackaged);
+
 // La interfície ja ha preguntat a l'operador (i, si calia, ha aturat el motor): es tanca la finestra.
 ipcMain.handle('app:close', () => {
   allowClose = true;
