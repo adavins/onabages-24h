@@ -1,23 +1,40 @@
 // @ts-check
-// Configuració (botó ⚙): les dades de l'emissora (fase 4, pas 4b; D-138), el nom, la freqüència i el logotip que surten
-// a la capçalera dels informes, les dates de la temporada (pas 6a; D-145), per al botó «Temporada», i l'accés a les
-// còpies de seguretat (pas 7b; D-152), i el silenci a la sortida (fase 5, pas 3; D-158): a partir de quin nivell i quants
-// segons el motor ho considera silenci; la carpeta de pistes d'emergència (fase 5, pas 4; D-159); i l'accés als avisos
-// per correu (fase 5, pas 5; D-160), en una finestra a part.
-// Es desen al motor (station.set, season.set); el logotip es tria amb el diàleg de Windows (el procés principal el llegeix).
+// ⚙ Configuració: una sola finestra gran amb pestanyes, sense desplaçar-se (redisseny del 2026-11-17).
+// - Dades generals: el nom, la freqüència i el logotip de l'emissora, que surten a la capçalera dels informes (D-138), i
+//   les dates de la temporada, per al botó «Temporada» (D-145).
+// - Avisos per correu (D-160): settings-mail.js.
+// - Còpies de seguretat (D-152): backups.js.
+// - Eines: el silenci a la sortida (D-158) i la carpeta de pistes d'emergència (D-159).
+// «Desa» desa les dades generals, els avisos i el silenci (station.set, season.set, mail.set, silence.set). Les accions
+// (triar la carpeta d'emergència, el correu de prova, fer o restaurar una còpia) es fan de seguida, com abans.
 
 import { el, icon, statusLabel } from './dom.js';
 import { formDialog, dialogField } from './form-dialog.js';
 import { confirmAction } from './confirm.js';
-import { openMailDialog } from './mail-dialog.js';
+import { mailPanel } from './settings-mail.js';
+import { backupsPanel } from './backups.js';
+
+/** @typedef {'general' | 'mail' | 'backups' | 'tools'} SettingsTab */
+
+/** Les pestanyes, en ordre: id, text i icona. */
+const TABS = /** @type {const} */ ([
+  ['general', 'Dades generals', 'bi-broadcast'],
+  ['mail', 'Avisos per correu', 'bi-envelope-exclamation'],
+  ['backups', 'Còpies de seguretat', 'bi-database-check'],
+  ['tools', 'Eines', 'bi-tools'],
+]);
 
 /**
  * @param {(cmd: string, params?: object, timeoutMs?: number) => Promise<any>} send
- * @param {() => Promise<{ dataUrl?: string, error?: string } | null>} chooseImage
- * @param {(defaultPath?: string) => Promise<string | null>} chooseFolder  el diàleg de Windows per triar una carpeta
- * @param {() => Promise<void>} openBackups  la finestra «Còpies de seguretat»
+ * @param {{
+ *   chooseImage: () => Promise<{ dataUrl?: string, error?: string } | null>,
+ *   chooseFolder: (defaultPath?: string) => Promise<string | null>,
+ *   chooseBackup: () => Promise<string | null>,
+ *   showFile: (path: string) => Promise<string>,
+ * }} bridge  els diàlegs de Windows (el procés principal)
+ * @param {SettingsTab} [firstTab]  la pestanya que s'obre (per defecte, «Dades generals»)
  */
-export async function openStationDialog(send, chooseImage, chooseFolder, openBackups) {
+export async function openSettingsDialog(send, bridge, firstTab = 'general') {
   /** @type {{ name: string, frequency: string, logo: string | null }} */
   let station;
   /** @type {{ startDate: string | null, endDate: string | null }} */
@@ -26,23 +43,27 @@ export async function openStationDialog(send, chooseImage, chooseFolder, openBac
   let silence;
   /** @type {{ folder: string, defaultFolder: string, count: number, problem: string | null }} */
   let emergency;
-  /** @type {{ enabled: boolean, to: string[], problem: string | null }} */
+  /** @type {import('./settings-mail.js').MailConfig} */
   let mail;
   try {
-    [station, season, silence, emergency, mail] = await Promise.all([send('station.get').then((r) => r.station), send('season.get').then((r) => r.season),
-      send('silence.get'), send('emergency.get'), send('mail.get')]);
+    [station, season, silence, emergency, mail] = await Promise.all([send('station.get').then((r) => r.station),
+      send('season.get').then((r) => r.season), send('silence.get'), send('emergency.get'), send('mail.get')]);
   } catch (err) {
     await confirmAction({ title: 'No s\'han pogut llegir les dades', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
     return;
   }
 
-  const name = /** @type {HTMLInputElement} */ (el('input', 'form-control'));
+  // --- Dades generals ---
+
+  const name = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
   name.maxLength = 100;
   name.value = station.name;
-  const frequency = /** @type {HTMLInputElement} */ (el('input', 'form-control'));
+  const frequency = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
   frequency.maxLength = 100;
   frequency.value = station.frequency;
   frequency.placeholder = 'p. ex. 90.2 FM';
+  const stationFields = el('div', 'cfg-pair');
+  stationFields.append(dialogField('Nom de l\'emissora', name), dialogField('Freqüència', frequency));
 
   // El logotip: la imatge (o «Sense logotip»), «Tria la imatge…» i «Treu-lo»
   let logo = station.logo;
@@ -65,7 +86,7 @@ export async function openStationDialog(send, chooseImage, chooseFolder, openBac
   };
   show();
   pick.addEventListener('click', async () => {
-    const result = await chooseImage();
+    const result = await bridge.chooseImage();
     if (!result) return;
     if (result.error) {
       problem.replaceChildren(statusLabel('text-danger', 'bi-x-circle', result.error));
@@ -83,7 +104,7 @@ export async function openStationDialog(send, chooseImage, chooseFolder, openBac
   logoTools.append(pick, remove);
   const logoBox = el('div', 'mb-2');
   logoBox.append(el('div', 'form-label', 'Logotip'), preview, logoTools, problem,
-    el('div', 'form-text', 'PNG, JPEG o SVG. Si és gran, es redueix sol (com a molt 800 × 400 píxels). Es desa a la configuració de l\'aplicació.'));
+    el('div', 'form-text', 'PNG, JPEG o SVG. Si és gran, es redueix sol (com a molt 800 × 400 píxels).'));
 
   // La temporada: dues dates (o cap)
   const seasonFrom = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
@@ -92,13 +113,33 @@ export async function openStationDialog(send, chooseImage, chooseFolder, openBac
   const seasonTo = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
   seasonTo.type = 'date';
   seasonTo.value = season.endDate ?? '';
-  const seasonDates = el('div', 'st-season');
+  const seasonDates = el('div', 'cfg-pair');
   seasonDates.append(dialogField('Comença', seasonFrom), dialogField('Acaba', seasonTo));
-  const seasonBox = el('div', 'mb-2');
-  seasonBox.append(el('h3', 'h6 mt-3 mb-1', 'Temporada'), seasonDates,
-    el('div', 'form-text', 'El botó «Temporada» de les dates d\'una pista o d\'una campanya posa aquestes. Buides = sense temporada.'));
 
-  // Silenci a la sortida (D-158): el nivell (dB) i els segons
+  const generalLeft = el('div', '');
+  generalLeft.append(el('h3', 'h6 mb-1', 'Emissora'),
+    el('div', 'form-text mt-0 mb-2', 'Surten a la capçalera de l\'informe de programació, del certificat d\'emissió i de l\'historial.'),
+    stationFields, logoBox);
+  const generalRight = el('div', '');
+  generalRight.append(el('h3', 'h6 mb-1', 'Temporada'), seasonDates,
+    el('div', 'form-text', 'El botó «Temporada» de les dates d\'una pista o d\'una campanya posa aquestes. Buides = sense temporada.'));
+  const general = el('div', 'cfg-cols');
+  general.append(generalLeft, generalRight);
+
+  // --- Avisos per correu ---
+
+  const mailTab = mailPanel(send, mail);
+
+  // --- Còpies de seguretat: després de restaurar-ne una, es tanca sense desar (les dades de les pestanyes han canviat) ---
+
+  let restored = false;
+  const backups = backupsPanel(send, { chooseFile: bridge.chooseBackup, showFile: bridge.showFile }, () => {
+    restored = true;
+    /** @type {HTMLDialogElement | null} */ (tabBar.closest('dialog'))?.close();
+  });
+
+  // --- Eines: silenci a la sortida (D-158) i pistes d'emergència (D-159) ---
+
   const silenceDb = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
   silenceDb.type = 'number';
   silenceDb.min = '-70';
@@ -111,13 +152,13 @@ export async function openStationDialog(send, chooseImage, chooseFolder, openBac
   silenceSeconds.max = '120';
   silenceSeconds.step = '1';
   silenceSeconds.value = String(silence.seconds);
-  const silenceFields = el('div', 'st-season');
+  const silenceFields = el('div', 'cfg-pair');
   silenceFields.append(dialogField('Nivell (dB, de −70 a −30)', silenceDb), dialogField('Segons (de 5 a 120)', silenceSeconds));
-  const silenceBox = el('div', 'mb-2');
-  silenceBox.append(el('h3', 'h6 mt-3 mb-1', 'Silenci a la sortida'), silenceFields,
+  const silenceBox = el('div', '');
+  silenceBox.append(el('h3', 'h6 mb-1', 'Silenci a la sortida'), silenceFields,
     el('div', 'form-text', `Si el so que surt es queda per sota d'aquest nivell aquests segons seguits, el motor passa a la pista següent i ho anota a les incidències (un stream només s'anota). Per defecte, ${silence.standardThresholdDb} dB i ${silence.standardSeconds} s.`));
 
-  // Pistes d'emergència (D-159): la carpeta (es desa de seguida en triar-la, com a les carpetes vigilades)
+  // La carpeta de pistes d'emergència es desa de seguida en triar-la, com les carpetes vigilades
   const emergencyPath = el('div', 'small text-break');
   const emergencyState = el('div', 'small');
   const showEmergency = () => {
@@ -140,7 +181,7 @@ export async function openStationDialog(send, chooseImage, chooseFolder, openBac
   emergencyPick.type = 'button';
   emergencyPick.append(icon('bi-folder2-open'), ' Tria la carpeta…');
   emergencyPick.addEventListener('click', async () => {
-    const folder = await chooseFolder(emergency.folder);
+    const folder = await bridge.chooseFolder(emergency.folder);
     if (folder) await setEmergency(folder);
   });
   const emergencyDefault = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
@@ -150,71 +191,64 @@ export async function openStationDialog(send, chooseImage, chooseFolder, openBac
   emergencyDefault.addEventListener('click', () => setEmergency(null));
   const emergencyTools = el('div', 'd-flex gap-2 mt-1');
   emergencyTools.append(emergencyPick, emergencyDefault);
-  const emergencyBox = el('div', 'mb-2');
-  emergencyBox.append(el('h3', 'h6 mt-3 mb-1', 'Pistes d\'emergència'), emergencyPath, emergencyState, emergencyTools,
+  const emergencyBox = el('div', '');
+  emergencyBox.append(el('h3', 'h6 mb-1', 'Pistes d\'emergència'), emergencyPath, emergencyState, emergencyTools,
     el('div', 'form-text', 'Cançons d\'un disc d\'aquest ordinador (no de xarxa). Si una pista tarda a obrir-se, en sona una d\'aquestes fins que la que tocava és a punt. Posa-n\'hi unes quantes: el canvi de carpeta es desa de seguida.'));
+  const tools = el('div', 'cfg-cols');
+  tools.append(silenceBox, emergencyBox);
 
-  // Avisos per correu (D-160): l'estat i el botó que obre la seva finestra (es desa allà, a part d'aquesta)
-  const mailState = el('div', 'small');
-  const showMail = () => {
-    mailState.replaceChildren(!mail.enabled
-      ? statusLabel('text-secondary', 'bi-slash-circle', 'Desactivats')
-      : mail.problem
-        ? statusLabel('text-warning', 'bi-exclamation-triangle-fill', mail.problem)
-        : statusLabel('text-success', 'bi-check-circle', `Actius: a ${mail.to.join(', ')}`));
+  // --- Les pestanyes (com les de «Cerca» i «Notes»: botons i panells que s'amaguen) ---
+
+  /** @type {Record<SettingsTab, HTMLElement>} */
+  const panes = { general, mail: mailTab.element, backups, tools };
+  const tabBar = el('ul', 'nav nav-tabs cfg-tabs');
+  tabBar.setAttribute('role', 'tablist');
+  /** @type {Map<SettingsTab, HTMLButtonElement>} */
+  const tabButtons = new Map();
+  const paneBox = el('div', 'cfg-panes');
+  for (const [id, text, iconName] of TABS) {
+    const button = /** @type {HTMLButtonElement} */ (el('button', 'nav-link'));
+    button.type = 'button';
+    button.setAttribute('role', 'tab');
+    button.append(icon(iconName), ` ${text}`);
+    button.addEventListener('click', () => showTab(id));
+    const item = el('li', 'nav-item');
+    item.setAttribute('role', 'presentation');
+    item.append(button);
+    tabBar.append(item);
+    tabButtons.set(id, button);
+    panes[id].classList.add('cfg-pane');
+    panes[id].setAttribute('role', 'tabpanel');
+    paneBox.append(panes[id]);
+  }
+  /** @param {SettingsTab} id */
+  const showTab = (id) => {
+    for (const [tab, button] of tabButtons) {
+      button.classList.toggle('active', tab === id);
+      button.setAttribute('aria-selected', String(tab === id));
+      panes[tab].classList.toggle('d-none', tab !== id);
+    }
   };
-  showMail();
-  const mailOpen = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary mt-1'));
-  mailOpen.type = 'button';
-  mailOpen.append(icon('bi-envelope-exclamation'), ' Avisos per correu…');
-  mailOpen.addEventListener('click', async () => {
-    await openMailDialog(send);
-    try {
-      mail = await send('mail.get');
-      showMail();
-    } catch { /* es queda com estava */ }
-  });
-  const mailBox = el('div', 'mb-2');
-  mailBox.append(el('h3', 'h6 mt-3 mb-1', 'Avisos per correu'), mailState, mailOpen);
-
-  // Còpies de seguretat (D-152): es tanca la configuració abans, perquè després de restaurar no es desin les dades
-  // d'abans que hi havia a la finestra
-  const backups = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
-  backups.type = 'button';
-  backups.append(icon('bi-database-check'), ' Còpies de seguretat…');
-  backups.title = 'Fer una còpia ara o restaurar-ne una sencera (es tanca la configuració sense desar)';
-  let wantBackups = false;
-  backups.addEventListener('click', () => {
-    wantBackups = true;
-    /** @type {HTMLDialogElement | null} */ (backups.closest('dialog'))?.close();
-  });
-  const backupsBox = el('div', 'mb-2');
-  backupsBox.append(el('h3', 'h6 mt-3 mb-1', 'Còpies de seguretat'), backups,
-    el('div', 'form-text', 'El motor en fa una cada dia. Des d\'aquí en pots fer una ara o restaurar-ne una sencera.'));
+  showTab(firstTab);
 
   for (;;) {
-    const ok = await formDialog({
-      title: 'Configuració',
-      icon: 'bi-gear',
-      body: [
-        el('h3', 'h6 mb-1', 'Dades de l\'emissora'),
-        el('div', 'form-text mb-2', 'Surten a la capçalera de l\'informe de programació, del certificat d\'emissió i de l\'historial.'),
-        dialogField('Nom de l\'emissora', name), dialogField('Freqüència', frequency), logoBox, seasonBox, silenceBox, emergencyBox, mailBox, backupsBox,
-      ],
-      confirm: 'Desa',
-    });
-    if (wantBackups) {
-      await openBackups();
-      return;
-    }
-    if (!ok) return;
+    const closed = formDialog({ title: 'Configuració', icon: 'bi-gear', body: [tabBar, paneBox], confirm: 'Desa', wide: true });
+    tabBar.closest('dialog')?.classList.add('cfg-dialog');
+    const ok = await closed;
+    if (!ok || restored) return;
+    /** @type {SettingsTab} */
+    let failed = 'general';
     try {
       await send('station.set', { name: name.value, frequency: frequency.value, logo });
       await send('season.set', { startDate: seasonFrom.value || null, endDate: seasonTo.value || null });
+      failed = 'mail';
+      await send('mail.set', mailTab.params());
+      failed = 'tools';
       await send('silence.set', { thresholdDb: Number(silenceDb.value), seconds: Number(silenceSeconds.value) });
       return;
     } catch (err) {
-      // P. ex. una temporada amb una sola data: es torna a obrir amb el que s'havia escrit
+      // Es torna a obrir per la pestanya que no s'ha pogut desar, amb el que s'hi havia escrit
+      showTab(failed);
       await confirmAction({ title: 'No s\'han pogut desar les dades', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
     }
   }

@@ -32,8 +32,7 @@ import { CalendarView } from './ui/calendar.js';
 import { setupZoom, applyZoom } from './ui/zoom.js';
 import { setupWindowFrame } from './ui/window-frame.js';
 import { CollapsibleCards } from './ui/collapsible.js';
-import { openStationDialog } from './ui/station-dialog.js';
-import { backupsDialog } from './ui/backups.js';
+import { openSettingsDialog } from './ui/settings-dialog.js';
 import { openReport } from './ui/report-dialog.js';
 import { HistorySearchView } from './ui/history-search.js';
 
@@ -58,10 +57,14 @@ import { HistorySearchView } from './ui/history-search.js';
  */
 const bridge = /** @type {Bridge} */ (/** @type {any} */ (window).onabages);
 
-// Informes (fase 4, pas 4b; D-138): les dades de l'emissora (botó ⚙ de la capçalera) i la finestra d'un informe
-// ⚙ Configuració, i des d'allà les còpies de seguretat (D-152)
-const openStation = () => openStationDialog(send, () => bridge.chooseImage(), (path) => bridge.chooseFolder(path),
-  () => backupsDialog(send, { chooseFile: () => bridge.chooseBackup(), showFile: (path) => bridge.showFile(path) }));
+// ⚙ Configuració (botó de la capçalera; també des d'un informe, per posar les dades de l'emissora): una finestra amb
+// pestanyes (dades generals, avisos per correu, còpies de seguretat i eines)
+const openStation = () => openSettingsDialog(send, {
+  chooseImage: () => bridge.chooseImage(),
+  chooseFolder: (path) => bridge.chooseFolder(path),
+  chooseBackup: () => bridge.chooseBackup(),
+  showFile: (path) => bridge.showFile(path),
+});
 /**
  * @param {'programming' | 'certificate'} kind
  * @param {{ campaignId: number } | { trackId: number }} target

@@ -4124,24 +4124,65 @@ button.pl-chip.is-off {
   gap: 0.3rem 0.6rem;
 }
 
-/* Configuració: les dues dates de la temporada, de costat */
-.st-season {
+/* ⚙ Configuració (redisseny del 2026-11-17): una finestra gran amb pestanyes, sense desplaçar-se. Totes les pestanyes
+   tenen la mateixa alçada (la finestra no canvia de mida en passar d'una a l'altra); si la pantalla és molt baixa, la
+   pestanya es desplaça per dins */
+.ob-dialog-wide.cfg-dialog {
+  width: min(64rem, 96vw);
+}
+
+.cfg-tabs {
+  margin-bottom: 0.75rem;
+}
+
+.cfg-pane {
+  height: min(28rem, calc(100vh - 13rem));
+  overflow-y: auto;
+}
+
+/* Dues columnes (a sota l'una de l'altra si la finestra és estreta) */
+.cfg-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 2rem;
+  align-items: start;
+}
+
+@media (max-width: 800px) {
+  .cfg-cols { grid-template-columns: 1fr; }
+}
+
+/* Dos camps de costat (nom i freqüència, dates, usuari i contrasenya…) */
+.cfg-pair {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0 0.75rem;
 }
 
-/* Avisos per correu (fase 5, pas 5; D-160): servidor, port i xifratge en una fila; els tipus en dues columnes */
+/* Avisos per correu (D-160): servidor, port i xifratge en una fila; els tipus en dues columnes */
 .ml-server {
   display: grid;
-  grid-template-columns: 2fr 1fr 2fr;
+  grid-template-columns: 2fr 1fr 1.6fr;
   gap: 0 0.75rem;
 }
 
 .ml-kinds {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
   gap: 0 0.75rem;
+}
+
+/* Còpies de seguretat (D-152): la llista es desplaça per dins de la pestanya */
+.cfg-backups {
+  display: flex;
+  flex-direction: column;
+}
+
+.cfg-backups .bk-list {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  margin-top: 0.5rem;
 }
 
 /* Avisos de vigència (fase 4, pas 6b; D-146): la finestra amb la llista i el requadre de la fitxa i de la campanya */

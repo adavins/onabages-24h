@@ -1,11 +1,10 @@
 // @ts-check
-// Avisos per correu (fase 5, pas 5; D-160): el servidor, l'usuari i la contrasenya, els destinataris i quins tipus
-// d'incidència s'envien, i el correu de prova. S'obre des de ⚙ Configuració. Ho desa el motor (mail.set): la
-// contrasenya hi queda xifrada i no torna mai a la interfície (només se sap si n'hi ha una de desada).
+// ⚙ Configuració → pestanya «Avisos per correu» (fase 5, pas 5; D-160): el servidor, l'usuari i la contrasenya, els
+// destinataris, quins tipus d'incidència s'envien i el correu de prova. Ho desa el motor (mail.set) amb el «Desa» de la
+// finestra: la contrasenya hi queda xifrada i no torna mai a la interfície (només se sap si n'hi ha una de desada).
 
 import { el, icon, statusLabel } from './dom.js';
-import { formDialog, dialogField } from './form-dialog.js';
-import { confirmAction } from './confirm.js';
+import { dialogField } from './form-dialog.js';
 import { KINDS } from '../incidents-form.js';
 
 /**
@@ -18,19 +17,12 @@ import { KINDS } from '../incidents-form.js';
 const MAIL_KINDS = KINDS.filter(([kind]) => kind !== 'CORREU');
 
 /**
+ * La pestanya. <c>params()</c>: el que s'ha d'enviar a mail.set en desar.
  * @param {(cmd: string, params?: object, timeoutMs?: number) => Promise<any>} send
- * @returns {Promise<void>}
+ * @param {MailConfig} mail
+ * @returns {{ element: HTMLElement, params: () => object }}
  */
-export async function openMailDialog(send) {
-  /** @type {MailConfig} */
-  let mail;
-  try {
-    mail = await send('mail.get');
-  } catch (err) {
-    await confirmAction({ title: 'Avisos per correu', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
-    return;
-  }
-
+export function mailPanel(send, mail) {
   /** @param {string} type @param {string} value */
   const input = (type, value) => {
     const i = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
@@ -54,7 +46,7 @@ export async function openMailDialog(send) {
   port.min = '1';
   port.max = '65535';
   const security = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
-  security.append(new Option('STARTTLS (el normal, port 587)', 'starttls'), new Option('Cap (només un servidor de la xarxa local)', 'none'));
+  security.append(new Option('STARTTLS (port 587)', 'starttls'), new Option('Cap (xarxa local)', 'none'));
   security.value = mail.security;
   const serverFields = el('div', 'ml-server');
   serverFields.append(dialogField('Servidor SMTP', host), dialogField('Port', port), dialogField('Xifratge', security));
@@ -63,15 +55,16 @@ export async function openMailDialog(send) {
   user.autocomplete = 'off';
   const password = input('password', '');
   password.autocomplete = 'new-password';
-  password.placeholder = mail.hasPassword ? 'Desada (escriu-ne una de nova per canviar-la)' : '';
-  const accountFields = el('div', 'st-season');
+  password.placeholder = mail.hasPassword ? 'Desada (escriu-ne una per canviar-la)' : '';
+  const accountFields = el('div', 'cfg-pair');
   accountFields.append(dialogField('Usuari', user), dialogField('Contrasenya', password));
 
   const from = input('email', mail.from);
   from.placeholder = 'Si és buit, l\'usuari';
-  const to = /** @type {HTMLTextAreaElement} */ (el('textarea', 'form-control form-control-sm'));
-  to.rows = 2;
-  to.value = mail.to.join(', ');
+  const to = input('text', mail.to.join(', '));
+  to.placeholder = 'Separats per comes';
+  const addressFields = el('div', 'cfg-pair');
+  addressFields.append(dialogField('Remitent', from), dialogField('Destinataris', to));
 
   // Quins tipus s'envien (marcat = s'envia); el motor desa els que no, perquè un tipus nou s'enviï sense haver-lo de marcar
   /** @type {Map<string, HTMLInputElement>} */
@@ -91,7 +84,7 @@ export async function openMailDialog(send) {
   }
   const standardNames = mail.standardExcludedKinds.map((k) => KINDS.find(([code]) => code === k)?.[1] ?? k).join(' i ');
 
-  /** El que hi ha escrit al formulari (la contrasenya, només si se n'ha escrit una). */
+  /** El que hi ha escrit (la contrasenya, només si se n'ha escrit una). */
   const values = () => ({
     host: host.value.trim(),
     port: Number(port.value),
@@ -124,42 +117,22 @@ export async function openMailDialog(send) {
   });
 
   const state = el('div', 'small mb-2');
-  if (mail.problem) state.append(statusLabel('text-warning', 'bi-exclamation-triangle-fill', mail.problem));
+  if (!mail.enabled) state.append(statusLabel('text-secondary', 'bi-slash-circle', 'Desactivats'));
+  else if (mail.problem) state.append(statusLabel('text-warning', 'bi-exclamation-triangle-fill', mail.problem));
   else if (mail.lastSentAt) {
     const at = new Date(mail.lastSentAt);
     state.append(statusLabel('text-success', 'bi-check-circle',
-      `Últim avís enviat: ${at.toLocaleDateString('ca')} a les ${at.toLocaleTimeString('ca', { hour: '2-digit', minute: '2-digit' })}`));
-  }
+      `Actius. Últim avís enviat: ${at.toLocaleDateString('ca')} a les ${at.toLocaleTimeString('ca', { hour: '2-digit', minute: '2-digit' })}`));
+  } else state.append(statusLabel('text-success', 'bi-check-circle', 'Actius'));
 
-  for (;;) {
-    const ok = await formDialog({
-      title: 'Avisos per correu',
-      icon: 'bi-envelope-exclamation',
-      wide: true,
-      body: [
-        state,
-        enabledBox,
-        serverFields,
-        accountFields,
-        el('div', 'form-text mb-2', 'Amb Gmail, cal una contrasenya d\'aplicació (Compte de Google → Seguretat → Contrasenyes d\'aplicacions). Millor un compte només per als avisos. La contrasenya es desa xifrada i només la pot llegir aquest ordinador.'),
-        dialogField('Remitent', from),
-        dialogField('Destinataris', to, 'Separats per comes.'),
-        el('h3', 'h6 mt-3 mb-1', 'Què s\'envia'),
-        kinds,
-        el('div', 'form-text', `Per defecte no s'envien: ${standardNames}. Els avisos arriben agrupats: el primer correu, 2 minuts després de la primera incidència; després, com a molt un cada 10 minuts (si n'hi ha una de greu, no s'esperen els 10). Quan una incidència es resol, també s'avisa.`),
-        el('div', 'mt-3'),
-        test,
-        testState,
-      ],
-      confirm: 'Desa',
-    });
-    if (!ok) return;
-    try {
-      await send('mail.set', { enabled: enabled.checked, ...values() });
-      return;
-    } catch (err) {
-      // P. ex. una adreça mal escrita: es torna a obrir amb el que s'havia escrit
-      await confirmAction({ title: 'No s\'han pogut desar els avisos', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
-    }
-  }
+  const left = el('div', '');
+  left.append(state, enabledBox, serverFields, accountFields, addressFields,
+    el('div', 'form-text', 'Amb Gmail, cal una contrasenya d\'aplicació (Compte de Google → Seguretat → Contrasenyes d\'aplicacions). Millor un compte només per als avisos. La contrasenya es desa xifrada i només la pot llegir aquest ordinador.'));
+  const right = el('div', '');
+  right.append(el('h3', 'h6 mb-2', 'Què s\'envia'), kinds,
+    el('div', 'form-text mb-2', `Per defecte no s'envien: ${standardNames}. Arriben agrupats: el primer correu, 2 minuts després de la primera incidència; després, com a molt un cada 10 minuts (una de greu no espera els 10). Quan una incidència es resol, també s'avisa.`),
+    test, testState);
+  const element = el('div', 'cfg-cols');
+  element.append(left, right);
+  return { element, params: () => ({ enabled: enabled.checked, ...values() }) };
 }

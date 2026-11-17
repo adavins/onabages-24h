@@ -1,17 +1,19 @@
 // @ts-check
-// Còpies de seguretat (fase 4, pas 7b; D-152): la finestra que s'obre des de ⚙ Configuració. La llista de còpies, fer-ne
+// Còpies de seguretat (fase 4, pas 7b; D-152): la pestanya «Còpies de seguretat» de ⚙ Configuració. La llista de còpies, fer-ne
 // una ara, restaurar-ne una sencera (o un altre fitxer) i obrir la carpeta. Les còpies les fa i les restaura el motor.
 
 import { el, icon, statusLabel } from './dom.js';
 import { confirmAction } from './confirm.js';
-import { formDialog } from './form-dialog.js';
+import { formDialog } from './form-dialog.js'; // per a la confirmació de restaurar
 import { backupDateText, kindText, sizeText, inspectLines, restoredText } from '../backups-form.js';
 
 /**
  * @param {(cmd: string, params?: object) => Promise<any>} send
  * @param {{ chooseFile: () => Promise<string | null>, showFile: (path: string) => Promise<string> }} files
+ * @param {() => void} onRestored  després de restaurar una còpia (la configuració es tanca sense desar: les dades han canviat)
+ * @returns {HTMLElement}  la pestanya (la llista es llegeix sola)
  */
-export async function backupsDialog(send, files) {
+export function backupsPanel(send, files, onRestored) {
   const state = el('div', 'bk-state');
   const list = el('div', 'bk-list');
   /** @type {{ folder: string, backups: any[] }} */
@@ -46,7 +48,7 @@ export async function backupsDialog(send, files) {
 
   /** @param {string} path */
   const restoreFlow = async (path) => {
-    if (await restore(send, path)) await load();
+    if (await restore(send, path)) onRestored();
   };
 
   // A dalt: on són i les eines
@@ -87,8 +89,10 @@ export async function backupsDialog(send, files) {
   });
   tools.append(create, other, folder, state);
 
-  await load();
-  await formDialog({ title: 'Còpies de seguretat', icon: 'bi-database-check', body: [where, tools, list], wide: true });
+  load();
+  const element = el('div', 'cfg-backups');
+  element.append(where, tools, list);
+  return element;
 }
 
 /**
