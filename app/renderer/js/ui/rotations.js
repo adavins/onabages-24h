@@ -654,11 +654,15 @@ export class RotationsView {
     for (const c of this.#categories) {
       const group = document.createElement('optgroup');
       group.label = c.name;
+      // Amb la categoria al davant («Music / Adult 5»): el desplegable tancat només mostra l'opció triada, i sense la
+      // categoria no se sabria de quina és (hi ha subcategories amb el mateix nom a categories diferents)
       group.append(option(`c:${c.id}`, `${c.name}: qualsevol (${c.count})`),
-        ...c.subcategories.map((/** @type {any} */ s) => option(`s:${s.id}`, `${s.name} (${s.count})`)));
+        ...c.subcategories.map((/** @type {any} */ s) => option(`s:${s.id}`, `${c.name} / ${s.name} (${s.count})`)));
       source.append(group);
     }
     source.value = step.source;
+    source.title = source.selectedOptions[0]?.textContent ?? '';
+    source.addEventListener('change', () => { source.title = source.selectedOptions[0]?.textContent ?? ''; });
     // El tipus de pista del pas (D-118): el que predomina d'on surt; canvia amb el desplegable
     const typeCell = el('span', '');
     const showType = () => {

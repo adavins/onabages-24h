@@ -1598,7 +1598,7 @@ body {
 }
 
 .rt-steps td:nth-child(1) { width: 1.5rem; padding-right: 0; }
-.rt-steps td:nth-child(3) { min-width: 16rem; }
+.rt-steps td:nth-child(3) { min-width: 19rem; } /* «Music / Adult 5 (123)»: amb la categoria */
 .rt-steps td:nth-child(4) { white-space: nowrap; }
 .rt-steps td:nth-child(5) { min-width: 8rem; }
 .rt-steps td:nth-child(6) { min-width: 13rem; }
@@ -2333,6 +2333,9 @@ button.section:hover {
   padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--ob-border);
 }
+
+.pl-only-note { font-weight: 600; }
+.pl-only-all { font-size: inherit; vertical-align: baseline; }
 
 .pl-legend-title {
   color: var(--ob-muted);

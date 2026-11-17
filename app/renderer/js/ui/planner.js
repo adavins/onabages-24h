@@ -32,6 +32,8 @@ export class PlannerView {
   #monday = weekStart(new Date());
   #zoom = /** @type {30 | 15 | 5} */ (30);
   #showDisabled = true;
+  /** Només l'esdeveniment obert a la fitxa (D-174). Val mentre n'hi ha un d'obert; en tancar-lo, s'apaga. */
+  #onlyOpen = false;
   /** @type {Set<string>} */
   #hiddenModes = new Set();
   /** @type {number | null} */
@@ -79,6 +81,10 @@ export class PlannerView {
     }
     /** @type {HTMLInputElement} */ ($('pl-show-disabled')).addEventListener('change', (e) => {
       this.#showDisabled = /** @type {HTMLInputElement} */ (e.target).checked;
+      this.#render();
+    });
+    /** @type {HTMLInputElement} */ ($('pl-only-open')).addEventListener('change', (e) => {
+      this.#onlyOpen = /** @type {HTMLInputElement} */ (e.target).checked;
       this.#render();
     });
 
@@ -174,6 +180,7 @@ export class PlannerView {
   // --- Dibuix ---
 
   #render() {
+    this.#syncOnlyOpen();
     $('pl-title').textContent = this.#view === 'week' ? weekTitle(this.#monday) : 'Setmana tipus (sense dates)';
     this.#renderLegend();
     this.#renderGrid();
@@ -182,13 +189,43 @@ export class PlannerView {
 
   /** @param {any} ev */
   #isShown(ev) {
+    // «Només l'obert»: aquest i prou, encara que el seu mode estigui amagat o estigui desactivat
+    if (this.#onlyOpen && this.#selected != null) return ev.id === this.#selected && !ev.isTemplate;
     return (this.#showDisabled || ev.enabled) && !this.#hiddenModes.has(ev.mode) && !ev.isTemplate;
+  }
+
+  /**
+   * L'interruptor «Només l'obert» (D-174): només es pot encendre amb un esdeveniment obert, i s'apaga sol quan no n'hi ha
+   * cap (s'ha tancat la fitxa, s'ha esborrat o se n'està creant un de nou), perquè no sembli que la programació ha
+   * desaparegut.
+   */
+  #syncOnlyOpen() {
+    if (this.#selected == null) this.#onlyOpen = false;
+    const input = /** @type {HTMLInputElement} */ ($('pl-only-open'));
+    input.checked = this.#onlyOpen;
+    input.disabled = this.#selected == null;
+    $('pl-only-open-box').title = this.#selected == null
+      ? 'Obre un esdeveniment per veure només aquest'
+      : 'Mostra a la graella només l\'esdeveniment obert a la fitxa';
   }
 
   /** Modes (es poden amagar) i esdeveniments que es repeteixen dins del dia (fila pròpia). */
   #renderLegend() {
     const legend = $('pl-legend');
     legend.replaceChildren();
+    // «Només l'obert» (D-174): que es vegi sempre, amb una manera de tornar-ho a mostrar tot
+    const open = this.#onlyOpen && this.#selected != null ? this.#events.get(this.#selected) : null;
+    if (open) {
+      const note = el('span', 'pl-only-note text-info');
+      note.append(icon('bi-funnel-fill'), ' ', el('span', '', `Només «${open.name}»`));
+      const all = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-link p-0 pl-only-all', 'Mostra-ho tot'));
+      all.type = 'button';
+      all.addEventListener('click', () => {
+        this.#onlyOpen = false;
+        this.#render();
+      });
+      legend.append(note, ' · ', all, el('span', 'pl-legend-sep'));
+    }
     legend.append(el('span', 'pl-legend-title', 'Modes'));
     for (const [mode, info] of Object.entries(MODES)) {
       const hidden = this.#hiddenModes.has(mode);
@@ -400,6 +437,12 @@ export class PlannerView {
   /** Marca a la graella l'esdeveniment obert a l'editor (o cap). @param {number | null} id */
   #mark(id) {
     this.#selected = id;
+    // Amb «Només l'obert», la graella canvia sencera (o s'apaga, si ja no n'hi ha cap d'obert)
+    if (this.#onlyOpen) {
+      this.#render();
+      return;
+    }
+    this.#syncOnlyOpen();
     for (const node of document.querySelectorAll('.pl-item.is-selected')) node.classList.remove('is-selected');
     if (id != null) {
       for (const node of document.querySelectorAll(`.pl-item[data-event-id="${id}"]`)) node.classList.add('is-selected');
