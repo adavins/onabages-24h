@@ -5,7 +5,9 @@
 // - Avisos per correu (D-160): settings-mail.js.
 // - Còpies de seguretat (D-152): backups.js.
 // - Eines: el silenci a la sortida (D-158) i la carpeta de pistes d'emergència (D-159).
-// «Desa» desa les dades generals, els avisos i el silenci (station.set, season.set, mail.set, silence.set). Les accions
+// - Usuaris (D-164): settings-users.js.
+// «Desa» desa les dades generals, els avisos, el silenci i els minuts d'inactivitat (station.set, season.set, mail.set,
+// silence.set, security.set). Les accions
 // (triar la carpeta d'emergència, el correu de prova, fer o restaurar una còpia) es fan de seguida, com abans.
 
 import { el, icon, statusLabel } from './dom.js';
@@ -13,8 +15,9 @@ import { formDialog, dialogField } from './form-dialog.js';
 import { confirmAction } from './confirm.js';
 import { mailPanel } from './settings-mail.js';
 import { backupsPanel } from './backups.js';
+import { usersPanel } from './settings-users.js';
 
-/** @typedef {'general' | 'mail' | 'backups' | 'tools'} SettingsTab */
+/** @typedef {'general' | 'mail' | 'backups' | 'tools' | 'users'} SettingsTab */
 
 /** Les pestanyes, en ordre: id, text i icona. */
 const TABS = /** @type {const} */ ([
@@ -22,6 +25,7 @@ const TABS = /** @type {const} */ ([
   ['mail', 'Avisos per correu', 'bi-envelope-exclamation'],
   ['backups', 'Còpies de seguretat', 'bi-database-check'],
   ['tools', 'Eines', 'bi-tools'],
+  ['users', 'Usuaris', 'bi-people'],
 ]);
 
 /**
@@ -32,9 +36,10 @@ const TABS = /** @type {const} */ ([
  *   chooseBackup: () => Promise<string | null>,
  *   showFile: (path: string) => Promise<string>,
  * }} bridge  els diàlegs de Windows (el procés principal)
+ * @param {import('../session.js').SessionController} session  per a la pestanya «Usuaris» (crear el primer hi entra)
  * @param {SettingsTab} [firstTab]  la pestanya que s'obre (per defecte, «Dades generals»)
  */
-export async function openSettingsDialog(send, bridge, firstTab = 'general') {
+export async function openSettingsDialog(send, bridge, session, firstTab = 'general') {
   /** @type {{ name: string, frequency: string, logo: string | null }} */
   let station;
   /** @type {{ startDate: string | null, endDate: string | null }} */
@@ -45,9 +50,14 @@ export async function openSettingsDialog(send, bridge, firstTab = 'general') {
   let emergency;
   /** @type {import('./settings-mail.js').MailConfig} */
   let mail;
+  /** @type {import('./settings-users.js').UserRow[]} */
+  let users;
+  /** @type {{ inactivityMinutes: number, standardInactivityMinutes: number }} */
+  let security;
   try {
-    [station, season, silence, emergency, mail] = await Promise.all([send('station.get').then((r) => r.station),
-      send('season.get').then((r) => r.season), send('silence.get'), send('emergency.get'), send('mail.get')]);
+    [station, season, silence, emergency, mail, users, security] = await Promise.all([send('station.get').then((r) => r.station),
+      send('season.get').then((r) => r.season), send('silence.get'), send('emergency.get'), send('mail.get'),
+      send('users.list').then((r) => r.users), send('security.get')]);
   } catch (err) {
     await confirmAction({ title: 'No s\'han pogut llegir les dades', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
     return;
@@ -197,10 +207,14 @@ export async function openSettingsDialog(send, bridge, firstTab = 'general') {
   const tools = el('div', 'cfg-cols');
   tools.append(silenceBox, emergencyBox);
 
+  // --- Usuaris ---
+
+  const usersTab = usersPanel(send, session, users, security);
+
   // --- Les pestanyes (com les de «Cerca» i «Notes»: botons i panells que s'amaguen) ---
 
   /** @type {Record<SettingsTab, HTMLElement>} */
-  const panes = { general, mail: mailTab.element, backups, tools };
+  const panes = { general, mail: mailTab.element, backups, tools, users: usersTab.element };
   const tabBar = el('ul', 'nav nav-tabs cfg-tabs');
   tabBar.setAttribute('role', 'tablist');
   /** @type {Map<SettingsTab, HTMLButtonElement>} */
@@ -245,6 +259,9 @@ export async function openSettingsDialog(send, bridge, firstTab = 'general') {
       await send('mail.set', mailTab.params());
       failed = 'tools';
       await send('silence.set', { thresholdDb: Number(silenceDb.value), seconds: Number(silenceSeconds.value) });
+      failed = 'users';
+      await send('security.set', { inactivityMinutes: usersTab.inactivityMinutes() });
+      await session.refresh();
       return;
     } catch (err) {
       // Es torna a obrir per la pestanya que no s'ha pogut desar, amb el que s'hi havia escrit

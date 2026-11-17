@@ -33,6 +33,7 @@ import { setupZoom, applyZoom } from './ui/zoom.js';
 import { setupWindowFrame } from './ui/window-frame.js';
 import { CollapsibleCards } from './ui/collapsible.js';
 import { openSettingsDialog } from './ui/settings-dialog.js';
+import { SessionController } from './session.js';
 import { openReport } from './ui/report-dialog.js';
 import { HistorySearchView } from './ui/history-search.js';
 
@@ -59,12 +60,13 @@ const bridge = /** @type {Bridge} */ (/** @type {any} */ (window).onabages);
 
 // ⚙ Configuració (botó de la capçalera; també des d'un informe, per posar les dades de l'emissora): una finestra amb
 // pestanyes (dades generals, avisos per correu, còpies de seguretat i eines)
-const openStation = () => openSettingsDialog(send, {
+/** @param {import('./ui/settings-dialog.js').SettingsTab} [tab] */
+const openStation = (tab) => openSettingsDialog(send, {
   chooseImage: () => bridge.chooseImage(),
   chooseFolder: (path) => bridge.chooseFolder(path),
   chooseBackup: () => bridge.chooseBackup(),
   showFile: (path) => bridge.showFile(path),
-});
+}, session, tab);
 /**
  * @param {'programming' | 'certificate'} kind
  * @param {{ campaignId: number } | { trackId: number }} target
@@ -124,16 +126,60 @@ function showBanner(title, detail = '') {
 let client = null;
 let failedAttempts = 0;
 
-/** Envia una ordre al motor. @param {string} cmd  @param {object} [params] */
 /**
+ * Envia una ordre al motor, sense res més (la sessió la fa servir per a les seves ordres).
  * @param {string} cmd
  * @param {object} [params]
  * @param {number} [timeoutMs]  per a les ordres que poden tardar (p. ex. el correu de prova); si no, el temps normal
  */
-function send(cmd, params = {}, timeoutMs = undefined) {
+function request(cmd, params = {}, timeoutMs = undefined) {
   if (!client) return Promise.reject(new Error('El motor no està connectat'));
   return client.request(cmd, params, timeoutMs);
 }
+
+// Usuaris i sessió (fase 5, pas 8b; D-164): si una ordre necessita sessió just després d'un clic, es demana i es torna a enviar
+const session = new SessionController(request);
+
+/**
+ * Envia una ordre al motor (totes les de la interfície passen per aquí).
+ * @param {string} cmd
+ * @param {object} [params]
+ * @param {number} [timeoutMs]
+ */
+function send(cmd, params = {}, timeoutMs = undefined) {
+  return session.send(cmd, params, timeoutMs);
+}
+
+// El botó de la sessió, a la capçalera (sempre color + icona + text)
+session.onChange((state) => {
+  const button = $('btn-session');
+  let iconName, text, className, title;
+  if (!state.usersExist) {
+    [iconName, text, className] = ['bi-unlock', 'Sense usuaris', 'text-warning'];
+    title = 'No hi ha cap usuari: tothom pot canviar-ho tot. Crea un administrador a ⚙ Configuració → Usuaris.';
+  } else if (!state.session) {
+    [iconName, text, className] = ['bi-lock-fill', 'Consulta', 'text-info'];
+    title = 'Mode de consulta: es veu tot, però per canviar res cal iniciar sessió. L\'emissió continua igualment.';
+  } else {
+    [iconName, text, className] = ['bi-person-check-fill', `${state.session.displayName} · ${state.session.roleName}`, 'text-success'];
+    title = 'Sessió oberta: canviar la contrasenya o tancar-la';
+  }
+  const i = document.createElement('i');
+  i.className = `bi ${iconName}`;
+  i.setAttribute('aria-hidden', 'true');
+  const label = document.createElement('span');
+  label.textContent = ` ${text}`;
+  button.replaceChildren(i, label);
+  button.className = `btn btn-sm btn-link topbar-session ${className}`;
+  button.title = title;
+  // Les notes es desen soles mentre s'escriu: sense permís, només es poden llegir
+  /** @type {HTMLTextAreaElement} */ ($('notes-text')).readOnly = !session.can('operator');
+});
+$('btn-session').addEventListener('click', () => {
+  if (!session.state.usersExist) openStation('users');
+  else if (!session.state.session) session.login();
+  else session.menu();
+});
 
 const meters = new OutputMeters($('meter-left'), $('meter-right'));
 // Fent clic a la barra de progrés, la pista va a aquell punt (D-103). No interromp l'emissió: no demana confirmació
@@ -353,6 +399,7 @@ $('btn-history-all').addEventListener('click', (ev) => {
   showView('historial');
 });
 $('btn-station').addEventListener('click', () => openStation());
+// ⚙ Configuració és de l'administrador (si hi ha usuaris): el clic demana la sessió (session.js, data-needs)
 
 // Saltar a la següent: interromp la cançó, per tant demana confirmació
 // «Regenera la cua» (D-034): només canvia les pistes que ha posat l'AutoDJ i no interromp res, per això no demana confirmació
@@ -470,6 +517,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
       failedAttempts = 0;
       showStatus('connected');
       showBanner(null);
+      await session.connected(); // abans de res: la sessió d'abans, si n'hi havia
       await loadState();
     } else if (state === 'connecting') {
       if (failedAttempts === 0) showStatus('connecting');
@@ -529,6 +577,8 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   client.addEventListener('ev:library.importProgress', (e) => importView.show(detail(e).import));
   client.addEventListener('ev:folders.changed', (e) => folders.update(detail(e).folders));
   // Incidències (fase 5, pas 1b; D-156): la barra d'avisos i, si és oberta, la finestra «Incidències»
+  // La sessió s'ha tancat per inactivitat (D-164)
+  client.addEventListener('ev:session.changed', (e) => session.changed(detail(e)));
   client.addEventListener('ev:incidents.changed', () => {
     warnings.refresh();
     incidentsChanged();

@@ -3908,8 +3908,28 @@ button.pl-chip.is-off {
 /* --- Informes (fase 4, pas 4b; D-138) --- */
 
 /* ⚙ a la capçalera: les dades de l'emissora */
-.topbar-settings {
+/* Usuaris i sessió (fase 5, pas 8b; D-164): el botó de la sessió, a la dreta, abans de ⚙ */
+.topbar-session {
   margin-left: auto;
+  padding: 0.15rem 0.4rem;
+  text-decoration: none;
+}
+
+.topbar-session:hover,
+.topbar-session:focus-visible {
+  text-decoration: underline;
+}
+
+/* Sense permís (session.js): atenuats; el clic demana la sessió. Segons el rol de body[data-access] */
+body[data-access="none"] [data-needs],
+body[data-access="operator"] [data-needs="programmer"],
+body[data-access="operator"] [data-needs="administrator"],
+body[data-access="programmer"] [data-needs="administrator"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.topbar-settings {
   padding: 0.15rem 0.4rem;
   color: var(--ob-muted);
   font-size: 1.1rem;
@@ -4170,6 +4190,16 @@ button.pl-chip.is-off {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
   gap: 0 0.75rem;
+}
+
+/* Usuaris (D-164): la llista es desplaça per dins de la pestanya; més amplada per a la taula */
+.us-cols {
+  grid-template-columns: 3fr 2fr;
+}
+
+.us-list {
+  max-height: 19rem;
+  overflow-y: auto;
 }
 
 /* Còpies de seguretat (D-152): la llista es desplaça per dins de la pestanya */

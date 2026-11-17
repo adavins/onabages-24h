@@ -22,7 +22,8 @@
       <button id="nav-campanyes" class="section" type="button"><i class="bi bi-megaphone" aria-hidden="true"></i> Campanyes</button>
       <button id="nav-historial" class="section" type="button"><i class="bi bi-clock-history" aria-hidden="true"></i> Historial</button>
     </nav>
-    <button id="btn-station" class="btn btn-sm btn-link topbar-settings" type="button" title="Configuració: dades de l'emissora (per als informes) i temporada"><i class="bi bi-gear" aria-hidden="true"></i><span class="visually-hidden">Configuració</span></button>
+    <button id="btn-session" class="btn btn-sm btn-link topbar-session" type="button"><i class="bi bi-hourglass-split" aria-hidden="true"></i></button>
+    <button id="btn-station" class="btn btn-sm btn-link topbar-settings" type="button" data-needs="administrator" title="Configuració: emissora, avisos per correu, còpies de seguretat, eines i usuaris"><i class="bi bi-gear" aria-hidden="true"></i><span class="visually-hidden">Configuració</span></button>
     <span id="zoom-indicator" class="zoom-indicator" aria-live="polite"></span>
     <span id="engine-status" class="engine-status status-connecting" role="status">
       <i class="bi bi-hourglass-split"></i>
@@ -47,12 +48,12 @@
 
   <!-- Pista que sona, comptadors, vúmetres i rellotge -->
   <section class="onair" aria-label="En antena">
-    <button id="btn-skip" class="btn btn-outline-light transport-button" type="button" title="Salta a la següent pista (amb un fos d'1 s)" disabled>
+    <button data-needs="operator" id="btn-skip" class="btn btn-outline-light transport-button" type="button" title="Salta a la següent pista (amb un fos d'1 s)" disabled>
       <i class="bi bi-skip-end-fill" aria-hidden="true"></i>
       <span>Següent</span>
     </button>
     <!-- Pausa (D-103): deixa la ràdio en silenci; continua sola als 5 minuts -->
-    <button id="btn-pause" class="btn btn-outline-light transport-button" type="button" title="Atura la pista que sona (la ràdio queda en silenci fins que continuï)" disabled>
+    <button data-needs="operator" id="btn-pause" class="btn btn-outline-light transport-button" type="button" title="Atura la pista que sona (la ràdio queda en silenci fins que continuï)" disabled>
       <i class="bi bi-pause-fill" aria-hidden="true"></i>
       <span>Pausa</span>
     </button>
@@ -117,7 +118,7 @@
         <div class="card-header ob-card-header">
           <strong>Cua</strong>
           <span id="queue-summary" class="ms-auto text-body-secondary"></span>
-          <button id="btn-regenerate" class="btn btn-sm btn-outline-secondary" type="button" title="Treu les pistes que ha posat l'AutoDJ i les torna a triar amb la rotació actual (no toca la que sona, ni les manuals, ni les dels esdeveniments)"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Regenera la cua</button>
+          <button data-needs="operator" id="btn-regenerate" class="btn btn-sm btn-outline-secondary" type="button" title="Treu les pistes que ha posat l'AutoDJ i les torna a triar amb la rotació actual (no toca la que sona, ni les manuals, ni les dels esdeveniments)"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Regenera la cua</button>
         </div>
         <!-- AutoDJ (D-083): a la capçalera de la cua, en una sola línia -->
         <div class="autodj-bar" aria-label="AutoDJ">
@@ -127,7 +128,7 @@
           <label class="autodj-label" for="autodj-sweepers"><i class="bi bi-soundwave" aria-hidden="true"></i> Sweepers</label>
           <select id="autodj-sweepers" class="form-select form-select-sm autodj-rotation"></select>
           <span id="autodj-next" class="autodj-next"></span>
-          <button id="btn-autodj-toggle" class="btn btn-sm btn-outline-warning ms-auto" type="button">Atura l'AutoDJ</button>
+          <button data-needs="operator" id="btn-autodj-toggle" class="btn btn-sm btn-outline-warning ms-auto" type="button">Atura l'AutoDJ</button>
         </div>
         <div id="autodj-notice" class="card-alert text-info d-none" role="status">
           <i class="bi bi-info-circle-fill" aria-hidden="true"></i>
@@ -230,7 +231,7 @@
         <input id="pl-show-disabled" class="form-check-input" type="checkbox" role="switch" checked>
         <label class="form-check-label" for="pl-show-disabled">Mostra els desactivats</label>
       </div>
-      <button id="pl-new" class="btn btn-sm btn-primary ms-auto" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nou esdeveniment</button>
+      <button data-needs="programmer" id="pl-new" class="btn btn-sm btn-primary ms-auto" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nou esdeveniment</button>
     </div>
     <div id="pl-legend" class="planner-legend"></div>
     <div id="pl-error" class="alert alert-danger d-flex gap-2 m-2 mb-0 d-none" role="alert">
@@ -253,8 +254,8 @@
         <section class="tm-box" aria-labelledby="tm-box-import">
           <h2 id="tm-box-import" class="tm-box-title"><i class="bi bi-box-arrow-in-down" aria-hidden="true"></i> Importació</h2>
           <div class="tm-box-body">
-            <button id="tm-import" class="btn btn-sm btn-outline-primary" type="button" title="Afegeix a la biblioteca els fitxers d'una carpeta (i les subcarpetes)"><i class="bi bi-folder-symlink" aria-hidden="true"></i> Importa una carpeta…</button>
-            <button id="tm-import-files" class="btn btn-sm btn-outline-primary" type="button" title="Afegeix a la biblioteca un o diversos fitxers d'àudio"><i class="bi bi-file-earmark-music" aria-hidden="true"></i> Importa fitxers…</button>
+            <button data-needs="programmer" id="tm-import" class="btn btn-sm btn-outline-primary" type="button" title="Afegeix a la biblioteca els fitxers d'una carpeta (i les subcarpetes)"><i class="bi bi-folder-symlink" aria-hidden="true"></i> Importa una carpeta…</button>
+            <button data-needs="programmer" id="tm-import-files" class="btn btn-sm btn-outline-primary" type="button" title="Afegeix a la biblioteca un o diversos fitxers d'àudio"><i class="bi bi-file-earmark-music" aria-hidden="true"></i> Importa fitxers…</button>
             <!-- Importació en curs o l'última (fase 3, pas 7b) -->
             <div id="tm-import-panel" class="tm-import-panel d-none" role="status" aria-live="polite"></div>
           </div>
@@ -266,31 +267,31 @@
             <label for="tm-box-category" class="form-label">Categoria</label>
             <select id="tm-box-category" class="form-select form-select-sm"></select>
             <div class="tm-box-tools">
-              <button id="tm-new-category" class="btn btn-sm btn-outline-secondary" type="button" title="Crea una categoria nova"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
-              <button id="tm-rename-category" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el nom de la categoria triada"><i class="bi bi-pencil" aria-hidden="true"></i> Nom</button>
-              <button id="tm-delete-category" class="btn btn-sm btn-outline-danger" type="button" title="Esborra la categoria triada (només si no té subcategories)"><i class="bi bi-trash" aria-hidden="true"></i> Esborra</button>
+              <button data-needs="programmer" id="tm-new-category" class="btn btn-sm btn-outline-secondary" type="button" title="Crea una categoria nova"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
+              <button data-needs="programmer" id="tm-rename-category" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el nom de la categoria triada"><i class="bi bi-pencil" aria-hidden="true"></i> Nom</button>
+              <button data-needs="programmer" id="tm-delete-category" class="btn btn-sm btn-outline-danger" type="button" title="Esborra la categoria triada (només si no té subcategories)"><i class="bi bi-trash" aria-hidden="true"></i> Esborra</button>
             </div>
             <label for="tm-box-subcategory" class="form-label">Subcategoria</label>
             <select id="tm-box-subcategory" class="form-select form-select-sm icon-select"></select>
             <div class="tm-box-tools">
-              <button id="tm-new-subcategory" class="btn btn-sm btn-outline-secondary" type="button" title="Crea una subcategoria dins de la categoria triada"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
-              <button id="tm-rename-subcategory" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el nom de la subcategoria triada"><i class="bi bi-pencil" aria-hidden="true"></i> Nom</button>
-              <button id="tm-delete-subcategory" class="btn btn-sm btn-outline-danger" type="button" title="Esborra la subcategoria triada (només si no té pistes ni la fa servir res)"><i class="bi bi-trash" aria-hidden="true"></i> Esborra</button>
+              <button data-needs="programmer" id="tm-new-subcategory" class="btn btn-sm btn-outline-secondary" type="button" title="Crea una subcategoria dins de la categoria triada"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
+              <button data-needs="programmer" id="tm-rename-subcategory" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el nom de la subcategoria triada"><i class="bi bi-pencil" aria-hidden="true"></i> Nom</button>
+              <button data-needs="programmer" id="tm-delete-subcategory" class="btn btn-sm btn-outline-danger" type="button" title="Esborra la subcategoria triada (només si no té pistes ni la fa servir res)"><i class="bi bi-trash" aria-hidden="true"></i> Esborra</button>
             </div>
             <div id="tm-folder-status" class="tm-folder-status"></div>
             <div class="tm-box-tools">
-              <button id="tm-folder" class="btn btn-sm btn-outline-secondary" type="button" title="Carpeta vigilada de la subcategoria triada: les cançons que s'hi copien entren soles"><i class="bi bi-folder-check" aria-hidden="true"></i> Carpeta vigilada…</button>
-              <button id="tm-empty" class="btn btn-sm btn-outline-danger" type="button" title="Esborra totes les pistes de la subcategoria triada (per renovar una bossa)"><i class="bi bi-eraser" aria-hidden="true"></i> Buida…</button>
+              <button data-needs="programmer" id="tm-folder" class="btn btn-sm btn-outline-secondary" type="button" title="Carpeta vigilada de la subcategoria triada: les cançons que s'hi copien entren soles"><i class="bi bi-folder-check" aria-hidden="true"></i> Carpeta vigilada…</button>
+              <button data-needs="programmer" id="tm-empty" class="btn btn-sm btn-outline-danger" type="button" title="Esborra totes les pistes de la subcategoria triada (per renovar una bossa)"><i class="bi bi-eraser" aria-hidden="true"></i> Buida…</button>
             </div>
             <div class="tm-box-sep"></div>
-            <button id="tm-tags" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el nom de les etiquetes, fusiona-les o esborra les que no fan falta"><i class="bi bi-tags" aria-hidden="true"></i> Gestiona les etiquetes…</button>
+            <button data-needs="programmer" id="tm-tags" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el nom de les etiquetes, fusiona-les o esborra les que no fan falta"><i class="bi bi-tags" aria-hidden="true"></i> Gestiona les etiquetes…</button>
           </div>
         </section>
 
         <section class="tm-box" aria-labelledby="tm-box-tools">
           <h2 id="tm-box-tools" class="tm-box-title"><i class="bi bi-tools" aria-hidden="true"></i> Utilitats</h2>
           <div class="tm-box-body">
-            <button id="tm-reroot" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el principi de les rutes de moltes pistes alhora (p. ex. si les carpetes de música s'han mogut o en aquest ordinador es veuen amb una altra lletra)"><i class="bi bi-signpost-split" aria-hidden="true"></i> Canvia l'arrel de les rutes…</button>
+            <button data-needs="programmer" id="tm-reroot" class="btn btn-sm btn-outline-secondary" type="button" title="Canvia el principi de les rutes de moltes pistes alhora (p. ex. si les carpetes de música s'han mogut o en aquest ordinador es veuen amb una altra lletra)"><i class="bi bi-signpost-split" aria-hidden="true"></i> Canvia l'arrel de les rutes…</button>
           </div>
         </section>
       </aside>
@@ -332,9 +333,9 @@
           <summary class="rt-box-title"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Rotacions</summary>
           <div class="rt-box-body">
             <div class="rt-box-tools">
-              <button id="rt-new" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
-              <button id="rt-duplicate" class="btn btn-sm btn-outline-secondary" type="button" title="Fes-ne una còpia per provar canvis sense tocar l'original"><i class="bi bi-copy" aria-hidden="true"></i> Duplica</button>
-              <button id="rt-delete" class="btn btn-sm btn-outline-danger" type="button" title="Esborra la rotació triada"><i class="bi bi-trash" aria-hidden="true"></i> Esborra</button>
+              <button data-needs="programmer" id="rt-new" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
+              <button data-needs="programmer" id="rt-duplicate" class="btn btn-sm btn-outline-secondary" type="button" title="Fes-ne una còpia per provar canvis sense tocar l'original"><i class="bi bi-copy" aria-hidden="true"></i> Duplica</button>
+              <button data-needs="programmer" id="rt-delete" class="btn btn-sm btn-outline-danger" type="button" title="Esborra la rotació triada"><i class="bi bi-trash" aria-hidden="true"></i> Esborra</button>
             </div>
             <ul id="rt-list" class="rt-list"></ul>
           </div>
@@ -345,7 +346,7 @@
           <summary class="rt-box-title" title="Els passos que apunten a una bossa trien de la subcategoria que la bossa té ara"><i class="bi bi-bag" aria-hidden="true"></i> Bosses</summary>
           <div class="rt-box-body">
             <div class="rt-box-tools">
-              <button id="rt-bag-new" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova bossa</button>
+              <button data-needs="programmer" id="rt-bag-new" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova bossa</button>
             </div>
             <ul id="rt-bags" class="rt-bag-list"></ul>
           </div>
@@ -383,7 +384,7 @@
               <input id="rt-sep-artist" class="form-control form-control-sm" type="number" min="0" max="10080" step="5">
             </div>
             <div class="d-flex align-items-center gap-2">
-              <button id="rt-sep-save" class="btn btn-sm btn-outline-primary" type="button" disabled>Desa</button>
+              <button data-needs="programmer" id="rt-sep-save" class="btn btn-sm btn-outline-primary" type="button" disabled>Desa</button>
               <span id="rt-sep-state" class="form-text m-0"></span>
             </div>
             <p class="form-text m-0">Si una bossa no té prou cançons per complir-ho, s'afluixa (mai silenci). 0 = sense temps mínim.</p>
@@ -402,8 +403,8 @@
           <summary class="rt-box-title"><i class="bi bi-megaphone" aria-hidden="true"></i> Campanyes</summary>
           <div class="rt-box-body">
             <div class="rt-box-tools">
-              <button id="cp-new" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
-              <button id="cp-import" class="btn btn-sm btn-outline-secondary" type="button" title="Importa una campanya preparada en una altra emissora (un paquet de la carpeta compartida)"><i class="bi bi-box-arrow-in-down" aria-hidden="true"></i> Importa un paquet…</button>
+              <button data-needs="programmer" id="cp-new" class="btn btn-sm btn-outline-secondary" type="button"><i class="bi bi-plus-lg" aria-hidden="true"></i> Nova</button>
+              <button data-needs="programmer" id="cp-import" class="btn btn-sm btn-outline-secondary" type="button" title="Importa una campanya preparada en una altra emissora (un paquet de la carpeta compartida)"><i class="bi bi-box-arrow-in-down" aria-hidden="true"></i> Importa un paquet…</button>
             </div>
             <select id="cp-filter" class="form-select form-select-sm" aria-label="Quines campanyes es mostren">
               <option value="current" selected>Actives i esborranys</option>

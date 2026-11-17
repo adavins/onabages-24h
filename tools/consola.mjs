@@ -53,6 +53,33 @@ async function ask(question) {
   }
 }
 
+/** Demana una contrasenya sense que es vegi en escriure-la (amb el teclat; per un tub, com una pregunta normal). */
+async function askHidden(question) {
+  if (!process.stdin.isTTY) return ask(question);
+  process.stdout.write(question);
+  return new Promise((resolve) => {
+    let text = '';
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    const onData = (chunk) => {
+      for (const ch of chunk.toString('utf8')) {
+        if (ch === '\r' || ch === '\n') {
+          process.stdin.off('data', onData);
+          process.stdin.setRawMode(false);
+          process.stdin.pause();
+          process.stdout.write('\n');
+          resolve(text);
+          return;
+        }
+        if (ch === '\u0003') process.exit(130); // Ctrl+C
+        if (ch === '\b' || ch === '\u007f') text = text.slice(0, -1);
+        else text += ch;
+      }
+    };
+    process.stdin.on('data', onData);
+  });
+}
+
 /** Demana confirmació: només «s» (o «si», «sí») és que sí. */
 async function confirm(question) {
   const answer = (await ask(`${question} (s/N) `)).toLowerCase();
@@ -81,9 +108,13 @@ function runtimeInfo() {
   }
 }
 
+/** La sessió d'aquesta consola (D-164): es recupera a cada connexió nova mentre el motor no es reiniciï. */
+let consoleSessionId = null;
+
 /**
  * Connexió amb el motor. Retorna { send(cmd, params), onEvent(fn), close() }. send retorna el resultat o llança un
  * error amb el missatge del motor. Llança un error si el motor no funciona o no respon en 3 segons.
+ * Si hi ha usuaris (D-164) i l'ordre necessita sessió, demana l'usuari i la contrasenya i la torna a enviar.
  */
 async function connect() {
   const info = runtimeInfo();
@@ -108,21 +139,37 @@ async function connect() {
     if (!waiting) return;
     pending.delete(msg.id);
     if (msg.ok) waiting.resolve(msg.result);
-    else waiting.reject(new Error(`${msg.error?.message ?? 'Error del motor'} (${msg.error?.code ?? '?'})`));
+    else waiting.reject(Object.assign(new Error(`${msg.error?.message ?? 'Error del motor'} (${msg.error?.code ?? '?'})`), { code: msg.error?.code }));
   });
   socket.addEventListener('close', () => {
     for (const waiting of pending.values()) waiting.reject(new Error('S\'ha tancat la connexió amb el motor.'));
     pending.clear();
   });
 
+  const raw = (cmd, params = {}) => new Promise((resolve, reject) => {
+    const id = ++nextId;
+    pending.set(id, { resolve, reject });
+    socket.send(JSON.stringify({ v: 1, id, cmd, ...params }));
+  });
+  if (consoleSessionId) await raw('session.resume', { sessionId: consoleSessionId }).catch(() => { consoleSessionId = null; });
+
   return {
     info,
-    send(cmd, params = {}) {
-      return new Promise((resolve, reject) => {
-        const id = ++nextId;
-        pending.set(id, { resolve, reject });
-        socket.send(JSON.stringify({ v: 1, id, cmd, ...params }));
-      });
+    async send(cmd, params = {}) {
+      try {
+        return await raw(cmd, params);
+      } catch (error) {
+        if (!['not_logged_in', 'forbidden', 'must_change_password'].includes(error.code)) throw error;
+        console.log(color.yellow(`\n${error.message.replace(/ \([a-z_]+\)$/, '')}`));
+        if (error.code === 'must_change_password') throw new Error('Canvia primer la contrasenya provisional des de la interfície.');
+        const user = await ask('Usuari (buit = no ho facis): ');
+        if (!user) throw error;
+        const password = await askHidden('Contrasenya: ');
+        const state = await raw('session.login', { user, password });
+        consoleSessionId = state.session?.id ?? null;
+        if (state.session?.mustChangePassword) throw new Error('Aquesta contrasenya és provisional: canvia-la primer des de la interfície.');
+        return raw(cmd, params);
+      }
     },
     onEvent(listener) { listeners.push(listener); },
     close() { socket.close(); },
@@ -218,6 +265,7 @@ async function main() {
       ['7', 'Diagnòstic del motor…'],
       ['8', 'Empaquetar la versió portable'],
       ['9', 'Obrir la carpeta de dades'],
+      ['u', 'Restablir la contrasenya de l\'administrador'],
       ['0', 'Sortir'],
     ]);
     switch (choice) {
@@ -230,6 +278,7 @@ async function main() {
       case '7': await diagnosticsMenu(); break;
       case '8': await packageApp(); break;
       case '9': spawn('explorer.exe', [DATA], { detached: true, stdio: 'ignore' }).unref(); break;
+      case 'u': await resetAdministrator(); break;
       case '0': case 'q': return;
       default: break;
     }
@@ -308,11 +357,27 @@ async function stopEngine() {
 async function shutdownEngine() {
   await withEngine(async (engine) => {
     // El motor pot tancar la connexió abans de respondre: no és un error
-    await engine.send('engine.shutdown').catch(() => {});
+    await engine.send('engine.shutdown').catch((error) => {
+      // Un error del motor (p. ex. la contrasenya no és bona) es diu; tancar la connexió abans de respondre, no
+      if (error.code) console.log(color.red(`\n${error.message}`));
+    });
   });
   // Espera que el procés acabi (com a molt 10 s)
   for (let i = 0; i < 50 && runtimeInfo(); i++) await new Promise((resolve) => setTimeout(resolve, 200));
   console.log(runtimeInfo() ? color.red('\nEl motor encara no s\'ha aturat. Mira la seva finestra.') : color.green('\nMotor aturat.'));
+}
+
+/** Si s'ha oblidat la contrasenya de l'administrador (D-164): el motor en dona una de provisional. Amb el motor aturat. */
+async function resetAdministrator() {
+  if (runtimeInfo()) {
+    console.log(color.yellow('\nEl motor està en marxa: atura\'l primer (opció 3 o 4).'));
+    await pause();
+    return;
+  }
+  if (!(await confirm(color.yellow('\nEs posarà una contrasenya provisional a l\'administrador (o es crearà l\'usuari «admin»). Segur?')))) return;
+  const ok = run('dotnet', ['run', '--project', 'engine\\OnaBages24.Engine', '-v', 'q', '--', 'restableix-administrador']);
+  if (!ok) console.log(color.red('\nNo s\'ha pogut fer. Mira els missatges de sobre.'));
+  await pause();
 }
 
 /** Abans de compilar: si el motor funciona, els seus fitxers estan en ús i la compilació fallarà. */
