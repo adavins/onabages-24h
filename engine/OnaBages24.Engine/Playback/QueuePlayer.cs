@@ -810,6 +810,14 @@ public sealed class QueuePlayer : IDisposable
         {
             long now = _mixer.FramesRendered;
 
+            // 0. Un stream que espera per sonar i no ha pogut connectar, si encara no és l'hora (D-179): es torna a obrir
+            if (_next is { HasStarted: false, Scheduled: false, Item.IsStream: true, Reader.State: ReaderState.Failed } early && StreamHasTime(now))
+            {
+                Retire(early);
+                _next = Open(early.Item);
+                if (_next is null) _upcoming.Insert(0, early.Item); // cap veu lliure: es torna a provar al pròxim Tick
+            }
+
             // 1. La pista que s'estava preparant no es pot obrir: se salta (i es prova la següent més avall)
             if (_next is { HasStarted: false, Reader.State: ReaderState.Failed } failed)
             {
@@ -818,6 +826,31 @@ public sealed class QueuePlayer : IDisposable
                 Retire(failed);
                 _next = null;
                 // Un stream que no connecta i té pista de reserva (D-010): sona la reserva al seu lloc
+                var fallback = item.StreamFallback;
+                if (fallback is not null) _upcoming.Insert(0, fallback);
+                events.Add(() => Failed?.Invoke(new QueueFailed(item, message, fallback)));
+                events.Add(() => Changed?.Invoke());
+            }
+
+            // 1a. Streams i puntualitat (D-179):
+            // - el stream d'un tall obert per endavant que no ha pogut connectar es torna a obrir, i així es va provant fins a
+            //   l'hora (si l'emissió comença uns segons abans, sona puntual);
+            foreach (var (id, reserved) in _reserved.ToList())
+            {
+                if (!reserved.Item.IsStream || reserved.Reader.State != ReaderState.Failed) continue;
+                Retire(reserved);
+                if (Open(reserved.Item) is { } again) _reserved[id] = again;
+                else _reserved.Remove(id);
+            }
+            // - un stream que ja hauria de sonar (l'hora del tall, o el punt de mescla de la que sona) i encara no és a punt es
+            //   dona per perdut de seguida: la reserva (o la següent) entra a l'hora, sense esperar que acabi de provar-ho.
+            if (_next is { HasStarted: false, Scheduled: false, Reader: StreamVoiceReader { State: ReaderState.Opening } late } waiting && StreamDue(now))
+            {
+                var item = waiting.Item;
+                string message = late.LastError is { } why ? $"A l'hora de començar encara no s'hi havia pogut connectar: {why}"
+                    : "A l'hora de començar encara no s'hi havia pogut connectar.";
+                Retire(waiting);
+                _next = null;
                 var fallback = item.StreamFallback;
                 if (fallback is not null) _upcoming.Insert(0, fallback);
                 events.Add(() => Failed?.Invoke(new QueueFailed(item, message, fallback)));
@@ -1133,6 +1166,16 @@ public sealed class QueuePlayer : IDisposable
             : new VoiceReader(voice, item.Path, _mixer.SampleRate, Ms(item.StartMs ?? 0), item.EndMs is { } end ? Ms(end) : null, hold);
         return new Playing(item, voice, reader) { OpenedFrame = _mixer.FramesRendered };
     }
+
+    /// <summary>
+    /// Si la pista que es prepara ja hauria de sonar (D-179): és l'hora del tall o el punt de mescla de la que sona. Si no
+    /// sona res i no hi ha cap tall, no (un stream té <see cref="QueueSettings.StreamConnectFor"/> per connectar-se).
+    /// </summary>
+    private bool StreamDue(long now) =>
+        _cutFrame > 0 ? now >= _cutFrame : _current is { Scheduled: true } playing && now >= playing.MixFrame;
+
+    /// <summary>Si encara falta per a l'hora en què ha de sonar (hi ha un tall programat o una pista que sona, i no hi hem arribat).</summary>
+    private bool StreamHasTime(long now) => (_cutFrame > 0 || _current is { Scheduled: true }) && !StreamDue(now);
 
     /// <summary>Com ha de sonar un stream de la cua (D-030, D-175).</summary>
     private StreamOptions StreamOptionsFor(QueueItem item) => new()

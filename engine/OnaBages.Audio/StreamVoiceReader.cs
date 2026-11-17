@@ -199,6 +199,9 @@ public sealed class StreamVoiceReader : IVoiceReader
     }
 
     private string? _lastError;
+
+    /// <summary>Per què ha fallat l'últim intent de connexió (per dir-ho si es dona per perdut abans que acabi de provar-ho), o null.</summary>
+    public string? LastError => Volatile.Read(ref _lastError);
     /// <summary>Si ja s'ha començat a omplir la veu amb aquesta connexió.</summary>
     private bool _filled;
 

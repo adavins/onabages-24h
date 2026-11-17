@@ -207,6 +207,65 @@ public sealed class QueueStreamTests : IDisposable
         Assert.InRange(peaks[^5], 0.25f, 0.35f); // sona la reserva (0,3), no la següent (0,2)
     }
 
+    /// <summary>Un port on no escolta ningú (el stream no connecta mai).</summary>
+    private static int ClosedPort()
+    {
+        using var free = new TcpListener(IPAddress.Loopback, 0);
+        free.Start();
+        return ((IPEndPoint)free.LocalEndpoint).Port;
+    }
+
+    [Fact]
+    public void A_l_hora_del_tall_si_el_stream_no_connecta_la_reserva_sona_a_l_hora()
+    {
+        // D-179: abans, la reserva arribava uns segons tard (el motor esperava que fallés el segon intent, a l'hora)
+        var player = NewPlayer();
+        player.Enqueue(File(Wav(20, 0.2f)));
+        Run(player, 0.5);
+        var reserve = File(Wav(8, 0.3f)) with { Title = "Reserva" };
+        var stream = new QueueItem { Path = $"http://127.0.0.1:{ClosedPort()}/", Title = "Directe", Type = TrackType.Stream }.AsStream(60_000)
+            with { StreamFallback = reserve };
+        var reservation = player.Reserve(stream); // com el TALLA, uns segons abans
+        Run(player, 1);
+        long cutFrame = player.CurrentFrame + Rate * 3;
+        player.CutAt(cutFrame, TimeSpan.Zero, [stream], false, reservation);
+
+        Run(player, 4);
+
+        var started = Assert.Single(_started, s => s.Item.Title == "Reserva");
+        Assert.InRange(started.StartFrame - cutFrame, 0, Rate / 5); // a l'hora (menys de 200 ms després: obrir el fitxer)
+        Assert.Equal("Reserva", Assert.Single(_failed).Fallback?.Title);
+    }
+
+    [Fact]
+    public void Si_el_stream_torna_uns_segons_abans_del_tall_sona_a_l_hora()
+    {
+        // La connexió anticipada falla (encara no emeten), però a l'hora ja hi és: es va tornant a provar
+        var mp3 = FakeRadio.Mp3(30, 0.5f);
+        var watch = Stopwatch.StartNew();
+        using var radio = new FakeRadio(async (client, _) =>
+        {
+            if (watch.Elapsed < TimeSpan.FromSeconds(3)) await FakeRadio.Send(client, "HTTP/1.0 503 Service Unavailable\r\n\r\n");
+            else await SendLive(client, mp3, 1);
+        });
+        var player = NewPlayer();
+        player.Enqueue(File(Wav(20, 0.2f)));
+        Run(player, 0.5);
+        var stream = Stream(radio, 60_000);
+        var reservation = player.Reserve(stream);
+        Run(player, 1);
+        long cutFrame = player.CurrentFrame + Rate * 5; // el tall, quan ja fa uns segons que emeten
+        player.CutAt(cutFrame, TimeSpan.Zero, [stream], false, reservation);
+
+        Run(player, 6);
+
+        Assert.True(_started.Any(s => s.Item.Title == "Directe"),
+            string.Join(" | ", _failed.Select(x => x.Message)) + " / " + string.Join(",", _started.Select(x => x.Item.Title)));
+        var started = Assert.Single(_started, s => s.Item.Title == "Directe");
+        Assert.InRange(started.StartFrame - cutFrame, 0, Rate / 20); // a la mostra (marge de 50 ms)
+        Assert.Empty(_failed);
+    }
+
     [Fact]
     public void Si_es_talla_i_no_torna_passa_a_la_seguent()
     {
