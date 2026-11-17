@@ -5,7 +5,6 @@
 
 import { el, icon, statusLabel } from './dom.js';
 import { formDialog, dialogField } from './form-dialog.js';
-import { changesDialog } from './changes.js';
 
 /**
  * @typedef {{ id: number, name: string, fullName: string, role: string, roleName: string, active: boolean,
@@ -149,14 +148,8 @@ export function usersPanel(send, session, users, security) {
   add.type = 'button';
   add.append(icon('bi-person-plus'), ' Afegeix un usuari…');
   add.addEventListener('click', () => editUser());
-  // Registre de canvis (pas 8c): qui ha canviat què i quan
-  const changes = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
-  changes.type = 'button';
-  changes.append(icon('bi-person-lines-fill'), ' Registre de canvis…');
-  changes.title = 'Qui ha canviat què i quan (es conserva 2 anys)';
-  changes.addEventListener('click', () => changesDialog(send, users));
-  const tools = el('div', 'd-flex gap-2 mt-2');
-  tools.append(add, changes);
+  const tools = el('div', 'd-flex gap-2 align-items-center mt-2');
+  tools.append(add, el('span', 'form-text m-0', 'Qui ha canviat què i quan: pestanya «Registre».'));
 
   const minutes = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
   minutes.type = 'number';

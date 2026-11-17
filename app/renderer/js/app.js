@@ -12,7 +12,7 @@ import { QueueView, HistoryView } from './ui/queue.js';
 import { AutoDjView } from './ui/autodj.js';
 import { renderOutput, renderNowPlaying } from './ui/statusbar.js';
 import { WarningsView } from './ui/warnings.js';
-import { incidentsChanged } from './ui/incidents.js';
+import { LogView } from './ui/log-view.js';
 import { todayIso } from './event-form.js';
 import { openOutputPicker } from './ui/output-picker.js';
 import { CampaignsView } from './ui/campaigns.js';
@@ -172,6 +172,8 @@ session.onChange((state) => {
   button.replaceChildren(i, label);
   button.className = `btn btn-sm btn-link topbar-session ${className}`;
   button.title = title;
+  // El registre: amb un altre rol hi surten (o no) els canvis i les sessions
+  logView.refresh();
   // Les notes es desen soles mentre s'escriu: sense permís, només es poden llegir
   /** @type {HTMLTextAreaElement} */ ($('notes-text')).readOnly = !session.can('operator');
 });
@@ -243,7 +245,13 @@ const historySearch = new HistorySearchView(send, (trackId) => {
 }, { savePdf: (html, name) => bridge.saveReportPdf(html, name), saveCsv: (text, name) => bridge.saveCsv(text, name) });
 // Avisos (fase 4, pas 6b; D-146): tots junts a la barra de sota, amb una finestra per gravetat; els de vigència, també
 // a la fitxa de la pista i a la campanya
+// Registre (D-167): tot el que ha passat, en una pestanya
+const logView = new LogView(send);
 const warnings = new WarningsView(send, {
+  openLog: () => {
+    showView('registre');
+    logView.showOpenIncidents();
+  },
   openTrack: (id) => {
     showView('biblioteca');
     trackManager.openTrack(id);
@@ -362,7 +370,7 @@ async function refreshNowPlayingStatus() {
 
 /** @param {'emissio' | 'planificador' | 'biblioteca' | 'rotacions' | 'campanyes' | 'historial' | 'calendari' | 'calendari-campanya'} name */
 function showView(name) {
-  for (const view of /** @type {const} */ (['emissio', 'planificador', 'biblioteca', 'rotacions', 'campanyes', 'historial', 'calendari', 'calendari-campanya'])) {
+  for (const view of /** @type {const} */ (['emissio', 'planificador', 'biblioteca', 'rotacions', 'campanyes', 'historial', 'registre', 'calendari', 'calendari-campanya'])) {
     const active = view === name;
     $(`view-${view}`).classList.toggle('d-none', !active);
     // Els calendaris no tenen pestanya: són part de Pistes (D-113) i de Campanyes (pas 3d), que continuen marcades
@@ -387,6 +395,8 @@ function showView(name) {
   else campaignCalendar.hide();
   if (name === 'historial') historySearch.show();
   else historySearch.hide();
+  if (name === 'registre') logView.show();
+  else logView.hide();
 }
 $('nav-emissio').addEventListener('click', () => showView('emissio'));
 $('nav-planificador').addEventListener('click', () => showView('planificador'));
@@ -394,6 +404,7 @@ $('nav-biblioteca').addEventListener('click', () => showView('biblioteca'));
 $('nav-rotacions').addEventListener('click', () => showView('rotacions'));
 $('nav-campanyes').addEventListener('click', () => showView('campanyes'));
 $('nav-historial').addEventListener('click', () => showView('historial'));
+$('nav-registre').addEventListener('click', () => showView('registre'));
 $('btn-history-all').addEventListener('click', (ev) => {
   ev.stopPropagation(); // no plega el requadre
   showView('historial');
@@ -581,7 +592,7 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
   client.addEventListener('ev:session.changed', (e) => session.changed(detail(e)));
   client.addEventListener('ev:incidents.changed', () => {
     warnings.refresh();
-    incidentsChanged();
+    logView.refresh();
   });
   // Rotacions (fase 3, pas 8a): l'editor, el desplegable de l'AutoDJ i el planificador
   client.addEventListener('ev:rotations.changed', () => {

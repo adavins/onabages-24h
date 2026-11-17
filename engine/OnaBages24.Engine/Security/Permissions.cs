@@ -119,6 +119,8 @@ public static class Permissions
         ["security.get"] = Admin(null),
         ["security.set"] = Admin("Ha canviat el temps d'inactivitat de la sessió"),
         ["changes.list"] = Admin(null),
+        // El registre unificat (D-167): tothom, però els canvis i les sessions només els veu l'administrador (ho filtra log.list)
+        ["log.list"] = Anyone,
         // La sessió (session.*) és per a tothom; només s'anota el canvi de contrasenya
         ["session.changePassword"] = new(null, "Ha canviat la seva contrasenya"),
     };

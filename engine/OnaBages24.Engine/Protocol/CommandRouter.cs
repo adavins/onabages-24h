@@ -61,8 +61,9 @@ public sealed partial class CommandRouter
         LibraryTools.FolderWatcher? watcher = null, Campaigns? campaigns = null, SavedCalendars? savedCalendars = null,
         Backups? backups = null, IncidentStore? incidentStore = null, Supervision.IncidentTracker? incidents = null,
         Supervision.SilenceDetector? silence = null, EmergencyTracks? emergency = null,
-        Supervision.MailNotifier? mail = null, Security.SessionManager? sessions = null, UserStore? users = null)
+        Supervision.MailNotifier? mail = null, Security.SessionManager? sessions = null, UserStore? users = null, ActivityLog? activity = null)
     {
+        _activity = activity;
         _mail = mail;
         _sessions = sessions;
         _users = users;
@@ -251,6 +252,7 @@ public sealed partial class CommandRouter
                 "security.get" => SecurityGet(),
                 "security.set" => SecuritySet(msg),
                 "changes.list" => ChangesList(msg),
+                "log.list" => LogList(msg, session, client),
                 "nowplaying.get" => new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(NowPlayingOrError()) },
                 "nowplaying.set" => NowPlayingSet(msg),
                 "scheduler.list" => SchedulerList(),

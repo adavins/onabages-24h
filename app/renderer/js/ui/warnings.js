@@ -9,7 +9,6 @@ import { $, el, icon, statusLabel } from './dom.js';
 import { formDialog } from './form-dialog.js';
 import { kindInfo, levelInfo, subjectText, allWarnings, barState, warningsFor } from '../warnings-form.js';
 import { removeFromEvents } from './remove-from-events.js';
-import { incidentsDialog } from './incidents.js';
 
 /**
  * @typedef {import('../warnings-form.js').ValidityWarning} ValidityWarning
@@ -37,7 +36,7 @@ export class WarningsView {
 
   /**
    * @param {(cmd: string, params?: object) => Promise<any>} send
-   * @param {{ openTrack: (id: number) => void, openCampaign: (id: number) => void, openEvent: (id: number) => void }} open
+   * @param {{ openLog: () => void, openTrack: (id: number) => void, openCampaign: (id: number) => void, openEvent: (id: number) => void }} open
    */
   constructor(send, open) {
     this.#send = send;
@@ -122,12 +121,12 @@ export class WarningsView {
     this.#dialogList = list;
     this.#renderList(list);
     this.refresh(); // per si de cas ha canviat alguna cosa (p. ex. ha passat la mitjanit)
-    // L'historial d'incidències (D-156): també les que ja s'han resolt i les d'un moment (pistes saltades, esdeveniments omesos…)
+    // El registre (D-167): també les incidències que ja s'han resolt, les d'un moment, els canvis i les sessions
     const history = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
     history.type = 'button';
-    history.append(icon('bi-journal-text'), ' Historial d\'incidències…');
-    history.title = 'Tot el que ha anat malament a l\'emissió, també el que ja s\'ha resolt';
-    history.addEventListener('click', () => this.#leave(list, () => incidentsDialog(this.#send)));
+    history.append(icon('bi-journal-text'), ' Obre el registre…');
+    history.title = 'La pestanya «Registre»: tot el que ha passat, també el que ja s\'ha resolt';
+    history.addEventListener('click', () => this.#leave(list, () => this.#open.openLog()));
     const tools = el('div', 'vw-tools');
     tools.append(history);
     await formDialog({ title: 'Avisos', icon: 'bi-exclamation-triangle', body: [tools, list], wide: true });

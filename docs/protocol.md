@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 5, pas 8a (usuaris, sessions, permisos i registre de canvis; aturades amb el motiu; avisos per correu; pistes d'emergència i reinici inesperat; silenci a la sortida i sortida encallada; pista encallada i talls; incidències; còpies de seguretat i restauració; paquet de campanya; avisos de vigència; calendaris desats i temporada; cerca a l'historial amb filtres; informes amb «previst i emès» i dades de l'emissora; campanyes, pla de passis, pantalla de campanyes i calendari de la campanya; motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 5, pas 8 (registre unificat; usuaris, sessions, permisos i registre de canvis; aturades amb el motiu; avisos per correu; pistes d'emergència i reinici inesperat; silenci a la sortida i sortida encallada; pista encallada i talls; incidències; còpies de seguretat i restauració; paquet de campanya; avisos de vigència; calendaris desats i temporada; cerca a l'historial amb filtres; informes amb «previst i emès» i dades de l'emissora; campanyes, pla de passis, pantalla de campanyes i calendari de la campanya; motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -529,6 +529,16 @@ Tot el que va malament a l'emissió, desat a la base de dades (migració 009) i 
 **Registre de canvis.** Cada ordre que canvia alguna cosa i acaba bé s'anota amb qui, quan, l'ordre, un resum («Ha desat l'esdeveniment «Butlletí 13 h»») i els paràmetres (sense contrasenyes; el logotip com a «(imatge)»; els textos llargs retallats). No s'anoten les consultes, `ui.set` ni `notes.set` (es desa sol mentre s'escriu). També s'hi anoten les sessions (D-166): `session.login` («Ha iniciat la sessió»), `session.logout` («Ha tancat la sessió»), `session.expired` («La sessió s'ha tancat sola per inactivitat», amb l'hora en què es va acabar el temps), `session.locked` (un nom bloquejat per massa intents fallits; els intents fallits d'un en un, no) i `session.changePassword`. Es conserva 2 anys. Els usuaris i el registre de canvis són d'aquest ordinador: restaurar una còpia no els toca.
 
 **Contrasenya oblidada.** Amb el motor aturat: `OnaBages24.Engine restableix-administrador` posa una contrasenya provisional a l'administrador (o crea l'usuari `admin`) i la mostra; s'ha de canviar en iniciar sessió.
+
+### 4.15. Registre unificat (D-167)
+
+Les incidències (4.13), els canvis i les sessions (4.14) i l'execució dels esdeveniments (`scheduler.log`) en una sola llista, de més nou a més antic. Només llegeix. És la pestanya «Registre» de la interfície.
+
+| Ordre | Paràmetres | Resultat |
+|---|---|---|
+| `log.list` | Opcionals: `sources` (llista de `incident`, `change`, `session`, `event`; buida = tots), `from`, `to` (dia `2026-11-17` o hora ISO 8601 amb zona), `minSeverity` (`warning` o `danger`; els canvis i les sessions són `info`, i un esdeveniment és `info` si s'ha executat, `danger` si ha fallat i `warning` si s'ha omès), `openOnly` (només les incidències obertes, sense mirar les dates), `kinds` (tipus d'incidència: només incidències), `commands` (prefixos d'ordres: només canvis i sessions), `userId` (només canvis i sessions), `text` (al text o al detall), `offset`, `limit` (fins a 500; per defecte 100) | `{ total, changesAllowed, entries: [{ source, id, at, endedAt, open, kind, severity, text, detail, recovered, userId, user }] }`. `kind`: el tipus d'incidència, l'ordre del canvi o el resultat de l'esdeveniment (`OK`, `OMES_TARD`…); `text`: el de la incidència, el resum del canvi o el nom de l'esdeveniment. Per a tothom, però **sense ser administrador** (quan hi ha usuaris) no hi surten els canvis ni les sessions, i `changesAllowed` és `false` |
+
+Les ordres `incidents.list` (la barra d'avisos en llegeix les obertes) i `changes.list` es mantenen.
 
 ## 5. Esdeveniments
 
