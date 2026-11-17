@@ -61,9 +61,11 @@ public sealed partial class CommandRouter
         LibraryTools.FolderWatcher? watcher = null, Campaigns? campaigns = null, SavedCalendars? savedCalendars = null,
         Backups? backups = null, IncidentStore? incidentStore = null, Supervision.IncidentTracker? incidents = null,
         Supervision.SilenceDetector? silence = null, EmergencyTracks? emergency = null,
-        Supervision.MailNotifier? mail = null, Security.SessionManager? sessions = null, UserStore? users = null, ActivityLog? activity = null)
+        Supervision.MailNotifier? mail = null, Security.SessionManager? sessions = null, UserStore? users = null, ActivityLog? activity = null,
+        BagAgendaRunner? agendas = null)
     {
         _activity = activity;
+        _agendaRunner = agendas;
         _mail = mail;
         _sessions = sessions;
         _users = users;
@@ -207,6 +209,10 @@ public sealed partial class CommandRouter
                 "bags.save" => BagsSave(msg),
                 "bags.set" => BagsSet(msg),
                 "bags.delete" => BagsDelete(msg),
+                "agendas.list" => AgendasList(),
+                "agendas.save" => AgendasSave(msg),
+                "agendas.delete" => AgendasDelete(msg),
+                "agendas.preview" => AgendasPreview(msg),
                 "separation.get" => SeparationJson(AutoDjOrError().Separation),
                 "separation.set" => SeparationSet(msg),
                 "calendar.get" => CalendarGet(msg),
@@ -1554,6 +1560,8 @@ public sealed partial class CommandRouter
             var names = rotations.List().Where(r => r.Steps.Any(s => s.BagId == id)).Select(r => $"«{r.Name}»");
             throw new BadParamsException($"No es pot esborrar: hi apunten passos de {string.Join(", ", names)}. Canvia'ls primer.");
         }
+        if (_agendaRunner?.Agendas.UsingBag(id) is { Count: > 0 } agendas)
+            throw new BadParamsException($"No es pot esborrar: la canvia l'agenda {string.Join(", ", agendas.Select(a => $"«{a}»"))}. Treu-la'n primer.");
         var events = rotations.EventsUsingBag(id);
         if (events.Count > 0)
             throw new BadParamsException($"No es pot esborrar: la canvia{(events.Count == 1 ? " l'esdeveniment" : "n els esdeveniments")} " +

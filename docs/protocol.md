@@ -1,7 +1,7 @@
 # Protocol interfície ↔ motor
 
 **Versió del protocol:** 1
-**Estat:** fase 5, pas 8 (registre unificat; usuaris, sessions, permisos i registre de canvis; aturades amb el motiu; avisos per correu; pistes d'emergència i reinici inesperat; silenci a la sortida i sortida encallada; pista encallada i talls; incidències; còpies de seguretat i restauració; paquet de campanya; avisos de vigència; calendaris desats i temporada; cerca a l'historial amb filtres; informes amb «previst i emès» i dades de l'emissora; campanyes, pla de passis, pantalla de campanyes i calendari de la campanya; motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
+**Estat:** fase 5, pas 8 (agenda de bosses; registre unificat; usuaris, sessions, permisos i registre de canvis; aturades amb el motiu; avisos per correu; pistes d'emergència i reinici inesperat; silenci a la sortida i sortida encallada; pista encallada i talls; incidències; còpies de seguretat i restauració; paquet de campanya; avisos de vigència; calendaris desats i temporada; cerca a l'historial amb filtres; informes amb «previst i emès» i dades de l'emissora; campanyes, pla de passis, pantalla de campanyes i calendari de la campanya; motor, dispositius, sortida i processador de la sortida, cua, gestor de pistes, reproductors auxiliars, biblioteca, notes, preferències de la interfície, AutoDJ i trepitjador, historial, títol per a BUTT, mesuradors i planificador). Basat en el protocol d'Ona Bages Play (commit `2f1608e`), amb el mateix format.
 
 Qualsevol canvi en aquest protocol s'ha d'anotar aquí **en el mateix commit** que el canvi de codi. Les ordres i els esdeveniments previstos per a les fases següents són a `docs/planificador.md` (secció 5).
 
@@ -149,7 +149,7 @@ El `message` és en català i es pot mostrar a l'operador.
 | `bags.list` | — | `{ bags: [ { id, name, subcategoryId, subcategory, changedAt, changedBy, steps } ] }`: les bosses amb nom (D-096), per nom. `steps`: quants passos de rotació hi apunten | fase 3, pas 8c |
 | `bags.save` | `name` i, per crear-ne una, `subcategoryId` (pot ser `null`); `bagId` per canviar-ne el nom | `{ bag }`, `bags.changed` i `rotations.changed`. Nom repetit: `database_error` | fase 3, pas 8c |
 | `bags.set` | `bagId`, `subcategoryId` (`null` = cap: els passos que hi apunten se salten) | `{ bag }`, `bags.changed` i `rotations.changed`. Els passos triaran d'aquesta subcategoria a partir de la cançó següent (el que ja és a la cua no canvia). Es desa (es manté si el motor es reinicia) | fase 3, pas 8c |
-| `bags.delete` | `bagId` | `{ deleted }`. No es pot si hi apunta algun pas de rotació o alguna acció `BOSSA` (es diu quins): `bad_params` | fase 3, pas 8c |
+| `bags.delete` | `bagId` | `{ deleted }`. No es pot si hi apunta algun pas de rotació, alguna acció `BOSSA` o alguna agenda de bosses (D-170) (es diu quins): `bad_params` | fase 3, pas 8c |
 | `rotations.preview` | `rotationId`, `count` (per defecte 20, com a molt 100) | `{ rotationId, fromStep, separation, items: [ { stepIndex, step, track, relaxed, problem, fallback } ] }`: les properes pistes que triaria la rotació, **sense canviar res**, amb la mateixa tria que l'AutoDJ (comptant la cua i el que ha sonat fa poc). Si és l'activa, comença pel pas següent (`fromStep`); si no, pel primer. `relaxed`: la regla que s'ha hagut d'afluixar (`separació d'artista`, `separació de cançó`, `artista que ja és a la cua`, `cançó que ja és a la cua`) o `null`. `fallback`: no hi havia res a cap pas i surt de la reserva; llavors `step` diu d'on (8d: «Reserva: rotació «…», pas 2 (…)» o «Reserva: tota la biblioteca») | fase 3, pas 8b |
 | `separation.get` | — | `{ trackMinutes, artistMinutes }`: la separació real (D-095). Si no s'ha canviat mai, 360 i 60 | fase 3, pas 8b |
 | `separation.set` | `trackMinutes`, `artistMinutes` (de 0 a 10.080; 0 = sense temps mínim), tots dos opcionals | `{ trackMinutes, artistMinutes }`. Es desa i val per a les pistes que es triïn a partir d'ara | fase 3, pas 8b |
@@ -540,6 +540,19 @@ Les incidències (4.13), els canvis i les sessions (4.14) i l'execució dels esd
 
 Les ordres `incidents.list` (la barra d'avisos en llegeix les obertes) i `changes.list` es mantenen.
 
+### 4.16. Agenda de bosses (D-170)
+
+Una agenda canvia soles les subcategories d'unes bosses amb nom el **dia 1 de cada mes a les 00:00** (hora local), rotant per una llista de subcategories. Cada mes sonen tantes subcategories seguides com bosses hi ha i avancen d'una; la que continua es queda a la mateixa bossa. Un sol canvi per mes: si el motor estava aturat el dia 1, es fa en arrencar, i un canvi a mà (`bags.set`) a mig mes no es desfà fins al mes següent. El canvi es fa com `bags.set` (amb `bags.changed`, i la cua es torna a triar), amb `changedBy` = «agenda «Adult»». Els mesos són textos `"2026-12"`.
+
+| Ordre | Paràmetres | Resultat |
+|---|---|---|
+| `agendas.list` | — | `{ month, agendas: [ { id, name, startMonth, active, appliedMonth, bags: [{ id, name }], subcategories: [{ id, name }], current, next } ] }`, per nom. `month`: el mes d'ara; `appliedMonth`: l'últim mes en què s'ha fet el canvi (o `null`); `current` i `next`: què toca aquest mes i el que ve, `[{ bagId, bag, subcategoryId, subcategory }]` (buits abans del mes d'inici) |
+| `agendas.save` | `name`, `startMonth` (el mes en què sonen les primeres subcategories de la llista), `active`, `bagIds` i `subcategoryIds` (en ordre); `agendaId` per substituir-ne una (sense, en crea una) | `{ agenda, changedBags }` i `agendas.changed`. Si és activa, les bosses passen de seguida a la subcategoria d'aquest mes (`changedBags`: quantes han canviat). Com a mínim una bossa i tantes subcategories com bosses o més, sense repetir-ne; una bossa només pot ser en una agenda; nom repetit: `database_error` |
+| `agendas.delete` | `agendaId` | `{ deleted }` i `agendas.changed`. Les bosses es queden amb la subcategoria que tenen |
+| `agendas.preview` | `startMonth`, `bagIds`, `subcategoryIds`; opcionals `from` (el primer mes; per defecte, aquest) i `months` (per defecte 12; d'1 a 36) | `{ months: [ { month, bags: [{ bagId, bag, subcategoryId, subcategory }] } ] }`: què tocaria cada mes, sense desar res (per a l'editor) |
+
+Permisos: `agendas.list` i `agendas.preview`, tothom; `agendas.save` i `agendas.delete`, programador. Les subcategories d'una agenda no es poden esborrar (`subcategory.delete` ho diu).
+
 ## 5. Esdeveniments
 
 | Esdeveniment | Camps | Freqüència | Des de |
@@ -557,6 +570,7 @@ Les ordres `incidents.list` (la barra d'avisos en llegeix les obertes) i `change
 | `campaigns.changed` | — | quan es desa o s'esborra una campanya (les interfícies tornen a demanar `campaigns.list`) | fase 4, pas 3a |
 | `station.changed` | — | quan es desen les dades de l'emissora (`station.get`) | fase 4, pas 4a |
 | `savedCalendars.changed` | — | quan es desa o s'esborra un calendari desat (les interfícies tornen a demanar `savedCalendars.list`) | fase 4, pas 6a |
+| `agendas.changed` | — | quan es crea, es canvia o s'esborra una agenda de bosses (D-170). El canvi de les bosses arriba amb `bags.changed` | D-170 |
 | `bags.changed` | — | quan es crea, es reanomena, s'esborra o canvia de subcategoria una bossa (també amb l'acció `BOSSA` d'un esdeveniment); va acompanyat de `rotations.changed` | fase 3, pas 8c |
 | `rotations.changed` | — | quan es desa o s'esborra una rotació (les interfícies tornen a demanar `rotations.list`) | fase 3, pas 8a |
 | `folders.changed` | `folders` (4.11) | després de cada revisió de les carpetes vigilades (si ha canviat alguna pista, també `library.changed`) | fase 3, pas 7c |

@@ -310,8 +310,8 @@ public sealed partial class Library
     // --- Esborrar categories i subcategories (només buides) ---
 
     /// <summary>
-    /// Per què no es pot esborrar una subcategoria des de la biblioteca: té pistes, la fan servir passos de rotació o bosses,
-    /// o té carpeta vigilada. Buit = es pot esborrar (la configuració i els esdeveniments els mira qui crida).
+    /// Per què no es pot esborrar una subcategoria des de la biblioteca: té pistes, la fan servir passos de rotació, bosses o
+    /// agendes de bosses (D-170), o té carpeta vigilada. Buit = es pot esborrar (la configuració i els esdeveniments els mira qui crida).
     /// </summary>
     public IReadOnlyList<string> SubcategoryBlockers(long subcategoryId)
     {
@@ -324,6 +324,8 @@ public sealed partial class Library
             if (rotations.Count > 0) reasons.Add($"la fan servir les rotacions {Quoted(rotations)}");
             var bags = Names("SELECT nom FROM bossa WHERE subcategoria_id = $id ORDER BY nom;", subcategoryId);
             if (bags.Count > 0) reasons.Add($"la fan servir les bosses {Quoted(bags)}");
+            var agendas = Names("SELECT a.nom FROM agenda_subcategoria s JOIN agenda_bosses a ON a.id = s.agenda_id WHERE s.subcategoria_id = $id ORDER BY a.nom;", subcategoryId);
+            if (agendas.Count > 0) reasons.Add($"la fan servir les agendes de bosses {Quoted(agendas)}");
             if (Names("SELECT carpeta FROM subcategoria WHERE id = $id AND carpeta IS NOT NULL;", subcategoryId).Count > 0)
                 reasons.Add("té una carpeta vigilada (treu-la abans)");
         }

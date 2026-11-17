@@ -10,7 +10,7 @@ export const AREAS = [
   ['emissio', 'Emissió (cua, reproductor, AutoDJ, sortida)', ['queue.', 'player.', 'aux.', 'autodj.', 'output.', 'scheduler.pause', 'scheduler.resume']],
   ['esdeveniments', 'Esdeveniments i calendaris', ['scheduler.save', 'scheduler.delete', 'calendar.', 'savedCalendars.', 'validity.']],
   ['pistes', 'Pistes i carpetes', ['library.', 'category.', 'subcategory.', 'tags.', 'folders.']],
-  ['rotacions', 'Rotacions i bosses', ['rotations.', 'bags.', 'separation.', 'sweepers.', 'reserve.']],
+  ['rotacions', 'Rotacions i bosses', ['rotations.', 'bags.', 'agendas.', 'separation.', 'sweepers.', 'reserve.']],
   ['campanyes', 'Campanyes i temporada', ['campaigns.', 'season.']],
   ['configuracio', 'Configuració i còpies', ['station.', 'silence.', 'emergency.', 'mail.', 'nowplaying.', 'ducking.', 'processor.', 'backups.', 'engine.']],
   ['usuaris', 'Usuaris i sessions', ['users.', 'security.', 'session.', 'restableix-administrador']],

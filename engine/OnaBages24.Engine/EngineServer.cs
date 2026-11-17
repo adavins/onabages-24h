@@ -300,6 +300,9 @@ public static class EngineServer
             }
         };
 
+        // Agenda de bosses (D-170): el dia 1 de cada mes, les bosses passen a la subcategoria que els toca
+        var agendaRunner = new BagAgendaRunner(new BagAgendas(database), autoDj, rotations, () => DateTimeOffset.UtcNow, TimeZoneInfo.Local, log);
+
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
         var router = new CommandRouter(state, () =>
             {
@@ -309,9 +312,12 @@ public static class EngineServer
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
             events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher,
             campaigns: campaigns, savedCalendars: new SavedCalendars(database), backups: backups,
-            incidentStore: incidentStore, incidents: incidents, silence: silence, emergency: emergency, mail: mail, sessions: sessions, users: userStore, activity: new ActivityLog(database));
+            incidentStore: incidentStore, incidents: incidents, silence: silence, emergency: emergency, mail: mail, sessions: sessions, users: userStore, activity: new ActivityLog(database),
+            agendas: agendaRunner);
         // Editor de rotacions (fase 3, pas 8a): les interfícies tornen a demanar les rotacions
         router.RotationsChanged += () => Broadcast(Messages.Event("rotations.changed"));
+        // Agenda de bosses (D-170): les interfícies tornen a demanar les agendes
+        router.AgendasChanged += () => Broadcast(Messages.Event("agendas.changed"));
         // Calendaris desats (fase 4, pas 6a): les interfícies tornen a demanar la llista
         router.SavedCalendarsChanged += () => Broadcast(Messages.Event("savedCalendars.changed"));
         // Campanyes (fase 4, pas 3a): les interfícies tornen a demanar-les
@@ -512,6 +518,24 @@ public static class EngineServer
                     runMarker.Touch();
                     if (++ticks % 6 == 0) emergency.Refresh();
                 }
+            }
+            catch (OperationCanceledException) { }
+        });
+        // Agenda de bosses (D-170): en arrencar (si el motor estava aturat el dia 1) i cada 30 s es mira si toca canviar-les
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+            try
+            {
+                do
+                {
+                    try { agendaRunner.ApplyDue(); }
+                    catch (Exception ex) when (ex is DatabaseException or Microsoft.Data.Sqlite.SqliteException)
+                    {
+                        log.LogWarning("Agenda de bosses: {Message}", ex.Message);
+                    }
+                }
+                while (await timer.WaitForNextTickAsync(stopping));
             }
             catch (OperationCanceledException) { }
         });
