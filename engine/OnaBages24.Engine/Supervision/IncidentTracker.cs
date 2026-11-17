@@ -34,6 +34,29 @@ public static class IncidentKind
     public const string Emergency = "EMERGENCIA";
     /// <summary>El motor s'ha reiniciat després d'una aturada que no ha estat voluntària (D-159).</summary>
     public const string Restart = "REINICI";
+    /// <summary>Els avisos per correu no es poden enviar (D-160). No s'envia mai per correu.</summary>
+    public const string Mail = "CORREU";
+
+    /// <summary>El nom de cada tipus en català, per als correus (els mateixos que a la interfície, <c>incidents-form.js</c>).</summary>
+    public static string Name(string kind) => kind switch
+    {
+        Output => "Sortida d'àudio",
+        File => "Fitxer que no sona",
+        Stuck => "Pista encallada",
+        Dropouts => "Talls de so",
+        Silence => "Silenci a la sortida",
+        Emergency => "Pista d'emergència",
+        Restart => "Reinici inesperat",
+        EventSkipped => "Esdeveniment omès",
+        EventError => "Esdeveniment fallat",
+        EventLate => "Esdeveniment tard",
+        Folder => "Carpeta vigilada",
+        AutoDj => "AutoDJ",
+        Pause => "Pausa",
+        Butt => "Títol per a BUTT",
+        Mail => "Avisos per correu",
+        _ => kind,
+    };
 }
 
 /// <summary>

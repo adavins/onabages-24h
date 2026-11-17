@@ -106,6 +106,11 @@ public static class EngineServer
             ev["incident"] = CommandRouter.IncidentJson(incident);
             Broadcast(ev);
         };
+        // Avisos per correu (fase 5, pas 5; D-160): abans del reinici inesperat, perquè també s'avisi
+        var mail = new MailNotifier(SmtpMail.SendAsync, stationName: () => CommandRouter.ReadStationName(library),
+            openNow: () => incidents.Open, log: log);
+        CommandRouter.ConfigureMail(mail, library);
+        incidents.Changed += mail.Add;
 
         // Aturada que no ha estat voluntària (fase 5, pas 4; D-159): si el fitxer «en marxa» de la vegada anterior encara
         // hi és, el motor no es va tancar bé
@@ -280,7 +285,7 @@ public static class EngineServer
             queue: queue, outputs: outputs, autoDj: autoDj, rotations: rotations, nowPlaying: nowPlaying,
             events: events, scheduler: scheduler, aux: aux, sweepers: sweepers, processor: processor, importer: importer, watcher: watcher,
             campaigns: campaigns, savedCalendars: new SavedCalendars(database), backups: backups,
-            incidentStore: incidentStore, incidents: incidents, silence: silence, emergency: emergency);
+            incidentStore: incidentStore, incidents: incidents, silence: silence, emergency: emergency, mail: mail);
         // Editor de rotacions (fase 3, pas 8a): les interfícies tornen a demanar les rotacions
         router.RotationsChanged += () => Broadcast(Messages.Event("rotations.changed"));
         // Calendaris desats (fase 4, pas 6a): les interfícies tornen a demanar la llista
@@ -331,6 +336,7 @@ public static class EngineServer
             ConfigureProcessor(processor, library, log);
             ConfigureSilence(silence, library);
             _ = Task.Run(() => emergency.SetFolder(CommandRouter.ReadEmergencyFolder(library)));
+            CommandRouter.ConfigureMail(mail, library);
             nowPlaying.Configure(ReadNowPlayingSettings(library, log));
             // Els esdeveniments i el pla de les campanyes (scheduler.changed)
             scheduler.Reload();
@@ -482,6 +488,21 @@ public static class EngineServer
             }
             catch (OperationCanceledException) { }
         });
+        // Avisos per correu (D-160): cada 5 s es mira si toca enviar (l'enviament no bloqueja res més)
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            try
+            {
+                while (await timer.WaitForNextTickAsync(stopping))
+                {
+                    try { await mail.TickAsync(stopping); }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex) { log.LogWarning("Avisos per correu: error ({Message})", ex.Message); }
+                }
+            }
+            catch (OperationCanceledException) { }
+        });
         // Silenci a la sortida (fase 5, pas 3; D-158): una pista en silenci que s'ha saltat
         silence.Skipped += e => _ = Task.Run(() => incidents.Report(IncidentKind.Silence, $"fitxer:{e.Item.Path}", IncidentSeverity.Warning,
             IncidentRules.SilenceSkipText(e.Item.ToString(), e.Position, silence.Seconds), e.Item.Path, recovered: true));
@@ -500,6 +521,7 @@ public static class EngineServer
                         incidents.Set(IncidentKind.Output, "sortida", IncidentSeverity.Danger, outputs.Problem);
                         incidents.Set(IncidentKind.AutoDj, "autodj", IncidentSeverity.Warning, autoDj.Problem);
                         incidents.Set(IncidentKind.Emergency, "carpeta", IncidentSeverity.Warning, emergency.Problem);
+                        incidents.Set(IncidentKind.Mail, "correu", IncidentSeverity.Warning, mail.Problem);
                         var silent = silence.Problem;
                         incidents.Set(IncidentKind.Silence, "silenci", silent?.Severity ?? IncidentSeverity.Danger, silent?.Text);
                         incidents.Set(IncidentKind.Butt, "butt", IncidentSeverity.Warning,

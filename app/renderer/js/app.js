@@ -121,9 +121,14 @@ let client = null;
 let failedAttempts = 0;
 
 /** Envia una ordre al motor. @param {string} cmd  @param {object} [params] */
-function send(cmd, params = {}) {
+/**
+ * @param {string} cmd
+ * @param {object} [params]
+ * @param {number} [timeoutMs]  per a les ordres que poden tardar (p. ex. el correu de prova); si no, el temps normal
+ */
+function send(cmd, params = {}, timeoutMs = undefined) {
   if (!client) return Promise.reject(new Error('El motor no està connectat'));
-  return client.request(cmd, params);
+  return client.request(cmd, params, timeoutMs);
 }
 
 const meters = new OutputMeters($('meter-left'), $('meter-right'));

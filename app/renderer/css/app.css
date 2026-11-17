@@ -4131,6 +4131,19 @@ button.pl-chip.is-off {
   gap: 0 0.75rem;
 }
 
+/* Avisos per correu (fase 5, pas 5; D-160): servidor, port i xifratge en una fila; els tipus en dues columnes */
+.ml-server {
+  display: grid;
+  grid-template-columns: 2fr 1fr 2fr;
+  gap: 0 0.75rem;
+}
+
+.ml-kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0 0.75rem;
+}
+
 /* Avisos de vigència (fase 4, pas 6b; D-146): la finestra amb la llista i el requadre de la fitxa i de la campanya */
 .vw-list {
   max-height: 60vh;

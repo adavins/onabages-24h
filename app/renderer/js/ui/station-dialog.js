@@ -2,15 +2,17 @@
 // Configuració (botó ⚙): les dades de l'emissora (fase 4, pas 4b; D-138), el nom, la freqüència i el logotip que surten
 // a la capçalera dels informes, les dates de la temporada (pas 6a; D-145), per al botó «Temporada», i l'accés a les
 // còpies de seguretat (pas 7b; D-152), i el silenci a la sortida (fase 5, pas 3; D-158): a partir de quin nivell i quants
-// segons el motor ho considera silenci; i la carpeta de pistes d'emergència (fase 5, pas 4; D-159).
+// segons el motor ho considera silenci; la carpeta de pistes d'emergència (fase 5, pas 4; D-159); i l'accés als avisos
+// per correu (fase 5, pas 5; D-160), en una finestra a part.
 // Es desen al motor (station.set, season.set); el logotip es tria amb el diàleg de Windows (el procés principal el llegeix).
 
 import { el, icon, statusLabel } from './dom.js';
 import { formDialog, dialogField } from './form-dialog.js';
 import { confirmAction } from './confirm.js';
+import { openMailDialog } from './mail-dialog.js';
 
 /**
- * @param {(cmd: string, params?: object) => Promise<any>} send
+ * @param {(cmd: string, params?: object, timeoutMs?: number) => Promise<any>} send
  * @param {() => Promise<{ dataUrl?: string, error?: string } | null>} chooseImage
  * @param {(defaultPath?: string) => Promise<string | null>} chooseFolder  el diàleg de Windows per triar una carpeta
  * @param {() => Promise<void>} openBackups  la finestra «Còpies de seguretat»
@@ -24,9 +26,11 @@ export async function openStationDialog(send, chooseImage, chooseFolder, openBac
   let silence;
   /** @type {{ folder: string, defaultFolder: string, count: number, problem: string | null }} */
   let emergency;
+  /** @type {{ enabled: boolean, to: string[], problem: string | null }} */
+  let mail;
   try {
-    [station, season, silence, emergency] = await Promise.all([send('station.get').then((r) => r.station), send('season.get').then((r) => r.season),
-      send('silence.get'), send('emergency.get')]);
+    [station, season, silence, emergency, mail] = await Promise.all([send('station.get').then((r) => r.station), send('season.get').then((r) => r.season),
+      send('silence.get'), send('emergency.get'), send('mail.get')]);
   } catch (err) {
     await confirmAction({ title: 'No s\'han pogut llegir les dades', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
     return;
@@ -150,6 +154,29 @@ export async function openStationDialog(send, chooseImage, chooseFolder, openBac
   emergencyBox.append(el('h3', 'h6 mt-3 mb-1', 'Pistes d\'emergència'), emergencyPath, emergencyState, emergencyTools,
     el('div', 'form-text', 'Cançons d\'un disc d\'aquest ordinador (no de xarxa). Si una pista tarda a obrir-se, en sona una d\'aquestes fins que la que tocava és a punt. Posa-n\'hi unes quantes: el canvi de carpeta es desa de seguida.'));
 
+  // Avisos per correu (D-160): l'estat i el botó que obre la seva finestra (es desa allà, a part d'aquesta)
+  const mailState = el('div', 'small');
+  const showMail = () => {
+    mailState.replaceChildren(!mail.enabled
+      ? statusLabel('text-secondary', 'bi-slash-circle', 'Desactivats')
+      : mail.problem
+        ? statusLabel('text-warning', 'bi-exclamation-triangle-fill', mail.problem)
+        : statusLabel('text-success', 'bi-check-circle', `Actius: a ${mail.to.join(', ')}`));
+  };
+  showMail();
+  const mailOpen = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary mt-1'));
+  mailOpen.type = 'button';
+  mailOpen.append(icon('bi-envelope-exclamation'), ' Avisos per correu…');
+  mailOpen.addEventListener('click', async () => {
+    await openMailDialog(send);
+    try {
+      mail = await send('mail.get');
+      showMail();
+    } catch { /* es queda com estava */ }
+  });
+  const mailBox = el('div', 'mb-2');
+  mailBox.append(el('h3', 'h6 mt-3 mb-1', 'Avisos per correu'), mailState, mailOpen);
+
   // Còpies de seguretat (D-152): es tanca la configuració abans, perquè després de restaurar no es desin les dades
   // d'abans que hi havia a la finestra
   const backups = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
@@ -172,7 +199,7 @@ export async function openStationDialog(send, chooseImage, chooseFolder, openBac
       body: [
         el('h3', 'h6 mb-1', 'Dades de l\'emissora'),
         el('div', 'form-text mb-2', 'Surten a la capçalera de l\'informe de programació, del certificat d\'emissió i de l\'historial.'),
-        dialogField('Nom de l\'emissora', name), dialogField('Freqüència', frequency), logoBox, seasonBox, silenceBox, emergencyBox, backupsBox,
+        dialogField('Nom de l\'emissora', name), dialogField('Freqüència', frequency), logoBox, seasonBox, silenceBox, emergencyBox, mailBox, backupsBox,
       ],
       confirm: 'Desa',
     });

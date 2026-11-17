@@ -60,8 +60,21 @@ public sealed class ClientHub
                 if (received.MessageType == WebSocketMessageType.Text)
                 {
                     string text = Encoding.UTF8.GetString(message.GetBuffer(), 0, (int)message.Length);
-                    JsonObject response = router.Handle(text);
-                    await client.SendAsync(response, ct);
+                    if (CommandRouter.IsSlow(text))
+                    {
+                        // Una ordre que pot tardar (el correu de prova, D-160): a part, perquè les altres ordres d'aquest
+                        // client no l'hagin d'esperar. La resposta porta l'id: pot arribar després d'altres respostes.
+                        _ = Task.Run(async () =>
+                        {
+                            try { await client.SendAsync(router.Handle(text), ct); }
+                            catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { }
+                        });
+                    }
+                    else
+                    {
+                        JsonObject response = router.Handle(text);
+                        await client.SendAsync(response, ct);
+                    }
                 }
 
                 message.SetLength(0);

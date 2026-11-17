@@ -60,8 +60,10 @@ public sealed partial class CommandRouter
         SweeperOverlay? sweepers = null, OutputProcessor? processor = null, LibraryTools.LibraryImporter? importer = null,
         LibraryTools.FolderWatcher? watcher = null, Campaigns? campaigns = null, SavedCalendars? savedCalendars = null,
         Backups? backups = null, IncidentStore? incidentStore = null, Supervision.IncidentTracker? incidents = null,
-        Supervision.SilenceDetector? silence = null, EmergencyTracks? emergency = null)
+        Supervision.SilenceDetector? silence = null, EmergencyTracks? emergency = null,
+        Supervision.MailNotifier? mail = null)
     {
+        _mail = mail;
         _silence = silence;
         _emergency = emergency;
         _backups = backups;
@@ -230,6 +232,9 @@ public sealed partial class CommandRouter
                 "silence.set" => SilenceSet(msg),
                 "emergency.get" => EmergencyJson(),
                 "emergency.set" => EmergencySet(msg),
+                "mail.get" => MailGet(),
+                "mail.set" => MailSet(msg),
+                "mail.test" => MailTest(msg),
                 "nowplaying.get" => new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(NowPlayingOrError()) },
                 "nowplaying.set" => NowPlayingSet(msg),
                 "scheduler.list" => SchedulerList(),

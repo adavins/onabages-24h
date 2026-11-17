@@ -23,6 +23,7 @@ export const KINDS = [
   ['AUTODJ', 'AutoDJ'],
   ['PAUSA', 'Pausa'],
   ['BUTT', 'Títol per a BUTT'],
+  ['CORREU', 'Avisos per correu'],
 ];
 
 /** El nom d'un tipus («Sortida d'àudio»); si és un de nou que la interfície no coneix, el codi. @param {string} kind */

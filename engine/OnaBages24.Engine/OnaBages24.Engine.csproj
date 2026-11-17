@@ -17,4 +17,9 @@
   <ItemGroup>
     <InternalsVisibleTo Include="OnaBages24.Tests" />
   </ItemGroup>
+
+  <!-- System.Security.Cryptography.ProtectedData (Microsoft, MIT): DPAPI de Windows, per desar xifrada la contrasenya del correu (D-155) -->
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.14" />
+  </ItemGroup>
 </Project>

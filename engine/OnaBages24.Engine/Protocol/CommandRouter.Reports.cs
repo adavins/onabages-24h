@@ -24,6 +24,18 @@ public sealed partial class CommandRouter
 
     // --- Dades de l'emissora ---
 
+    /// <summary>El nom de l'emissora desat (buit si no n'hi ha), per als correus d'avís (D-160).</summary>
+    public static string ReadStationName(Library? library)
+    {
+        try
+        {
+            if (library?.GetSetting(StationSettingKey) is { } json && JsonNode.Parse(json) is JsonObject saved)
+                return ReadString(saved["name"]) ?? "";
+        }
+        catch (JsonException) { }
+        return "";
+    }
+
     private JsonObject StationGet()
     {
         var library = LibraryOrError();
