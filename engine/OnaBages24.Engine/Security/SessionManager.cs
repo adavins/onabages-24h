@@ -69,11 +69,16 @@ public sealed class SessionManager
         // El mateix error si el nom no existeix o la contrasenya no és bona: no es diu quins noms existeixen
         if (user is null || !user.Active || !PasswordHash.Verify(password, user.Hash, user.Salt, user.Iterations))
         {
+            int count;
             lock (_sync)
             {
                 var previous = _failures.GetValueOrDefault(name);
-                _failures[name] = (now - previous.Last < LockTime ? previous.Count + 1 : 1, now);
+                count = now - previous.Last < LockTime ? previous.Count + 1 : 1;
+                _failures[name] = (count, now);
             }
+            // El bloqueig queda al registre de canvis (els intents fallits d'un en un, no: l'omplirien)
+            if (count == MaxFailures)
+                Record(now, user?.Id, name, "session.locked", $"S'ha bloquejat el nom «{name}» {LockTime.TotalMinutes:0} minuts per massa intents fallits");
             throw new SessionException("bad_login", "El nom o la contrasenya no són correctes.");
         }
         _users.Save(user with { LastLoginAt = now });
@@ -84,6 +89,7 @@ public sealed class SessionManager
             _failures.Remove(name);
             _sessions[session.Id] = session;
         }
+        Record(now, user.Id, user.Name, "session.login", "Ha iniciat la sessió");
         return session;
     }
 
@@ -92,13 +98,16 @@ public sealed class SessionManager
     {
         if (id is null) return null;
         var now = _clock();
+        Session? expired;
         lock (_sync)
         {
             if (!_sessions.TryGetValue(id, out var session)) return null;
             if (now - session.LastActivity < Inactivity) return session;
             _sessions.Remove(id);
-            return null;
+            expired = session;
         }
+        RecordExpired(expired);
+        return null;
     }
 
     /// <summary>Hi ha hagut activitat (el teclat o el ratolí a la interfície, o una ordre que canvia alguna cosa).</summary>
@@ -113,19 +122,38 @@ public sealed class SessionManager
     public void Logout(string? id)
     {
         if (id is null) return;
-        lock (_sync) _sessions.Remove(id);
+        Session? closed;
+        lock (_sync) _sessions.Remove(id, out closed);
+        if (closed is not null) Record(_clock(), closed.UserId, closed.Name, "session.logout", "Ha tancat la sessió");
     }
 
     /// <summary>Tanca les sessions que fa massa estona que no tenen activitat. Retorna els ids, per avisar-ne les interfícies.</summary>
     public IReadOnlyList<string> ExpireDue()
     {
         var now = _clock();
+        List<Session> due;
         lock (_sync)
         {
-            var due = _sessions.Values.Where(s => now - s.LastActivity >= Inactivity).Select(s => s.Id).ToList();
-            foreach (string id in due) _sessions.Remove(id);
-            return due;
+            due = _sessions.Values.Where(s => now - s.LastActivity >= Inactivity).ToList();
+            foreach (var session in due) _sessions.Remove(session.Id);
         }
+        foreach (var session in due) RecordExpired(session);
+        return due.Select(s => s.Id).ToList();
+    }
+
+    /// <summary>Al registre de canvis: una sessió que s'ha tancat sola, a l'hora en què es va acabar el temps (D-164).</summary>
+    private void RecordExpired(Session session) =>
+        Record(session.LastActivity + Inactivity, session.UserId, session.Name, "session.expired",
+            $"La sessió s'ha tancat sola per inactivitat ({Inactivity.TotalMinutes:0} min)");
+
+    /// <summary>Una entrada del registre de canvis. Si la base de dades falla, la sessió continua igual.</summary>
+    private void Record(DateTimeOffset at, long? userId, string userName, string command, string summary)
+    {
+        try
+        {
+            _users.AddChange(new ChangeEntry { At = at, UserId = userId, UserName = userName, Command = command, Summary = summary });
+        }
+        catch (Exception ex) when (ex is DatabaseException or Microsoft.Data.Sqlite.SqliteException) { }
     }
 
     /// <summary>Canvia la contrasenya de qui té la sessió (cal la d'ara). La provisional deixa de ser-ho.</summary>

@@ -5,6 +5,7 @@
 
 import { el, icon, statusLabel } from './dom.js';
 import { formDialog, dialogField } from './form-dialog.js';
+import { changesDialog } from './changes.js';
 
 /**
  * @typedef {{ id: number, name: string, fullName: string, role: string, roleName: string, active: boolean,
@@ -148,6 +149,14 @@ export function usersPanel(send, session, users, security) {
   add.type = 'button';
   add.append(icon('bi-person-plus'), ' Afegeix un usuari…');
   add.addEventListener('click', () => editUser());
+  // Registre de canvis (pas 8c): qui ha canviat què i quan
+  const changes = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+  changes.type = 'button';
+  changes.append(icon('bi-person-lines-fill'), ' Registre de canvis…');
+  changes.title = 'Qui ha canviat què i quan (es conserva 2 anys)';
+  changes.addEventListener('click', () => changesDialog(send, users));
+  const tools = el('div', 'd-flex gap-2 mt-2');
+  tools.append(add, changes);
 
   const minutes = /** @type {HTMLInputElement} */ (el('input', 'form-control form-control-sm'));
   minutes.type = 'number';
@@ -157,7 +166,7 @@ export function usersPanel(send, session, users, security) {
   minutes.value = String(security.inactivityMinutes);
 
   const left = el('div', 'us-left');
-  left.append(state, list, el('div', 'mt-2'), add);
+  left.append(state, list, tools);
   const right = el('div', '');
   right.append(el('h3', 'h6 mb-1', 'Sessió'), dialogField('Minuts sense activitat per tancar-la (de 5 a 240)', minutes),
     el('div', 'form-text mb-2', `Per defecte, ${security.standardInactivityMinutes}. L'emissió no depèn mai de la sessió: sense sessió es veu tot, però no es pot canviar res.`),

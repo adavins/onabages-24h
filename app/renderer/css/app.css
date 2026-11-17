@@ -4197,6 +4197,12 @@ body[data-access="programmer"] [data-needs="administrator"] {
   grid-template-columns: 3fr 2fr;
 }
 
+/* Registre de canvis (pas 8c): la columna de l'usuari, a la finestra de les incidències */
+.ch-c-user {
+  width: 9rem;
+  white-space: nowrap;
+}
+
 .us-list {
   max-height: 19rem;
   overflow-y: auto;

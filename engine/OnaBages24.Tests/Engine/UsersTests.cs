@@ -17,7 +17,8 @@ public sealed class UsersTests : IDisposable
     private readonly TempFolder _temp = new();
     private readonly Database _db;
     private readonly UserStore _users;
-    private DateTimeOffset _now = new(2026, 11, 17, 10, 0, 0, TimeSpan.Zero);
+    // Abans d'ara: les ordres s'anoten amb l'hora de debò, i així les de la sessió (amb aquest rellotge) són les més antigues
+    private DateTimeOffset _now = new(2026, 1, 17, 10, 0, 0, TimeSpan.Zero);
     private readonly SessionManager _sessions;
     private readonly CommandRouter _router;
 
@@ -212,7 +213,7 @@ public sealed class UsersTests : IDisposable
         Send(client, "station.get"); // consulta: no s'anota
 
         var list = Send(client, "changes.list")["result"]!;
-        Assert.Equal(2, list["total"]!.GetValue<int>());
+        Assert.Equal(3, list["total"]!.GetValue<int>()); // i l'inici de sessió
         var entries = list["entries"]!.AsArray();
         Assert.Equal("Ha canviat les dades de l'emissora «Ràdio Prova»", entries[0]!["summary"]!.GetValue<string>());
         Assert.Equal("admin", entries[0]!["user"]!.GetValue<string>());
@@ -225,7 +226,35 @@ public sealed class UsersTests : IDisposable
 
         // Es conserva 2 anys
         Assert.Equal(0, _users.PurgeChanges(_now.AddYears(-2)));
-        Assert.Equal(2, _users.PurgeChanges(DateTimeOffset.UtcNow.AddMinutes(1)));
+        Assert.Equal(3, _users.PurgeChanges(DateTimeOffset.UtcNow.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void L_inici_i_el_tancament_de_sessio_i_el_bloqueig_van_al_registre()
+    {
+        NewUser("admin", UserRole.Administrator);
+        NewUser("operadora", UserRole.Operator);
+        var client = new ClientContext();
+        Send(client, "session.login", new() { ["user"] = "operadora", ["password"] = "contrasenya" });
+        Send(client, "session.logout");
+        Send(client, "session.login", new() { ["user"] = "operadora", ["password"] = "contrasenya" });
+        var loggedAt = _now;
+        _now += TimeSpan.FromMinutes(31);
+        _sessions.ExpireDue(); // la revisió de cada 15 s
+        for (int i = 0; i < SessionManager.MaxFailures; i++)
+            Assert.Throws<SessionException>(() => _sessions.Login("admin", "dolenta"));
+
+        var entries = _users.ListChanges(new ChangeFilter { CommandPrefixes = ["session."] }).Entries.Reverse().ToList();
+        Assert.Equal(new[]
+        {
+            "operadora: Ha iniciat la sessió",
+            "operadora: Ha tancat la sessió",
+            "operadora: Ha iniciat la sessió",
+            "operadora: La sessió s'ha tancat sola per inactivitat (30 min)",
+            "admin: S'ha bloquejat el nom «admin» 5 minuts per massa intents fallits",
+        }, entries.Select(e => $"{e.UserName}: {e.Summary}").ToArray());
+        // La inactivitat, a l'hora en què es va acabar el temps (no quan se n'adona el motor)
+        Assert.Equal(loggedAt + TimeSpan.FromMinutes(30), entries[3].At);
     }
 
     [Fact]
