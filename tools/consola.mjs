@@ -440,6 +440,7 @@ async function diagnosticsMenu() {
       ['7', 'Comprovar l\'emissió: forats a l\'historial (comprova-emissio)'],
       ['8', 'Enviar una ordre lliure'],
       ['9', 'Últimes línies del registre del motor'],
+      ['a', 'Provar un stream de ràdio (prova-stream): si funciona, format i retard'],
       ['0', 'Tornar'],
     ]);
     switch (choice) {
@@ -452,6 +453,7 @@ async function diagnosticsMenu() {
       case '7': checkBroadcast(); break;
       case '8': await sendCommand(); break;
       case '9': showLog(); break;
+      case 'a': await probeStream(); break;
       case '0': case '': return;
       default: continue;
     }
@@ -601,6 +603,18 @@ function checkBroadcast() {
   }
   // Només llegeix: es pot fer amb el motor en marxa (les últimes 72 hores)
   run(ENGINE_EXE, ['comprova-emissio']);
+}
+
+/** prova-stream (D-175): es connecta a un stream uns segons sense fer sonar res. Es pot fer amb el motor en marxa. */
+async function probeStream() {
+  if (!existsSync(ENGINE_EXE)) {
+    console.log(color.yellow('\nEl motor encara no està compilat (opció 5 del menú principal).'));
+    return;
+  }
+  const address = await ask('Adreça del stream (p. ex. http://servidor:8000/directe): ');
+  if (!address) return;
+  const seconds = await ask('Quants segons (Retorn = 10): ');
+  run(ENGINE_EXE, ['prova-stream', address, ...(seconds ? ['--segons', seconds] : [])]);
 }
 
 /** «ordre nom=valor nom=valor»: el valor es llegeix com a JSON si es pot (16, null, true, [1,2]); si no, és un text. */

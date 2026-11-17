@@ -15,6 +15,8 @@
   <ItemGroup>
     <PackageReference Include="NAudio.Wasapi" Version="3.3.0" />
     <PackageReference Include="TagLibSharp" Version="2.3.0" />
+    <!-- Descodificador MP3 en C# per als streams en directe (D-175, MIT): fotograma a fotograma, sense rebobinar -->
+    <PackageReference Include="NLayer.NAudioSupport" Version="3.0.1" />
   </ItemGroup>
 
   <!-- LAME 3.100 x64 (LGPL, enllaç dinàmic): vegeu native/LLEGEIX-ME.md -->

@@ -28,6 +28,7 @@ public static class Program
                 "compara-punts" => CompareCues(args[1..]),
                 "comprova-emissio" => CheckBroadcast(args[1..]),
                 "restableix-administrador" => ResetAdministrator(args[1..]),
+                "prova-stream" => StreamProbe.Run(args[1..]),
                 "ajuda" or "--help" or "-h" or "/?" => Help(),
                 _ => EngineServer.Run(args),
             };
@@ -85,6 +86,11 @@ public static class Program
               restableix-administrador [--bd RUTA]
                   Si s'ha oblidat la contrasenya de l'administrador: n'hi posa una de provisional (o crea l'usuari
                   «admin» si no n'hi ha cap d'actiu), que s'haurà de canviar en iniciar sessió. Amb el motor aturat.
+
+              prova-stream ADREÇA [--segons N]
+                  Es connecta a un stream de ràdio (Shoutcast, Icecast) N segons (per defecte, 10) sense fer sonar res, i
+                  diu si funciona, el format, el títol, el nivell i quants segons envia el servidor de cop en connectar-s'hi
+                  (el retard que hi afegeix). Es pot fer amb el motor en marxa.
             """);
         return 2;
     }
