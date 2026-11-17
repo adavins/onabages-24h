@@ -186,6 +186,28 @@ public sealed class QueueStreamTests : IDisposable
     }
 
     [Fact]
+    public void Si_no_connecta_i_te_pista_de_reserva_sona_la_reserva()
+    {
+        int port;
+        using (var free = new TcpListener(IPAddress.Loopback, 0))
+        {
+            free.Start();
+            port = ((IPEndPoint)free.LocalEndpoint).Port;
+        }
+        var player = NewPlayer();
+        var reserve = File(Wav(3, 0.3f)) with { Title = "Reserva" };
+        var stream = new QueueItem { Path = $"http://127.0.0.1:{port}/", Title = "Directe", Type = TrackType.Stream }.AsStream(10_000)
+            with { StreamFallback = reserve };
+        player.Enqueue(stream, File(Wav(3, 0.2f)));
+
+        var peaks = Run(player, 4);
+
+        Assert.Contains("Sona la pista de reserva, «Reserva»", Assert.Single(_failed).Message);
+        Assert.Equal("Reserva", _started[0].Item.Title);
+        Assert.InRange(peaks[^5], 0.25f, 0.35f); // sona la reserva (0,3), no la següent (0,2)
+    }
+
+    [Fact]
     public void Si_es_talla_i_no_torna_passa_a_la_seguent()
     {
         var mp3 = FakeRadio.Mp3(20, 0.5f);

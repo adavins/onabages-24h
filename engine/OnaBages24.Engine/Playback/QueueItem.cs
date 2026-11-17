@@ -36,6 +36,15 @@ public sealed record QueueItem
     /// <summary>«Comença pel directe» (D-175): sense la ràfega inicial del servidor. Per defecte, sí.</summary>
     public bool StreamLiveEdge { get; init; } = true;
 
+    /// <summary>
+    /// Retard de connexió (acció STREAM, D-178): en un TALLA, el tall es fa aquests segons més tard, perquè el que sona del
+    /// stream quadri amb l'hora de l'origen (que arriba amb aquest retard). Null o 0 = a l'hora.
+    /// </summary>
+    public int? StreamDelaySeconds { get; init; }
+
+    /// <summary>Pista de reserva (acció STREAM, D-010): si el stream no connecta, sona aquesta en el seu lloc. Null = cap (se salta).</summary>
+    public QueueItem? StreamFallback { get; init; }
+
     /// <summary>Quant sonarà, de l'inici al final (sense comptar el solapament amb la següent), o null si no se sap.</summary>
     public long? PlannedMs => (EndMs ?? FileDurationMs) is { } end ? Math.Max(0, end - (StartMs ?? 0)) : null;
     public QueueOrigin Origin { get; init; } = QueueOrigin.Manual;
@@ -84,13 +93,14 @@ public sealed record QueueItem
     }
 
     /// <summary>
-    /// Un stream que ha de sonar <paramref name="durationMs"/>: del principi, amb el fos de <see cref="StreamFadeMs"/> al
-    /// final (la següent entra a sobre del fos).
+    /// Un stream que ha de sonar <paramref name="durationMs"/>: del principi, amb un fos de <paramref name="fadeMs"/> al final
+    /// (per defecte <see cref="StreamFadeMs"/>; la següent entra a sobre del fos).
     /// </summary>
-    public QueueItem AsStream(long durationMs)
+    public QueueItem AsStream(long durationMs, long fadeMs = StreamFadeMs)
     {
-        long duration = Math.Max(StreamFadeMs + 1000, durationMs);
-        return this with { StartMs = 0, EndMs = duration, MixMs = duration - StreamFadeMs, FileDurationMs = duration };
+        fadeMs = Math.Clamp(fadeMs, 0, 10_000);
+        long duration = Math.Max(fadeMs + 1000, durationMs);
+        return this with { StartMs = 0, EndMs = duration, MixMs = duration - fadeMs, FileDurationMs = duration };
     }
 
     public override string ToString() => string.IsNullOrEmpty(Artist) ? Title : $"{Artist} - {Title}";

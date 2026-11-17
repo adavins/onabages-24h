@@ -655,8 +655,50 @@ export class EventEditor {
           const seconds = minutesToSeconds(v);
           if (seconds == null) delete p.durada_seg;
           else p.durada_seg = seconds;
-        }, { inputmode: 'decimal' }, 'Els streams encara no sonen: arribaran al pas 7.'),
+        }, { inputmode: 'decimal' }, 'Quan s\'acaba, baixa amb un fos i continua la resta de l\'esdeveniment.'),
       );
+      // Opcions (fase 2, pas 7c; D-030, D-178)
+      const setNumber = (/** @type {string} */ name, /** @type {string} */ v, /** @type {number} */ factor = 1) => {
+        const n = Number(v.trim().replace(',', '.'));
+        if (v.trim() === '' || !Number.isFinite(n)) delete p[name];
+        else p[name] = Math.round(n * factor);
+      };
+      li.append(this.#check('Comença pel directe', p.directe !== false, (on) => {
+        if (on) delete p.directe;
+        else p.directe = false;
+      }), el('div', 'form-text', 'Sense els segons que el servidor envia de cop en connectar-s\'hi: sona el més recent, amb el mínim retard.'));
+      li.append(this.#textField('Fos final (s)', p.fade_ms == null ? '' : String(p.fade_ms / 1000).replace('.', ','), (v) => setNumber('fade_ms', v, 1000),
+        { inputmode: 'decimal', placeholder: '2' }, 'Buit: 2 s.'));
+      li.append(this.#textField('S\'acaba si arriba en silenci (s)', p.silenci_seg == null ? '' : String(p.silenci_seg), (v) => setNumber('silenci_seg', v),
+        { inputmode: 'numeric', placeholder: 'no' }, 'Per als butlletins que acaben abans d\'hora o que arriben en silenci. Buit: no s\'acaba per silenci (hi ha programes amb pauses llargues).'));
+      li.append(this.#textField('Retard de connexió (s)', p.retard_seg == null ? '' : String(p.retard_seg), (v) => setNumber('retard_seg', v),
+        { inputmode: 'numeric', placeholder: '0' }, ev.mode === 'TALLA'
+          ? 'El tall es fa aquests segons més tard, perquè el que sona quadri amb l\'origen (que arriba amb retard).'
+          : 'Només en un esdeveniment TALLA (a l\'hora exacta).'));
+      // Pista de reserva: si el stream no connecta, sona aquesta en el seu lloc (si no n'hi ha, se salta)
+      const reserveName = action.reserveLabel ?? (/reserva «(.+?)»/.exec(action.detail ?? '')?.[1]) ?? (p.reserva_songId != null ? `Pista ${p.reserva_songId}` : null);
+      const reserve = el('div', 'ee-reserve');
+      const choose = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+      choose.type = 'button';
+      choose.append(icon('bi-life-preserver'), ' ', el('span', '', reserveName ? 'Canvia la reserva…' : 'Tria una pista de reserva…'));
+      choose.addEventListener('click', () => this.#pickTrack('PISTA', (track, label) => {
+        p.reserva_songId = track.id;
+        action.reserveLabel = label;
+        this.#restructured();
+      }));
+      reserve.append(el('span', 'form-label mb-0', reserveName ? `Pista de reserva: «${reserveName}»` : 'Sense pista de reserva: si no connecta, se salta.'), choose);
+      if (reserveName) {
+        const remove = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-link'));
+        remove.type = 'button';
+        remove.append(icon('bi-x-lg'), ' ', el('span', '', 'Treu-la'));
+        remove.addEventListener('click', () => {
+          delete p.reserva_songId;
+          delete action.reserveLabel;
+          this.#restructured();
+        });
+        reserve.append(remove);
+      }
+      li.append(reserve);
     }
 
     // Només alguns dies dels de l'esdeveniment (D-028)

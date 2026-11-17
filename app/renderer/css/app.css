@@ -2995,6 +2995,8 @@ button.pl-chip.is-off {
 }
 
 /* Afegir una acció: el desplegable del tipus i el botó */
+.ee-reserve { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; margin-top: 0.4rem; } /* pista de reserva d'un STREAM (D-178) */
+
 .ee-add-row {
   display: flex;
   gap: 0.4rem;

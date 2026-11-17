@@ -2226,6 +2226,14 @@ public sealed partial class CommandRouter
             if (!hasSource) throw new ArgumentException("Un stream no diu quin stream és: tria'n un de la biblioteca.");
             if (p?["durada_seg"] is not JsonValue v || !v.TryGetValue(out long seconds) || seconds <= 0)
                 throw new ArgumentException("Cal posar la durada del stream (si no, no s'acabaria mai).");
+            // Les opcions (D-178): si hi són, dins dels límits
+            static long? Number(JsonObject? o, string name) => o?[name] is JsonValue n && n.TryGetValue(out long x) ? x : null;
+            if (Number(p, "fade_ms") is { } fade && fade is < 0 or > Scheduling.EventExecutor.MaxStreamFadeMs)
+                throw new ArgumentException($"El fos final del stream ha de ser de 0 a {Scheduling.EventExecutor.MaxStreamFadeMs / 1000} s.");
+            if (Number(p, "silenci_seg") is { } silence && silence is < 1 or > Scheduling.EventExecutor.MaxStreamSilenceSeconds)
+                throw new ArgumentException($"El silenci que acaba el stream ha de ser d'1 a {Scheduling.EventExecutor.MaxStreamSilenceSeconds} s.");
+            if (Number(p, "retard_seg") is { } delay && delay is < 0 or > Scheduling.EventExecutor.MaxStreamDelaySeconds)
+                throw new ArgumentException($"El retard de connexió del stream ha de ser de 0 a {Scheduling.EventExecutor.MaxStreamDelaySeconds} s.");
         }
     }
 

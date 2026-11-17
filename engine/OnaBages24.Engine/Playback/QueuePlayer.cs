@@ -812,6 +812,12 @@ public sealed class QueuePlayer : IDisposable
                 string message = failed.Reader.Error ?? "No s'ha pogut obrir el fitxer.";
                 Retire(failed);
                 _next = null;
+                // Un stream que no connecta i té pista de reserva (D-010): sona la reserva al seu lloc
+                if (item.StreamFallback is { } fallback)
+                {
+                    _upcoming.Insert(0, fallback);
+                    message += $" Sona la pista de reserva, «{fallback}».";
+                }
                 events.Add(() => Failed?.Invoke(new QueueFailed(item, message)));
                 events.Add(() => Changed?.Invoke());
             }

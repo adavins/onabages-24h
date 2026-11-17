@@ -31,7 +31,7 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations, Camp
                 EventActionType.Track => TrackInfo(Long(p, "songId"), null),
                 EventActionType.Auxiliary => TrackInfo(Long(p, "songId"),
                     $"reproductor auxiliar {Long(p, "player") ?? 1}" + (Double(p, "duckingDb") is { } db ? $" · música a {db:0.#} dB" : "")),
-                EventActionType.Stream => StreamInfo(Long(p, "songId"), String(p, "url"), Long(p, "durada_seg")),
+                EventActionType.Stream => StreamInfo(p),
                 EventActionType.Rotation => new ActionInfo(RotationName(Long(p, "rotacioId")), "Rotació de l'AutoDJ", false, null),
                 EventActionType.Sweepers => new ActionInfo(
                     Long(p, "subcategoriaId") is { } sub ? library?.SubcategoryName(sub) ?? $"Subcategoria {sub}" : "Sense subcategoria",
@@ -107,20 +107,32 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations, Camp
 
     /// <summary>
     /// Un STREAM: el de la biblioteca (`songId`, D-108; l'adreça és la ruta de la pista) o, als esdeveniments d'abans,
-    /// l'adreça escrita (`url`). La durada és la de l'acció (un stream no en té).
+    /// l'adreça escrita (`url`). La durada és la de l'acció (un stream no en té). El detall diu també les opcions (D-178):
+    /// «Stream · 1 h 30 min · comença pel directe · s'acaba si arriba en silenci 8 s · retard 3 s · reserva «…»».
     /// </summary>
-    private ActionInfo StreamInfo(long? songId, string? url, long? seconds)
+    private ActionInfo StreamInfo(JsonElement p)
     {
-        string length = seconds is { } s ? Duration(s * 1000) : "sense durada";
-        if (songId is { } id)
+        long? seconds = Long(p, "durada_seg");
+        var parts = new List<string> { "Stream", seconds is { } s ? Duration(s * 1000) : "sense durada" };
+        parts.Add(Bool(p, "directe") == false ? "amb la ràfega del servidor" : "comença pel directe");
+        if (Long(p, "silenci_seg") is { } silence and > 0) parts.Add($"s'acaba si arriba en silenci {silence} s");
+        if (Long(p, "retard_seg") is { } delay and > 0) parts.Add($"retard de connexió {delay} s");
+        if (Long(p, "fade_ms") is { } fade && fade != Playback.QueueItem.StreamFadeMs) parts.Add($"fos final {fade / 1000.0:0.#} s");
+        if (Long(p, "reserva_songId") is { } reserveId)
+        {
+            var reserve = library?.GetTrack(reserveId);
+            parts.Add(reserve is null ? $"reserva {reserveId} (no existeix)" : $"reserva «{Scheduling.ValidityWarnings.TrackName(reserve)}»");
+        }
+        if (Long(p, "songId") is { } id)
         {
             var track = library?.GetTrack(id);
-            if (track is null) return new ActionInfo($"Stream {id} (no existeix)", $"Stream · {length}", true, seconds * 1000);
+            if (track is null) return new ActionInfo($"Stream {id} (no existeix)", string.Join(" · ", parts), true, seconds * 1000);
             string title = string.IsNullOrWhiteSpace(track.Title) ? track.Path : track.Title;
             string label = string.IsNullOrWhiteSpace(track.Artist) ? title : $"{track.Artist} - {title}";
-            return new ActionInfo(label, $"Stream · {length} · {track.Path} · sonarà a partir del pas 7", false, seconds * 1000);
+            parts.Insert(2, track.Path);
+            return new ActionInfo(label, string.Join(" · ", parts), false, seconds * 1000);
         }
-        return new ActionInfo(url ?? "Stream sense adreça", $"Stream · {length} · sonarà a partir del pas 7", false, seconds * 1000);
+        return new ActionInfo(String(p, "url") ?? "Stream sense adreça", string.Join(" · ", parts), String(p, "url") is null, seconds * 1000);
     }
 
     private string RotationName(long? id)
@@ -143,4 +155,7 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations, Camp
 
     private static string? String(JsonElement p, string name) =>
         p.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+    private static bool? Bool(JsonElement p, string name) =>
+        p.TryGetProperty(name, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False ? v.GetBoolean() : null;
 }

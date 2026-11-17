@@ -113,8 +113,14 @@ public sealed class EventExecutor
         var items = new List<QueueItem>();
         var warnings = new List<string>();
         var campaignsDone = new HashSet<long>();
-        foreach (var action in actions.Where(a => a.Type is EventActionType.Track or EventActionType.Campaign))
+        foreach (var action in actions.Where(a => a.Type is EventActionType.Track or EventActionType.Campaign or EventActionType.Stream))
         {
+            if (action.Type == EventActionType.Stream)
+            {
+                // STREAM (fase 2, pas 7c; D-010, D-030, D-178): el stream al seu lloc dins del contingut
+                if (PrepareStream(occurrence, action, warnings) is { } stream) items.Add(stream);
+                continue;
+            }
             if (action.Type == EventActionType.Campaign)
             {
                 // CAMPANYA (fase 4, pas 3b): la falca del pla, al seu lloc dins del contingut
@@ -180,6 +186,71 @@ public sealed class EventExecutor
     }
 
     /// <summary>««Ferreteria» no ha sonat: està desactivada.» (D-146)</summary>
+    /// <summary>Límits dels paràmetres d'una acció STREAM (també els comprova <c>scheduler.save</c>).</summary>
+    public const int MaxStreamFadeMs = 10_000, MaxStreamSilenceSeconds = 300, MaxStreamDelaySeconds = 30;
+
+    /// <summary>
+    /// Una acció STREAM (D-010, D-030, D-108, D-178): el stream de la biblioteca (`songId`) o, als esdeveniments d'abans,
+    /// l'adreça (`url`); la durada (`durada_seg`, obligatòria), el fos del final (`fade_ms`), el final per silenci
+    /// (`silenci_seg`), «Comença pel directe» (`directe`, per defecte sí), el retard de connexió (`retard_seg`) i la pista
+    /// de reserva (`reserva_songId`). Null (amb el motiu als avisos) si no pot sonar.
+    /// </summary>
+    private QueueItem? PrepareStream(Occurrence occurrence, EventAction action, List<string> warnings)
+    {
+        var ev = occurrence.Event;
+        if (ReadLong(action, "durada_seg") is not { } seconds || seconds <= 0)
+        {
+            warnings.Add("Una acció STREAM no diu quant ha de durar (durada_seg).");
+            return null;
+        }
+        QueueItem item;
+        if (ReadLong(action, "songId") is { } id)
+        {
+            var track = library.GetTrack(id);
+            if (track is null)
+            {
+                warnings.Add($"El stream {id} no existeix a la biblioteca.");
+                return null;
+            }
+            if (!track.Enabled)
+            {
+                warnings.Add(DisabledText(track));
+                return null;
+            }
+            item = QueueItem.FromTrack(track, QueueOrigin.Event, ev.Name) with { Type = TrackType.Stream };
+        }
+        else if (ReadString(action, "url") is { Length: > 0 } url)
+        {
+            item = new QueueItem { Path = url.Trim(), Title = "Stream", Artist = "", Type = TrackType.Stream, Origin = QueueOrigin.Event, EventName = ev.Name };
+        }
+        else
+        {
+            warnings.Add("Una acció STREAM no diu quin stream (songId o url).");
+            return null;
+        }
+
+        long fade = Math.Clamp(ReadLong(action, "fade_ms") ?? QueueItem.StreamFadeMs, 0, MaxStreamFadeMs);
+        int? silence = ReadLong(action, "silenci_seg") is { } s and > 0 ? (int)Math.Min(s, MaxStreamSilenceSeconds) : null;
+        int? delay = ReadLong(action, "retard_seg") is { } d and > 0 ? (int)Math.Min(d, MaxStreamDelaySeconds) : null;
+        QueueItem? fallback = null;
+        if (ReadLong(action, "reserva_songId") is { } reserveId)
+        {
+            var reserve = library.GetTrack(reserveId);
+            if (reserve is null) warnings.Add($"La pista de reserva del stream ({reserveId}) no existeix: si el stream no connecta, se saltarà.");
+            else if (!reserve.Enabled || !reserve.ValidOn(occurrence.Date)) warnings.Add($"La pista de reserva del stream, «{ValidityWarnings.TrackName(reserve)}», no pot sonar avui: si el stream no connecta, se saltarà.");
+            else fallback = QueueItem.FromTrack(reserve, QueueOrigin.Event, ev.Name) with { EventId = ev.Id, EventAt = occurrence.At };
+        }
+        return item.AsStream(seconds * 1000, fade) with
+        {
+            EventId = ev.Id,
+            EventAt = occurrence.At,
+            StreamSilenceSeconds = silence,
+            StreamLiveEdge = ReadBool(action, "directe") ?? true,
+            StreamDelaySeconds = delay,
+            StreamFallback = fallback,
+        };
+    }
+
     private static string DisabledText(Track track) =>
         $"«{(string.IsNullOrWhiteSpace(track.Title) ? Path.GetFileNameWithoutExtension(track.Path) : track.Title)}» no ha sonat: està desactivada.";
 
@@ -292,7 +363,10 @@ public sealed class EventExecutor
             case EventMode.Cut:
             {
                 // Al fotograma que sonarà a l'hora exacta (D-021). Sense sortida no se sap: es talla de seguida.
-                long? frame = clock?.FrameAt(occurrence.At);
+                // Si comença amb un stream amb retard de connexió (D-178), el tall es fa aquests segons més tard.
+                int delay = prepared.Items.FirstOrDefault()?.StreamDelaySeconds ?? 0;
+                long? frame = clock?.FrameAt(occurrence.At + TimeSpan.FromSeconds(delay));
+                if (delay > 0) notes.Add($"retard de connexió del stream: {delay} s");
                 var fade = TimeSpan.FromMilliseconds(ev.FadeMs ?? DefaultFadeMs);
                 removed = queue.CutAt(frame ?? queue.CurrentFrame, fade, prepared.Items, ev.ClearQueue, prepared.Reservation);
                 notes.Add(frame is null
@@ -346,6 +420,7 @@ public sealed class EventExecutor
             (bool ok, string note) = action.Type switch
             {
                 EventActionType.Track => (true, ""), // ja fet
+                EventActionType.Stream => (true, ""), // ja fet (va a la cua com les pistes)
                 EventActionType.Campaign => (true, ""), // ja fet (i els avisos, a la preparació)
                 EventActionType.Auxiliary => (true, ""), // ja fet (i els avisos, a la preparació)
                 EventActionType.Rotation => ChangeRotation(action),
@@ -354,7 +429,7 @@ public sealed class EventExecutor
                 EventActionType.Bag => ChangeBag(action),
                 _ => (false, $"L'acció {Events.ActionTypeText(action.Type)} encara no està disponible: no s'ha fet."),
             };
-            if (action.Type is EventActionType.Track or EventActionType.Auxiliary or EventActionType.Campaign) continue;
+            if (action.Type is EventActionType.Track or EventActionType.Auxiliary or EventActionType.Campaign or EventActionType.Stream) continue;
             if (ok) done++;
             else failed++;
             notes.Add(note);
@@ -426,6 +501,19 @@ public sealed class EventExecutor
         {
             using var json = JsonDocument.Parse(action.Params);
             return json.RootElement.TryGetProperty(name, out var value) && value.TryGetInt64(out long n) ? n : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? ReadString(EventAction action, string name)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(action.Params);
+            return json.RootElement.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
         }
         catch (JsonException)
         {
