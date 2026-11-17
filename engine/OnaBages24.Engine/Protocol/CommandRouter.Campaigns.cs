@@ -103,7 +103,8 @@ public sealed partial class CommandRouter
     /// El pla de passis d'una campanya (fase 4, pas 3b): `campaignId` i, opcionals, `from` i `to` ('AAAA-MM-DD', dies locals;
     /// `to` inclòs). `passes`: els previstos d'ara endavant, cadascun amb l'esdeveniment, l'hora i la falca (o null si queda
     /// buit). `played` (pas 3d-2): el que ja ha sonat, de l'historial (un passi d'abans que no va sonar no compta). I, per a
-    /// cada falca, quantes vegades ha sonat i quantes en té previstes.
+    /// cada falca, quantes vegades ha sonat i quantes en té previstes. D'un esborrany (D-173), el pla es calcula ara només
+    /// per mostrar-lo (no es desa ni sona: és el que hi hauria si s'activés), i <c>draft</c> és true.
     /// </summary>
     private JsonObject CampaignsPlan(JsonObject msg)
     {
@@ -115,8 +116,13 @@ public sealed partial class CommandRouter
         var to = Instant(OptionalDate(msg, "to")?.AddDays(1));
         var now = CampaignClock();
         // Els passis d'abans d'ara del pla no compten: el que ha passat és el que diu l'historial
-        var plan = campaigns.Plan(id, from is { } fromAt && fromAt > now ? fromAt : now, to);
+        var start = from is { } fromAt && fromAt > now ? fromAt : now;
         var played = campaigns.Played(id, from, to is { } toAt && toAt < now ? toAt : now);
+        bool draft = campaign.State == CampaignState.Draft;
+        var plan = draft
+            ? Scheduling.CampaignPlanner.Compute(campaign, EventsOrError().List(), LibraryOrError().GetTrack, campaigns.Played(id, to: now), start, Zone)
+                .Where(p => to is not { } end || p.At < end).ToList()
+            : campaigns.Plan(id, start, to);
 
         var names = new Dictionary<long, string?>();
         string? EventName(long eventId) => names.TryGetValue(eventId, out var n) ? n : names[eventId] = _events?.Get(eventId)?.Name;
@@ -151,6 +157,7 @@ public sealed partial class CommandRouter
                 ["played"] = played.Count(p => SpotOf(p.TrackId, p.At) == index),
             }).ToArray()),
             ["empty"] = plan.Count(p => p.TrackId is null),
+            ["draft"] = draft,
         };
     }
 

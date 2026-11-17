@@ -5,7 +5,7 @@
 
 import { el, icon, statusLabel } from './dom.js';
 import { DAY_SHORT, DAY_NAMES, monthText } from '../calendar-form.js';
-import { planSummary, monthWeeks, dmy } from '../campaign-form.js';
+import { planSummary, monthWeeks, dmy, spotLabel } from '../campaign-form.js';
 
 /**
  * El pla, de dalt a baix (D-129): el resum en una taula (per falca: han sonat, previstos i total; i el total respecte
@@ -22,7 +22,10 @@ export function planPanel(plan, campaign, today, { months = true, columns = fals
 
   // Requadre «Resum» (D-130): la taula i, a sota, els avisos
   const summary = [];
-  if (campaign.effectiveState !== 'ACTIVA') {
+  if (plan.draft) {
+    // Esborrany (D-173): el motor calcula el pla només per mostrar-lo, per comprovar-lo abans d'activar la campanya
+    summary.push(statusLabel('text-info small d-block', 'bi-eye', 'Previst si l\'actives: és un esborrany i encara no sona. Els passis i els contractats ja es poden comprovar.'));
+  } else if (campaign.effectiveState !== 'ACTIVA') {
     summary.push(statusLabel('text-body-secondary small d-block', 'bi-info-circle', 'Només les campanyes actives tenen passis previstos.'));
   }
   summary.push(summaryTable(plan, s, campaign));
@@ -86,7 +89,9 @@ function summaryTable(plan, s, campaign) {
     return tr;
   };
   const tbody = el('tbody', '');
-  for (const spot of plan.bySpot) tbody.append(row(spot.title ?? `Pista ${spot.trackId}`, spot.played ?? 0, spot.count));
+  // Una fila per falca; si la mateixa pista hi és en diversos períodes, cadascuna amb el seu (D-172)
+  plan.bySpot.forEach((/** @type {any} */ spot, /** @type {number} */ index) =>
+    tbody.append(row(spotLabel(spot.title ?? `Pista ${spot.trackId}`, campaign.spots ?? [], index, campaign), spot.played ?? 0, spot.count)));
   if (s.empty > 0) tbody.append(row('Buits (cap falca vàlida)', 0, s.empty, 'text-warning'));
 
   const tfoot = el('tfoot', '');

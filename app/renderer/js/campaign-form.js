@@ -112,7 +112,51 @@ export function campaignProblems(f) {
     if (start && end && end < start) problems.push(`${which}: la data de fi és anterior a la d'inici.`);
     else if (f.startDate && f.endDate && (start < f.startDate || end > f.endDate)) problems.push(`${which}: les dates han de ser dins de les de la campanya.`);
   });
+  // La mateixa falca en diversos períodes (D-172): que no se solapin (les dates; els dies de la setmana no compten)
+  f.spots.forEach((a, i) => {
+    f.spots.forEach((b, j) => {
+      if (j <= i || a.trackId !== b.trackId) return;
+      const [aStart, aEnd] = [a.startDate || f.startDate, a.endDate || f.endDate];
+      const [bStart, bEnd] = [b.startDate || f.startDate, b.endDate || f.endDate];
+      if (aStart && aEnd && bStart && bEnd && aStart <= bEnd && bStart <= aEnd)
+        problems.push(`Les falques ${i + 1} i ${j + 1} són la mateixa pista i els seus períodes se solapen: posa-hi dates que no coincideixin.`);
+    });
+  });
   return problems;
+}
+
+/**
+ * Afegir una falca que ja és a la campanya (D-172): una fila nova amb el període que queda lliure després de l'última
+ * d'aquesta pista (del dia següent a la fi de la campanya). Si no en queda, sense dates (es veurà que se solapen).
+ * @param {any} track @param {FormCampaign} f @returns {FormSpot}
+ */
+export function nextPeriodSpot(track, f) {
+  const spot = newSpot(track);
+  const ends = f.spots.filter((s) => s.trackId === track.id).map((s) => s.endDate || f.endDate).filter(Boolean).sort();
+  const last = ends.at(-1);
+  if (!last || !f.endDate) return spot;
+  const next = addDay(last);
+  if (next > f.endDate) return spot;
+  return { ...spot, startDate: next, endDate: f.endDate };
+}
+
+/** 'AAAA-MM-DD' del dia següent. @param {string} iso */
+function addDay(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d + 1));
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * El nom d'una falca a les llistes: el títol i, si la mateixa pista hi és en diversos períodes (D-172), el seu període
+ * («Falca A (del 1/11/2026 al 10/11/2026)»).
+ * @param {string} title @param {{ trackId: number, startDate?: string | null, endDate?: string | null }[]} spots
+ * @param {number} index @param {{ startDate: string, endDate: string }} campaign
+ */
+export function spotLabel(title, spots, index, campaign) {
+  const spot = spots[index];
+  if (!spot || spots.filter((s) => s.trackId === spot.trackId).length < 2) return title;
+  return `${title} (${datesText(spot.startDate || campaign.startDate, spot.endDate || campaign.endDate)})`;
 }
 
 /** Mou un element d'una llista a una altra posició (arrossegant). @template T @param {T[]} list @param {number} from @param {number} to */

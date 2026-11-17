@@ -121,3 +121,28 @@ test('effectiveState: una activa amb la data de fi passada compta com a acabada 
   assert.equal(effectiveState('ESBORRANY', '2026-11-01', '2026-11-14'), 'ESBORRANY');
   assert.equal(effectiveState('ACABADA', '2026-12-31', '2026-11-14'), 'ACABADA');
 });
+
+test('la mateixa falca en diversos períodes (D-172): que no se solapin, el període següent i el nom', async () => {
+  const { campaignProblems, nextPeriodSpot, spotLabel, newCampaign } = await import('../renderer/js/campaign-form.js');
+  const f = { ...newCampaign('2026-11-01'), name: 'Ferreteria', endDate: '2026-11-30' };
+  const track = { id: 5, title: 'Falca A' };
+  const a = { trackId: 5, startDate: '', endDate: '2026-11-10', daysMask: 127, weight: 1, track };
+  const b = { trackId: 6, startDate: '', endDate: '', daysMask: 127, weight: 1, track: { id: 6 } };
+
+  // El període següent: de l'11 a la fi de la campanya
+  const again = nextPeriodSpot(track, { ...f, spots: [a, b] });
+  assert.deepEqual([again.startDate, again.endDate], ['2026-11-11', '2026-11-30']);
+  assert.deepEqual(campaignProblems({ ...f, spots: [a, b, again] }), []);
+  // Sense dates, la segona agafa les de la campanya: se solapen
+  assert.match(campaignProblems({ ...f, spots: [a, b, { ...again, startDate: '', endDate: '' }] }).join(' '), /falques 1 i 3 són la mateixa pista/);
+  // Si la primera ja arriba a la fi, la nova queda sense dates (i es veu que se solapen)
+  const full = nextPeriodSpot(track, { ...f, spots: [{ ...a, endDate: '' }] });
+  assert.deepEqual([full.startDate, full.endDate], ['', '']);
+  // Els dies de la setmana no compten
+  assert.match(campaignProblems({ ...f, spots: [{ ...a, daysMask: 1 }, { ...a, daysMask: 2 }] }).join(' '), /se solapen/);
+
+  const spots = [a, b, again];
+  assert.equal(spotLabel('Falca A', spots, 0, f), 'Falca A (del 1/11/2026 al 10/11/2026)');
+  assert.equal(spotLabel('Falca A', spots, 2, f), 'Falca A (del 11/11/2026 al 30/11/2026)');
+  assert.equal(spotLabel('Falca B', spots, 1, f), 'Falca B');
+});

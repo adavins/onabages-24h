@@ -337,4 +337,30 @@ public sealed class CampaignPlanTests : IDisposable
         Assert.Equal([5, 15, 10], bySpot.Select(s => s!["count"]!.GetValue<int>()));
         Assert.Equal(["Falca A", "Falca B", "Falca A"], bySpot.Select(s => s!["title"]!.GetValue<string>()));
     }
+
+    [Fact]
+    public void D_un_esborrany_campaigns_plan_dona_el_pla_que_tindria_sense_desar_lo()
+    {
+        // Com la «Campanya de prova 2»: esborrany, la mateixa falca en diversos períodes, 2 passis al dia
+        var c = Campaign(CampaignSelection.Alternate,
+            new CampaignSpot { TrackId = _a, EndDate = new DateOnly(2026, 11, 15) },
+            new CampaignSpot { TrackId = _b, StartDate = new DateOnly(2026, 11, 16), EndDate = new DateOnly(2026, 11, 22) },
+            new CampaignSpot { TrackId = _a, StartDate = new DateOnly(2026, 11, 23) });
+        _campaigns.Save(c with { State = CampaignState.Draft }, _now);
+        Event(c.Id, new TimeOnly(1, 0));
+        Event(c.Id, new TimeOnly(3, 0));
+        Plans().RecalculateAll();
+        Assert.Empty(_campaigns.Plan(c.Id, _now)); // l'esborrany no té pla desat: no sona
+
+        var router = new CommandRouter(new EngineState(), () => { }, _library, events: _events, campaigns: _campaigns) { CampaignClock = () => _now };
+        var msg = new JsonObject { ["v"] = 1, ["id"] = 1, ["cmd"] = "campaigns.plan", ["campaignId"] = c.Id };
+        var result = router.Handle(msg.ToJsonString())["result"]!;
+        Assert.True(result["draft"]!.GetValue<bool>());
+        Assert.Equal(60, result["passes"]!.AsArray().Count); // 30 dies × 2
+        Assert.Equal([30, 14, 16], result["bySpot"]!.AsArray().Select(s => s!["count"]!.GetValue<int>()));
+        Assert.Empty(_campaigns.Plan(c.Id, _now)); // i continua sense pla desat
+
+        msg["to"] = "2026-11-10";
+        Assert.Equal(20, router.Handle(msg.ToJsonString())["result"]!["passes"]!.AsArray().Count);
+    }
 }

@@ -13,7 +13,7 @@ import { todayIso } from '../event-form.js';
 import { DAY_NAMES, DAY_SHORT } from '../calendar-form.js';
 import {
   STATES, SELECTIONS, MAX_WEIGHT, newCampaign, newSpot, campaignFromApi, campaignToApi, campaignChanged, campaignProblems,
-  moveSpot, spotWarnings, datesText, effectiveState,
+  moveSpot, spotWarnings, datesText, effectiveState, nextPeriodSpot,
 } from '../campaign-form.js';
 import { planPanel } from './campaign-plan.js';
 import { seasonButton } from './season.js';
@@ -615,8 +615,7 @@ export class CampaignsView {
           const detail = el('span', 'ee-result-detail');
           const sync = () => {
             detail.textContent = [track.durationMs ? formatDuration(track.durationMs) : '', track.fileState === 'missing' ? 'el fitxer falta' : '',
-              already() ? 'ja és a la campanya' : ''].filter(Boolean).join(' · ');
-            row.disabled = already();
+              already() ? 'ja és a la campanya: s\'hi afegeix un altre període' : ''].filter(Boolean).join(' · ');
           };
           const labelLine = el('span', 'ee-result-label');
           labelLine.append(typeBadge(track.type), ' ', label);
@@ -624,8 +623,8 @@ export class CampaignsView {
           row.title = track.path;
           sync();
           row.addEventListener('click', () => {
-            if (already()) return;
-            form.spots = [...form.spots, newSpot(track)];
+            // Si ja hi és, una fila nova amb el període que queda lliure (D-172)
+            form.spots = [...form.spots, already() ? nextPeriodSpot(track, form) : newSpot(track)];
             sync();
           });
           results.append(row);
@@ -646,7 +645,7 @@ export class CampaignsView {
     search();
     await formDialog({
       title: 'Afegeix falques', icon: 'bi-megaphone', wide: true,
-      message: 'Cada pista que cliquis s\'afegeix a la campanya. Quan acabis, tanca la finestra.',
+      message: 'Cada pista que cliquis s\'afegeix a la campanya. Una que ja hi és s\'hi torna a afegir amb el període que queda lliure després de l\'última. Quan acabis, tanca la finestra.',
       body: [input, filters, results],
     });
     this.#renderEditor();
