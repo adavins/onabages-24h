@@ -301,7 +301,7 @@ public static class EngineServer
         };
 
         // Agenda de bosses (D-170): el dia 1 de cada mes, les bosses passen a la subcategoria que els toca
-        var agendaRunner = new BagAgendaRunner(new BagAgendas(database), autoDj, rotations, () => DateTimeOffset.UtcNow, TimeZoneInfo.Local, log);
+        var agendaRunner = new BagAgendaRunner(new BagAgendas(database), autoDj, rotations, () => DateTimeOffset.UtcNow, TimeZoneInfo.Local, log, userStore);
 
         // engine.shutdown: el motor s'atura una mica després de respondre, perquè la resposta arribi al client.
         var router = new CommandRouter(state, () =>

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  monthOf, monthName, monthShort, nextMonth, agendaProblem, assignmentText, shortSubcategory, moveItem, bagsThatChange,
+  monthOf, monthName, monthShort, nextMonth, agendaProblem, assignmentText, shortSubcategory, moveItem, bagsThatChange, manualBagChangeText,
 } from '../renderer/js/agenda-form.js';
 
 test('mesos: el d\'una data, el nom, el curt i el següent', () => {
@@ -46,4 +46,12 @@ test('les bosses que canvien en desar', () => {
   ];
   const changes = bagsThatChange(now, [{ id: 1, subcategoryId: 10 }, { id: 2, subcategoryId: 15 }]);
   assert.deepEqual(changes.map((c) => c.bag), ['B']);
+});
+
+test("l'avís en canviar a mà una bossa d'una agenda activa", () => {
+  const agenda = { name: 'Adult', next: [{ bagId: 1, subcategory: 'Music / Adult 3' }] };
+  assert.equal(manualBagChangeText(agenda, { id: 1, name: 'Generalista A' }, '2026-12'),
+    "«Generalista A» la canvia l'agenda «Adult». Aquest canvi durarà fins a l'1 de gener de 2027, quan l'agenda hi posarà Adult 3. " +
+    "Si vols que el canvi duri, canvia l'agenda (Rotacions → Bosses → «Agenda…»).");
+  assert.match(manualBagChangeText({ name: 'Adult', next: [] }, { id: 1, name: 'A' }, '2026-12'), /encara no ha començat/);
 });

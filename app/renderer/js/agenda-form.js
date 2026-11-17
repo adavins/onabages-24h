@@ -76,6 +76,22 @@ export function moveItem(list, index, delta) {
 }
 
 /**
+ * L'avís en canviar a mà una bossa d'una agenda activa: el canvi dura fins al dia 1 del mes que ve, quan l'agenda hi
+ * posarà la que li toca. «Generalista A» la canvia l'agenda «Adult»: aquest canvi durarà fins a l'1 de gener de 2027,
+ * quan passarà a Adult 3.
+ * @param {{ name: string, next: { bagId: number, subcategory: string | null }[] }} agenda
+ * @param {{ id: number, name: string }} bag @param {string} month  el mes d'ara («2026-12»)
+ */
+export function manualBagChangeText(agenda, bag, month) {
+  const next = agenda.next.find((a) => a.bagId === bag.id);
+  const first = `l'1 de ${monthName(nextMonth(month))}`;
+  const until = next
+    ? `Aquest canvi durarà fins a ${first}, quan l'agenda hi posarà ${shortSubcategory(next.subcategory)}.`
+    : 'L\'agenda encara no ha començat: quan comenci, hi posarà la subcategoria que li toqui.';
+  return `«${bag.name}» la canvia l'agenda «${agenda.name}». ${until} Si vols que el canvi duri, canvia l'agenda (Rotacions → Bosses → «Agenda…»).`;
+}
+
+/**
  * Les bosses que canvien en desar (per a la confirmació): les de l'assignació d'aquest mes que ara tenen una altra
  * subcategoria.
  * @param {{ bagId: number, bag: string | null, subcategoryId: number, subcategory: string | null }[]} assignment

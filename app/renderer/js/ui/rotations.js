@@ -8,6 +8,7 @@ import { typeBadge } from './type-badge.js';
 import { confirmAction } from './confirm.js';
 import { askText } from './ask-text.js';
 import { openBagAgendas } from './bag-agendas.js';
+import { manualBagChangeText } from '../agenda-form.js';
 import { SELECTIONS, newStep, stepFromApi, stepToApi, rotationChanged, rotationProblems, moveTo } from '../rotation-form.js';
 
 export class RotationsView {
@@ -185,7 +186,9 @@ export class RotationsView {
       ]);
       this.#bags = bags.bags;
       // Agenda de bosses (D-170): per marcar les bosses que canvien soles
-      this.#agendas = (await this.#send('agendas.list').catch(() => ({ agendas: [] }))).agendas;
+      const agendas = await this.#send('agendas.list').catch(() => ({ agendas: [], month: null }));
+      this.#agendas = agendas.agendas;
+      this.#agendaMonth = agendas.month;
       this.#reserve = reserve;
       this.#rotations = rotations.rotations;
       this.#categories = filters.categories;
@@ -213,6 +216,8 @@ export class RotationsView {
   #bags = [];
   /** Les agendes de bosses (D-170). @type {any[]} */
   #agendas = [];
+  /** El mes d'ara segons el motor («2026-12»). @type {string | null} */
+  #agendaMonth = null;
 
   /** Desplegable de subcategories (agrupades per categoria), amb «(cap)». @param {number | null} selected */
   #subcategorySelect(selected) {
@@ -276,6 +281,19 @@ export class RotationsView {
   /** @param {any} bag @param {HTMLSelectElement} select */
   async #setBag(bag, select) {
     const subcategoryId = select.value === '' ? null : Number(select.value);
+    // Si la canvia una agenda activa, el canvi a mà només dura fins al dia 1 (D-170): es diu i es demana confirmació
+    const agenda = this.#agendas.find((a) => a.active && a.bags.some((/** @type {any} */ b) => b.id === bag.id));
+    if (agenda && this.#agendaMonth) {
+      const sure = await confirmAction({
+        title: 'Aquesta bossa la canvia una agenda',
+        message: manualBagChangeText(agenda, bag, this.#agendaMonth),
+        confirm: 'Canvia-la igualment', danger: false,
+      });
+      if (!sure) {
+        select.value = bag.subcategoryId == null ? '' : String(bag.subcategoryId);
+        return;
+      }
+    }
     try {
       await this.#send('bags.set', { bagId: bag.id, subcategoryId });
       // La resta arriba amb bags.changed / rotations.changed

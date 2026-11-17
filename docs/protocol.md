@@ -542,7 +542,7 @@ Les ordres `incidents.list` (la barra d'avisos en llegeix les obertes) i `change
 
 ### 4.16. Agenda de bosses (D-170)
 
-Una agenda canvia soles les subcategories d'unes bosses amb nom el **dia 1 de cada mes a les 00:00** (hora local), rotant per una llista de subcategories. Cada mes sonen tantes subcategories seguides com bosses hi ha i avancen d'una; la que continua es queda a la mateixa bossa. Un sol canvi per mes: si el motor estava aturat el dia 1, es fa en arrencar, i un canvi a mà (`bags.set`) a mig mes no es desfà fins al mes següent. El canvi es fa com `bags.set` (amb `bags.changed`, i la cua es torna a triar), amb `changedBy` = «agenda «Adult»». Els mesos són textos `"2026-12"`.
+Una agenda canvia soles les subcategories d'unes bosses amb nom el **dia 1 de cada mes a les 00:00** (hora local), rotant per una llista de subcategories. Cada mes sonen tantes subcategories seguides com bosses hi ha i avancen d'una; la que continua es queda a la mateixa bossa. Un sol canvi per mes: si el motor estava aturat el dia 1, es fa en arrencar, i un canvi a mà (`bags.set`) a mig mes no es desfà fins al mes següent. El canvi es fa com `bags.set` (amb `bags.changed`, i la cua es torna a triar), amb `changedBy` = «agenda «Adult»», i s'anota al registre de canvis (4.14) una entrada per bossa, sense usuari (`user` «Motor») i amb `kind` = `agendas.apply` (D-171): «Agenda «Adult»: la bossa «Generalista A» passa d'Adult 1 a Adult 3». Els mesos són textos `"2026-12"`.
 
 | Ordre | Paràmetres | Resultat |
 |---|---|---|

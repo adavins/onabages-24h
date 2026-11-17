@@ -19,6 +19,7 @@ public sealed class BagAgendaRunnerTests : IDisposable
     private readonly QueuePlayer _queue = new(new Mixer(48000));
     private readonly AutoDj _autoDj;
     private readonly BagAgendaRunner _runner;
+    private readonly UserStore _users;
     private readonly CommandRouter _router;
     private readonly long[] _adult = new long[9];
     private readonly long _bagA, _bagB;
@@ -32,7 +33,8 @@ public sealed class BagAgendaRunnerTests : IDisposable
         _library = new Library(_db);
         _rotations = new Rotations(_db);
         _autoDj = new AutoDj(_library, _rotations, _queue, new AutoDjSettings { MinUpcoming = 1 });
-        _runner = new BagAgendaRunner(new BagAgendas(_db), _autoDj, _rotations, () => _now, Madrid);
+        _users = new UserStore(_db);
+        _runner = new BagAgendaRunner(new BagAgendas(_db), _autoDj, _rotations, () => _now, Madrid, changes: _users);
         _router = new CommandRouter(new EngineState(), () => { }, _library, queue: _queue, autoDj: _autoDj, rotations: _rotations, agendas: _runner);
         _router.AgendasChanged += () => _agendasChanged++;
         long music = _library.EnsureCategory("Music");
@@ -73,6 +75,11 @@ public sealed class BagAgendaRunnerTests : IDisposable
         Assert.Equal(2, _runner.ApplyDue());
         Assert.Equal((_adult[0], _adult[1]), Bags());
         Assert.Equal("agenda «Adult»", _rotations.GetBag(_bagA)!.ChangedBy);
+        // Al registre de canvis, una entrada per bossa, sense usuari («Motor»)
+        var logged = _users.ListChanges(new ChangeFilter()).Entries.OrderBy(e => e.Summary).ToList();
+        Assert.Equal(["Agenda «Adult»: la bossa «Generalista A» passa d'Adult 5 a Adult 1",
+            "Agenda «Adult»: la bossa «Generalista B» passa d'Adult 6 a Adult 2"], logged.Select(e => e.Summary));
+        Assert.All(logged, e => Assert.Equal(("agendas.apply", "Motor", (long?)null), (e.Command, e.UserName, e.UserId)));
 
         // Un canvi a mà a mig mes no es desfà fins al mes següent
         Send(new() { ["cmd"] = "bags.set", ["bagId"] = _bagA, ["subcategoryId"] = _adult[8] });
