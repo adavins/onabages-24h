@@ -645,6 +645,8 @@ function connect(/** @type {{ port: number, token: string }} */ info) {
     send('rotations.list').then((r) => autoDjView.setRotations(r.rotations)).catch(() => {});
     planner.refresh();
   });
+  // Agenda de bosses (D-170): les bosses de Rotacions en marquen l'agenda (el canvi de les bosses arriba amb rotations.changed)
+  client.addEventListener('ev:agendas.changed', () => rotationsView.refresh());
   // Campanyes (fase 4, pas 3c): la pantalla i el planificador (l'acció «Campanya» en diu el nom i l'estat)
   client.addEventListener('ev:campaigns.changed', () => {
     warnings.refresh();

@@ -7,6 +7,7 @@ import { $, el, icon, statusLabel } from './dom.js';
 import { typeBadge } from './type-badge.js';
 import { confirmAction } from './confirm.js';
 import { askText } from './ask-text.js';
+import { openBagAgendas } from './bag-agendas.js';
 import { SELECTIONS, newStep, stepFromApi, stepToApi, rotationChanged, rotationProblems, moveTo } from '../rotation-form.js';
 
 export class RotationsView {
@@ -37,6 +38,7 @@ export class RotationsView {
     $('rt-duplicate').addEventListener('click', () => this.#duplicate());
     $('rt-delete').addEventListener('click', () => this.#delete());
     $('rt-bag-new').addEventListener('click', () => this.#newBag());
+    $('rt-bag-agenda').addEventListener('click', () => openBagAgendas(this.#send));
     for (const id of ['rt-sep-track', 'rt-sep-artist']) $(id).addEventListener('input', () => this.#separationEdited());
     $('rt-sep-save').addEventListener('click', () => this.#saveSeparation());
     $('rt-reserve-rotation').addEventListener('change', () => this.#setReserveRotation());
@@ -182,6 +184,8 @@ export class RotationsView {
         this.#send('bags.list'), this.#send('reserve.get'),
       ]);
       this.#bags = bags.bags;
+      // Agenda de bosses (D-170): per marcar les bosses que canvien soles
+      this.#agendas = (await this.#send('agendas.list').catch(() => ({ agendas: [] }))).agendas;
       this.#reserve = reserve;
       this.#rotations = rotations.rotations;
       this.#categories = filters.categories;
@@ -207,6 +211,8 @@ export class RotationsView {
 
   /** @type {any[]} */
   #bags = [];
+  /** Les agendes de bosses (D-170). @type {any[]} */
+  #agendas = [];
 
   /** Desplegable de subcategories (agrupades per categoria), amb «(cap)». @param {number | null} selected */
   #subcategorySelect(selected) {
@@ -252,6 +258,15 @@ export class RotationsView {
       select.setAttribute('aria-label', `Subcategoria de la bossa ${bag.name}`);
       select.addEventListener('change', () => this.#setBag(bag, select));
       li.append(head, select);
+      // La canvia una agenda (D-170): icona + text, amb el que toca el mes que ve
+      const agenda = this.#agendas.find((a) => a.bags.some((/** @type {any} */ b) => b.id === bag.id));
+      if (agenda) {
+        const mark = statusLabel(`small ${agenda.active ? 'text-info' : 'text-body-secondary'}`, 'bi-calendar2-range',
+          `Agenda «${agenda.name}»${agenda.active ? '' : ' (aturada)'}`);
+        const next = agenda.next.find((/** @type {any} */ a) => a.bagId === bag.id);
+        mark.title = agenda.active && next ? `El dia 1 del mes que ve passa a ${next.subcategory}` : 'L\'agenda està aturada: no la canvia';
+        li.append(mark);
+      }
       if (bag.subcategoryId == null)
         li.append(statusLabel('text-warning small', 'bi-exclamation-triangle-fill', 'Sense subcategoria: els seus passos se salten'));
       return li;
