@@ -2,17 +2,21 @@
 // Pestanya «Registre» (D-167): tot el que ha passat a l'aplicació en una sola llista, de més nou a més antic: les
 // incidències, els canvis, les sessions i (si es marca) l'execució dels esdeveniments. Substitueix les finestres
 // «Incidències» i «Registre de canvis». Els canvis i les sessions només els veu l'administrador (ho decideix el motor).
-// Mentre es veu, es torna a carregar quan el motor anota o tanca una incidència.
+// Mentre es veu, es torna a carregar quan el motor anota o tanca una incidència. L'origen es tria en un desplegable de
+// selecció múltiple, i «Restableix» torna tots els filtres als de per defecte (D-169).
 
 import { $, el, icon, statusLabel } from './dom.js';
 import { KINDS, severityInfo, dateTimeText, PERIODS } from '../incidents-form.js';
 import { AREAS, areaPrefixes, userText, detailText } from '../changes-form.js';
+import { MultiSelect } from './multi-select.js';
 import { SOURCES, DEFAULT_SOURCES, sourceIcon, sourceName, typeText, stateText, entryText, logParams, countText } from '../log-form.js';
 
 /** Quantes es carreguen cada vegada. */
 const PAGE = 100;
 /** Espera després d'escriure al cercador abans de buscar. */
 const SEARCH_DELAY_MS = 300;
+/** El període per defecte (darrers 7 dies). */
+const DEFAULT_PERIOD = '7';
 
 export class LogView {
   /** @type {(cmd: string, params?: object) => Promise<any>} */
@@ -29,10 +33,7 @@ export class LogView {
 
   // Filtres
   #period = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm lg-select'));
-  /** @type {Map<string, HTMLInputElement>} */
-  #sourceBoxes = new Map();
-  /** @type {Map<string, HTMLElement>} */
-  #sourceItems = new Map();
+  #sources = new MultiSelect('Origen', SOURCES.map(([value, text, iconName]) => ({ value, text, icon: iconName })), DEFAULT_SOURCES);
   #severity = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm lg-select'));
   #type = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm lg-select'));
   #user = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm lg-select'));
@@ -49,26 +50,8 @@ export class LogView {
     this.#send = send;
 
     this.#period.append(...PERIODS.map(([value, text]) => new Option(text, value)));
-    this.#period.value = '7';
+    this.#period.value = DEFAULT_PERIOD;
     this.#period.setAttribute('aria-label', 'Període');
-
-    const sources = el('div', 'lg-sources');
-    sources.setAttribute('role', 'group');
-    sources.setAttribute('aria-label', 'Origen');
-    for (const [code, text, iconName] of SOURCES) {
-      const box = /** @type {HTMLInputElement} */ (el('input', 'form-check-input'));
-      box.type = 'checkbox';
-      box.id = `lg-source-${code}`;
-      box.checked = DEFAULT_SOURCES.includes(code);
-      const label = /** @type {HTMLLabelElement} */ (el('label', 'form-check-label'));
-      label.htmlFor = box.id;
-      label.append(icon(iconName), ` ${text}`);
-      const item = el('div', 'form-check form-check-inline mb-0');
-      item.append(box, label);
-      sources.append(item);
-      this.#sourceBoxes.set(code, box);
-      this.#sourceItems.set(code, item);
-    }
 
     this.#severity.append(new Option('Totes les gravetats', ''), new Option('Avisos i greus', 'warning'), new Option('Només greus', 'danger'));
     this.#severity.setAttribute('aria-label', 'Gravetat');
@@ -101,10 +84,19 @@ export class LogView {
     refresh.append(icon('bi-arrow-clockwise'), ' Actualitza');
     refresh.addEventListener('click', () => this.#load(false));
 
+    const reset = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-outline-secondary'));
+    reset.type = 'button';
+    reset.title = 'Torna tots els filtres als de per defecte';
+    reset.append(icon('bi-x-circle'), ' Restableix');
+    reset.addEventListener('click', () => this.#resetFilters());
+
     const filters = el('div', 'hs-filters lg-filters');
     filters.setAttribute('role', 'search');
     filters.setAttribute('aria-label', 'Filtres del registre');
-    filters.append(this.#period, sources, this.#severity, this.#type, this.#user, this.#search, openBox, refresh);
+    // «Restableix» i «Actualitza», sempre a la fila de sota (lg-actions ocupa tota l'amplada)
+    const actions = el('div', 'lg-actions');
+    actions.append(reset, refresh);
+    filters.append(this.#period, this.#sources.element, this.#severity, this.#type, this.#user, this.#search, openBox, actions);
     const status = el('div', 'hs-status');
     this.#summary.setAttribute('aria-live', 'polite');
     status.append(this.#summary);
@@ -127,7 +119,7 @@ export class LogView {
     page.append(filters, status, scroll);
     $('view-registre').append(page);
 
-    for (const control of [this.#period, this.#severity, this.#type, this.#user, this.#openOnly, ...this.#sourceBoxes.values()]) {
+    for (const control of [this.#period, this.#severity, this.#type, this.#user, this.#openOnly, this.#sources.element]) {
       control.addEventListener('change', () => this.#load(false));
     }
     this.#openOnly.addEventListener('change', () => this.#syncOpenOnly());
@@ -140,7 +132,21 @@ export class LogView {
   /** Amb «Només les incidències obertes», el període, l'origen, el tipus i l'usuari no compten. */
   #syncOpenOnly() {
     const only = this.#openOnly.checked;
-    for (const control of [this.#period, this.#user, ...this.#sourceBoxes.values()]) control.disabled = only;
+    for (const control of [this.#period, this.#user, this.#sources]) control.disabled = only;
+  }
+
+  /** «Restableix»: el període, l'origen, la gravetat, el tipus, l'usuari, el text i les obertes, com en obrir l'aplicació. */
+  #resetFilters() {
+    clearTimeout(this.#timer);
+    this.#period.value = DEFAULT_PERIOD;
+    this.#sources.values = DEFAULT_SOURCES;
+    this.#severity.value = '';
+    this.#type.value = '';
+    this.#user.value = '';
+    this.#search.value = '';
+    this.#openOnly.checked = false;
+    this.#syncOpenOnly();
+    this.#load(false);
   }
 
   show() {
@@ -182,7 +188,7 @@ export class LogView {
 
   /** Sense permís per veure els canvis i les sessions, se n'amaguen els filtres. */
   #showAllowed() {
-    for (const code of ['change', 'session']) this.#sourceItems.get(code)?.classList.toggle('d-none', !this.#changesAllowed);
+    for (const code of ['change', 'session']) this.#sources.setHidden(code, !this.#changesAllowed);
     this.#user.classList.toggle('d-none', !this.#changesAllowed || !this.#usersLoaded);
   }
 
@@ -191,7 +197,7 @@ export class LogView {
     const mine = ++this.#request;
     const filters = {
       period: this.#period.value,
-      sources: [...this.#sourceBoxes].filter(([, box]) => box.checked).map(([code]) => code),
+      sources: this.#sources.values,
       severity: this.#severity.value,
       type: this.#type.value,
       userId: this.#user.value,

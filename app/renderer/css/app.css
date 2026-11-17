@@ -140,6 +140,42 @@ body {
   background: var(--ob-border);
 }
 
+/* Desplegable de selecció múltiple (D-169; js/ui/multi-select.js): com un <select>, però amb caselles */
+.ms-wrap {
+  position: relative;
+}
+
+.ms-button {
+  width: auto;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.ms-menu {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  z-index: 1050;
+  min-width: 100%;
+  padding: 0.3rem 0.4rem;
+  background: var(--ob-panel);
+  border: 1px solid var(--ob-border);
+  border-radius: 0.375rem;
+}
+
+.ms-item {
+  margin: 0;
+  padding: 0.3rem 0.4rem 0.3rem 2rem;
+  border-radius: 0.25rem;
+  white-space: nowrap;
+}
+
+.ms-item:hover {
+  background: #262a30;
+}
+
 /* Les subpestanyes de Pistes (D-168): Biblioteca i Historial */
 .subnav {
   flex: none;
@@ -4260,8 +4296,8 @@ body[data-access="programmer"] [data-needs="administrator"] {
 
 /* Pestanya «Registre» (D-167): els mateixos filtres i la mateixa taula que l'Historial */
 .lg-filters .lg-select { width: auto; }
+.lg-actions { flex-basis: 100%; display: flex; gap: 0.5rem; } /* «Restableix» i «Actualitza», sempre a la fila de sota */
 .lg-search { width: 12rem; }
-.lg-sources { display: flex; flex-wrap: wrap; gap: 0 0.25rem; }
 .lg-c-time { width: 9.5rem; white-space: nowrap; }
 .lg-c-source { width: 8.5rem; white-space: nowrap; }
 .lg-c-severity { width: 6rem; }
