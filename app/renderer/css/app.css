@@ -90,6 +90,66 @@ body {
   font-weight: 600;
 }
 
+/* «Més» (D-168): un menú que s'obre a sota del botó (sense el JavaScript de Bootstrap) */
+.more-wrap {
+  position: relative;
+}
+
+.more-caret {
+  font-size: 0.7em;
+}
+
+.more-menu {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  z-index: 1050;
+  min-width: 12rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.3rem;
+  background: var(--ob-panel);
+  border: 1px solid var(--ob-border);
+  border-radius: 0.375rem;
+  -webkit-app-region: no-drag;
+}
+
+.more-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.7rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: none;
+  color: var(--bs-body-color);
+  text-align: left;
+}
+
+.more-item:hover,
+.more-item:focus-visible {
+  background: #262a30;
+}
+
+.more-separator {
+  height: 1px;
+  margin: 0.3rem 0;
+  background: var(--ob-border);
+}
+
+/* Les subpestanyes de Pistes (D-168): Biblioteca i Historial */
+.subnav {
+  flex: none;
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.4rem 1rem 0;
+}
+
+/* Estat del motor: només la icona (D-168); el text, en passar-hi el ratolí */
+.engine-status {
+  font-size: 1.1rem;
+}
+
 /* Estat del motor: sempre color + icona + text */
 .engine-status {
   white-space: nowrap;
@@ -1620,11 +1680,12 @@ body {
   color: var(--bs-body-color);
 }
 
-/* La sortida (D-120): botó que s'escurça amb punts suspensius si el nom és llarg */
-.statusbar-output {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* La sortida i el processador (D-168): només la icona (i la barreta de compressió); el text, en passar-hi el ratolí */
+.statusbar-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 1rem;
 }
 
 /* Finestra per triar la sortida d'àudio (D-120) */
@@ -3912,6 +3973,7 @@ button.pl-chip.is-off {
 .topbar-session {
   margin-left: auto;
   padding: 0.15rem 0.4rem;
+  font-size: 1.1rem;
   text-decoration: none;
 }
 
@@ -3927,17 +3989,6 @@ body[data-access="operator"] [data-needs="administrator"],
 body[data-access="programmer"] [data-needs="administrator"] {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-.topbar-settings {
-  padding: 0.15rem 0.4rem;
-  color: var(--ob-muted);
-  font-size: 1.1rem;
-}
-
-.topbar-settings:hover,
-.topbar-settings:focus-visible {
-  color: var(--bs-body-color);
 }
 
 /* Logotip a la finestra de les dades de l'emissora */

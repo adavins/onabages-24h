@@ -6,6 +6,8 @@
 // - Còpies de seguretat (D-152): backups.js.
 // - Eines: el silenci a la sortida (D-158) i la carpeta de pistes d'emergència (D-159).
 // - Usuaris (D-164): settings-users.js.
+// - Sortida d'àudio (settings-output.js) i Processador (processor.js): abans, a la barra d'estat (D-168). Es canvien de
+//   seguida, sense «Desa». L'operador i el programador només hi veuen «Sortida» (D-164: la sortida la pot canviar l'operador).
 // «Desa» desa les dades generals, els avisos, el silenci i els minuts d'inactivitat (station.set, season.set, mail.set,
 // silence.set, security.set). Les accions
 // (triar la carpeta d'emergència, el correu de prova, fer o restaurar una còpia) es fan de seguida, com abans.
@@ -16,14 +18,17 @@ import { confirmAction } from './confirm.js';
 import { mailPanel } from './settings-mail.js';
 import { backupsPanel } from './backups.js';
 import { usersPanel } from './settings-users.js';
+import { outputPanel } from './settings-output.js';
 
-/** @typedef {'general' | 'mail' | 'backups' | 'tools' | 'users'} SettingsTab */
+/** @typedef {'general' | 'output' | 'processor' | 'mail' | 'backups' | 'tools' | 'users'} SettingsTab */
 
 /** Les pestanyes, en ordre: id, text i icona. */
 const TABS = /** @type {const} */ ([
-  ['general', 'Dades generals', 'bi-broadcast'],
-  ['mail', 'Avisos per correu', 'bi-envelope-exclamation'],
-  ['backups', 'Còpies de seguretat', 'bi-database-check'],
+  ['general', 'General', 'bi-broadcast'],
+  ['output', 'Sortida', 'bi-speaker-fill'],
+  ['processor', 'Processador', 'bi-sliders2-vertical'],
+  ['mail', 'Correu', 'bi-envelope-exclamation'],
+  ['backups', 'Còpies', 'bi-database-check'],
   ['tools', 'Eines', 'bi-tools'],
   ['users', 'Usuaris', 'bi-people'],
 ]);
@@ -35,11 +40,21 @@ const TABS = /** @type {const} */ ([
  *   chooseFolder: (defaultPath?: string) => Promise<string | null>,
  *   chooseBackup: () => Promise<string | null>,
  *   showFile: (path: string) => Promise<string>,
- * }} bridge  els diàlegs de Windows (el procés principal)
+ *   processor: import('./processor.js').ProcessorView,
+ * }} bridge  els diàlegs de Windows (el procés principal) i el processador (la seva pestanya)
  * @param {import('../session.js').SessionController} session  per a la pestanya «Usuaris» (crear el primer hi entra)
- * @param {SettingsTab} [firstTab]  la pestanya que s'obre (per defecte, «Dades generals»)
+ * @param {SettingsTab} [firstTab]  la pestanya que s'obre (per defecte, «General»; sense ser administrador, «Sortida»)
  */
 export async function openSettingsDialog(send, bridge, session, firstTab = 'general') {
+  // Sense ser administrador (amb usuaris), només la sortida d'àudio: no es llegeix res més (el motor no ho deixaria)
+  if (!session.can('administrator')) {
+    const tabs = buildTabs([['output', 'Sortida', 'bi-speaker-fill']], { output: outputPanel(send) }, 'output');
+    const closed = formDialog({ title: 'Configuració', icon: 'bi-gear', body: [tabs.bar, tabs.box], wide: true });
+    tabs.bar.closest('dialog')?.classList.add('cfg-dialog');
+    await closed;
+    return;
+  }
+
   /** @type {{ name: string, frequency: string, logo: string | null }} */
   let station;
   /** @type {{ startDate: string | null, endDate: string | null }} */
@@ -145,7 +160,7 @@ export async function openSettingsDialog(send, bridge, session, firstTab = 'gene
   let restored = false;
   const backups = backupsPanel(send, { chooseFile: bridge.chooseBackup, showFile: bridge.showFile }, () => {
     restored = true;
-    /** @type {HTMLDialogElement | null} */ (tabBar.closest('dialog'))?.close();
+    /** @type {HTMLDialogElement | null} */ (tabs.bar.closest('dialog'))?.close();
   });
 
   // --- Eines: silenci a la sortida (D-158) i pistes d'emergència (D-159) ---
@@ -214,40 +229,13 @@ export async function openSettingsDialog(send, bridge, session, firstTab = 'gene
   // --- Les pestanyes (com les de «Cerca» i «Notes»: botons i panells que s'amaguen) ---
 
   /** @type {Record<SettingsTab, HTMLElement>} */
-  const panes = { general, mail: mailTab.element, backups, tools, users: usersTab.element };
-  const tabBar = el('ul', 'nav nav-tabs cfg-tabs');
-  tabBar.setAttribute('role', 'tablist');
-  /** @type {Map<SettingsTab, HTMLButtonElement>} */
-  const tabButtons = new Map();
-  const paneBox = el('div', 'cfg-panes');
-  for (const [id, text, iconName] of TABS) {
-    const button = /** @type {HTMLButtonElement} */ (el('button', 'nav-link'));
-    button.type = 'button';
-    button.setAttribute('role', 'tab');
-    button.append(icon(iconName), ` ${text}`);
-    button.addEventListener('click', () => showTab(id));
-    const item = el('li', 'nav-item');
-    item.setAttribute('role', 'presentation');
-    item.append(button);
-    tabBar.append(item);
-    tabButtons.set(id, button);
-    panes[id].classList.add('cfg-pane');
-    panes[id].setAttribute('role', 'tabpanel');
-    paneBox.append(panes[id]);
-  }
-  /** @param {SettingsTab} id */
-  const showTab = (id) => {
-    for (const [tab, button] of tabButtons) {
-      button.classList.toggle('active', tab === id);
-      button.setAttribute('aria-selected', String(tab === id));
-      panes[tab].classList.toggle('d-none', tab !== id);
-    }
-  };
-  showTab(firstTab);
+  const panes = { general, output: outputPanel(send), processor: bridge.processor.createPanel(), mail: mailTab.element, backups, tools,
+    users: usersTab.element };
+  const tabs = buildTabs(TABS, panes, firstTab);
 
   for (;;) {
-    const closed = formDialog({ title: 'Configuració', icon: 'bi-gear', body: [tabBar, paneBox], confirm: 'Desa', wide: true });
-    tabBar.closest('dialog')?.classList.add('cfg-dialog');
+    const closed = formDialog({ title: 'Configuració', icon: 'bi-gear', body: [tabs.bar, tabs.box], confirm: 'Desa', wide: true });
+    tabs.bar.closest('dialog')?.classList.add('cfg-dialog');
     const ok = await closed;
     if (!ok || restored) return;
     /** @type {SettingsTab} */
@@ -265,8 +253,50 @@ export async function openSettingsDialog(send, bridge, session, firstTab = 'gene
       return;
     } catch (err) {
       // Es torna a obrir per la pestanya que no s'ha pogut desar, amb el que s'hi havia escrit
-      showTab(failed);
+      tabs.show(failed);
       await confirmAction({ title: 'No s\'han pogut desar les dades', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
     }
   }
+}
+
+/**
+ * Les pestanyes (com les de «Cerca» i «Notes»: botons i panells que s'amaguen).
+ * @param {readonly (readonly [SettingsTab, string, string])[]} list  id, text i icona, en ordre
+ * @param {Partial<Record<SettingsTab, HTMLElement>>} panes
+ * @param {SettingsTab} first
+ */
+function buildTabs(list, panes, first) {
+  const bar = el('ul', 'nav nav-tabs cfg-tabs');
+  bar.setAttribute('role', 'tablist');
+  /** @type {Map<SettingsTab, HTMLButtonElement>} */
+  const buttons = new Map();
+  const box = el('div', 'cfg-panes');
+  for (const [id, text, iconName] of list) {
+    const pane = panes[id];
+    if (!pane) continue;
+    const button = /** @type {HTMLButtonElement} */ (el('button', 'nav-link'));
+    button.type = 'button';
+    button.setAttribute('role', 'tab');
+    button.append(icon(iconName), ` ${text}`);
+    button.addEventListener('click', () => show(id));
+    const item = el('li', 'nav-item');
+    item.setAttribute('role', 'presentation');
+    item.append(button);
+    bar.append(item);
+    buttons.set(id, button);
+    pane.classList.add('cfg-pane');
+    pane.setAttribute('role', 'tabpanel');
+    box.append(pane);
+  }
+  /** @param {SettingsTab} id */
+  const show = (id) => {
+    if (!buttons.has(id)) id = /** @type {SettingsTab} */ (buttons.keys().next().value);
+    for (const [tab, button] of buttons) {
+      button.classList.toggle('active', tab === id);
+      button.setAttribute('aria-selected', String(tab === id));
+      panes[tab]?.classList.toggle('d-none', tab !== id);
+    }
+  };
+  show(first);
+  return { bar, box, show };
 }

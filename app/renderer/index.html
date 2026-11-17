@@ -18,13 +18,19 @@
       <button id="nav-emissio" class="section active" type="button" aria-current="page"><i class="bi bi-broadcast" aria-hidden="true"></i> Emissió</button>
       <button id="nav-planificador" class="section" type="button"><i class="bi bi-calendar-week" aria-hidden="true"></i> Planificador</button>
       <button id="nav-biblioteca" class="section" type="button"><i class="bi bi-collection-play" aria-hidden="true"></i> Pistes</button>
-      <button id="nav-rotacions" class="section" type="button"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Rotacions</button>
-      <button id="nav-campanyes" class="section" type="button"><i class="bi bi-megaphone" aria-hidden="true"></i> Campanyes</button>
-      <button id="nav-historial" class="section" type="button"><i class="bi bi-clock-history" aria-hidden="true"></i> Historial</button>
-      <button id="nav-registre" class="section" type="button"><i class="bi bi-journal-text" aria-hidden="true"></i> Registre</button>
+      <!-- «Més» (D-168): les pantalles que es fan servir menys i la configuració; mentre se'n veu una, el botó en diu el nom -->
+      <div class="more-wrap">
+        <button id="nav-mes" class="section" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-mes"><i id="nav-mes-icon" class="bi bi-three-dots" aria-hidden="true"></i> <span id="nav-mes-label">Més</span> <i class="bi bi-chevron-down more-caret" aria-hidden="true"></i></button>
+        <div id="menu-mes" class="more-menu d-none" role="menu" aria-label="Més pantalles">
+          <button class="more-item" type="button" role="menuitem" data-view="rotacions"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Rotacions</button>
+          <button class="more-item" type="button" role="menuitem" data-view="campanyes"><i class="bi bi-megaphone" aria-hidden="true"></i> Campanyes</button>
+          <button class="more-item" type="button" role="menuitem" data-view="registre"><i class="bi bi-journal-text" aria-hidden="true"></i> Registre</button>
+          <div class="more-separator" role="separator"></div>
+          <button id="menu-settings" class="more-item" type="button" role="menuitem" data-needs="operator"><i class="bi bi-gear" aria-hidden="true"></i> Configuració</button>
+        </div>
+      </div>
     </nav>
     <button id="btn-session" class="btn btn-sm btn-link topbar-session" type="button"><i class="bi bi-hourglass-split" aria-hidden="true"></i></button>
-    <button id="btn-station" class="btn btn-sm btn-link topbar-settings" type="button" data-needs="administrator" title="Configuració: emissora, avisos per correu, còpies de seguretat, eines i usuaris"><i class="bi bi-gear" aria-hidden="true"></i><span class="visually-hidden">Configuració</span></button>
     <span id="zoom-indicator" class="zoom-indicator" aria-live="polite"></span>
     <span id="engine-status" class="engine-status status-connecting" role="status">
       <i class="bi bi-hourglass-split"></i>
@@ -248,6 +254,11 @@
   </div>
 
   <!-- Gestor de pistes (fase 3, pas 7a; D-087): categories a l'esquerra, pistes al mig i la fitxa a la dreta -->
+  <!-- Pistes (D-168): la biblioteca i l'historial del que ha sonat, en dues subpestanyes -->
+  <nav id="subnav-pistes" class="subnav d-none" aria-label="Pistes">
+    <button id="sub-biblioteca" class="section active" type="button"><i class="bi bi-collection-play" aria-hidden="true"></i> Biblioteca</button>
+    <button id="sub-historial" class="section" type="button"><i class="bi bi-clock-history" aria-hidden="true"></i> Historial</button>
+  </nav>
   <div id="view-biblioteca" class="view d-none">
     <div class="tm-main">
       <!-- Columna d'eines (D-111): requadres amb títol; les accions de categoria actuen sobre el que s'hi tria -->
@@ -501,12 +512,11 @@
   <div id="view-registre" class="view d-none"></div>
 
   <footer class="statusbar">
-    <!-- Sortida d'àudio: en clicar-la, es pot triar una altra (D-120) -->
-    <button id="status-output" class="btn btn-link statusbar-link statusbar-output" type="button"></button>
-    <!-- Processador de la sortida (fase 3, pas 6b; D-086): preajust, volum i quant comprimeix ara -->
-    <button id="status-processor" class="btn btn-link statusbar-link d-none" type="button">
-      <i class="bi bi-sliders2-vertical" aria-hidden="true"></i>
-      <span id="status-processor-text"></span>
+    <!-- Sortida d'àudio (D-120, D-168): una icona amb color (el nom, en passar-hi el ratolí); el clic obre ⚙ → Sortida -->
+    <button id="status-output" class="btn btn-link statusbar-link statusbar-icon" type="button"></button>
+    <!-- Processador (D-086, D-168): una icona i la barreta de la compressió; el clic obre ⚙ → Processador -->
+    <button id="status-processor" class="btn btn-link statusbar-link statusbar-icon d-none" type="button">
+      <i class="bi bi-sliders2-vertical" aria-hidden="true"></i><span class="visually-hidden">Processador</span>
       <span class="reduction-bar" aria-hidden="true"><span id="status-processor-fill" class="reduction-fill"></span></span>
     </button>
     <span id="status-butt"></span>
@@ -753,29 +763,6 @@
   </dialog>
 
   <!-- Processador de la sortida (fase 3, pas 6b; D-086): els canvis s'apliquen de seguida -->
-  <dialog id="processor-dialog" class="ob-dialog">
-    <form method="dialog">
-      <h2 class="h5"><i class="bi bi-sliders2-vertical" aria-hidden="true"></i> Processador de la sortida</h2>
-      <p class="ob-dialog-message">Compressor i volum de tot el que surt cap a la taula (música, auxiliars i sweepers). Els canvis se senten de seguida.</p>
-
-      <label for="processor-preset" class="form-label">Compressor</label>
-      <select id="processor-preset" class="form-select mb-3"></select>
-
-      <label for="processor-volume" class="form-label">Volum de sortida: <strong id="processor-volume-value"></strong></label>
-      <div class="d-flex align-items-center gap-2 mb-3">
-        <input id="processor-volume" class="form-range" type="range" step="0.5">
-        <button id="processor-volume-reset" class="btn btn-sm btn-outline-secondary" type="button" title="Torna el volum a 0 dB">0 dB</button>
-      </div>
-
-      <div class="form-label">Compressió ara: <strong id="processor-reduction-value">0 dB</strong></div>
-      <div class="reduction-bar reduction-bar-wide mb-2" aria-hidden="true"><span id="processor-reduction-fill" class="reduction-fill"></span></div>
-      <p id="processor-ceiling" class="form-text"></p>
-
-      <div class="d-flex justify-content-end">
-        <button class="btn btn-secondary" value="close">Tanca</button>
-      </div>
-    </form>
-  </dialog>
 
   <!-- Quant temps s'atura (fase 3, pas 2b; D-073): l'AutoDJ i els esdeveniments, mai indefinidament -->
   <dialog id="duration-dialog" class="ob-dialog">

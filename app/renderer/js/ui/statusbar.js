@@ -6,17 +6,21 @@ import { $, statusLabel } from './dom.js';
 
 /** @param {any} output  de output.get o output.changed (docs/protocol.md, 4.3) */
 export function renderOutput(output) {
+  // Només la icona amb color (D-168): el text, en passar-hi el ratolí i per als lectors de pantalla. Una sortida
+  // d'emergència o cap sortida també surt a la barra d'avisos, amb el text
   const target = $('status-output');
-  target.title = 'Clica per triar la sortida d\'àudio';
-  if (!output?.current) {
-    target.replaceChildren(statusLabel('text-danger', 'bi-volume-mute-fill', `Sense sortida d'àudio${output?.problem ? `: ${output.problem}` : ''}`));
-  } else if (output.emergency) {
-    target.replaceChildren(statusLabel('text-danger', 'bi-exclamation-triangle-fill', `Sortida d'emergència: ${output.current.name}`));
-    if (output.problem) target.title = `${output.problem}\nClica per triar la sortida d'àudio`;
-  } else {
-    target.replaceChildren(statusLabel('', 'bi-speaker-fill', `Sortida: ${output.current.name}`));
-    if (output.problem) target.title = `${output.problem}\nClica per triar la sortida d'àudio`;
-  }
+  /** @type {[string, string, string]} */
+  let [className, iconName, text] = ['text-success', 'bi-speaker-fill', `Sortida: ${output?.current?.name ?? ''}`];
+  if (!output?.current) [className, iconName, text] = ['text-danger', 'bi-volume-mute-fill', `Sense sortida d'àudio${output?.problem ? `: ${output.problem}` : ''}`];
+  else if (output.emergency) [className, iconName, text] = ['text-danger', 'bi-exclamation-triangle-fill', `Sortida d'emergència: ${output.current.name}`];
+  const i = document.createElement('i');
+  i.className = `bi ${iconName} ${className}`;
+  i.setAttribute('aria-hidden', 'true');
+  const hidden = document.createElement('span');
+  hidden.className = 'visually-hidden';
+  hidden.textContent = text;
+  target.replaceChildren(i, hidden);
+  target.title = `${text}${output?.problem && output?.current ? `\n${output.problem}` : ''}\nClica per canviar-la (⚙ Configuració → Sortida)`;
 }
 
 /** @param {any} nowPlaying  de nowplaying.get (docs/protocol.md, 4.6) */

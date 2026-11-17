@@ -14,7 +14,6 @@ import { renderOutput, renderNowPlaying } from './ui/statusbar.js';
 import { WarningsView } from './ui/warnings.js';
 import { LogView } from './ui/log-view.js';
 import { todayIso } from './event-form.js';
-import { openOutputPicker } from './ui/output-picker.js';
 import { CampaignsView } from './ui/campaigns.js';
 import { PlannerView } from './ui/planner.js';
 import { UpcomingEvents } from './ui/upcoming.js';
@@ -66,6 +65,7 @@ const openStation = (tab) => openSettingsDialog(send, {
   chooseFolder: (path) => bridge.chooseFolder(path),
   chooseBackup: () => bridge.chooseBackup(),
   showFile: (path) => bridge.showFile(path),
+  processor,
 }, session, tab);
 /**
  * @param {'programming' | 'certificate'} kind
@@ -100,12 +100,15 @@ function showStatus(state) {
   const s = STATUS[state];
   const el = $('engine-status');
   el.className = `engine-status ${s.css}`;
+  el.title = s.text; // només la icona (D-168): el text, en passar-hi el ratolí i per als lectors de pantalla
   el.innerHTML = '';
   const icon = document.createElement('i');
   icon.className = `bi ${s.icon}`;
+  icon.setAttribute('aria-hidden', 'true');
   const label = document.createElement('span');
+  label.className = 'visually-hidden';
   label.textContent = s.text;
-  el.append(icon, ' ', label);
+  el.append(icon, label);
 }
 
 /**
@@ -168,10 +171,11 @@ session.onChange((state) => {
   i.className = `bi ${iconName}`;
   i.setAttribute('aria-hidden', 'true');
   const label = document.createElement('span');
-  label.textContent = ` ${text}`;
+  label.className = 'visually-hidden'; // només la icona (D-168): el text, en passar-hi el ratolí
+  label.textContent = text;
   button.replaceChildren(i, label);
   button.className = `btn btn-sm btn-link topbar-session ${className}`;
-  button.title = title;
+  button.title = `${text}\n${title}`;
   // El registre: amb un altre rol hi surten (o no) els canvis i les sessions
   logView.refresh();
   // Les notes es desen soles mentre s'escriu: sense permís, només es poden llegir
@@ -212,7 +216,7 @@ const library = new LibraryView(send);
 queueView.acceptDrops(TRACK_DRAG_TYPE, (track, position) => library.add(track, position));
 const auxPlayers = new AuxPlayersView(send, TRACK_DRAG_TYPE);
 const notes = new NotesView(send);
-const processor = new ProcessorView(send);
+const processor = new ProcessorView(send, () => openStation('processor'));
 const folders = new FoldersView(send, (path) => bridge.chooseFolder(path));
 const rotationsView = new RotationsView(send);
 // El calendari d'una campanya (fase 4, pas 3d) és part de la pestanya Campanyes: «Calendari…» a l'editor l'obre i
@@ -368,19 +372,36 @@ async function refreshNowPlayingStatus() {
 
 // --- Pantalles: Emissió i Planificador (fase 2, pas 8a). L'emissió continua igual, es mostri la que es mostri. ---
 
-/** @param {'emissio' | 'planificador' | 'biblioteca' | 'rotacions' | 'campanyes' | 'historial' | 'calendari' | 'calendari-campanya'} name */
+/** A quina pestanya de dalt pertany cada pantalla (D-168): Pistes té la biblioteca i l'historial; «Més», la resta. */
+const TOP_TAB = /** @type {const} */ ({
+  emissio: 'emissio', planificador: 'planificador', biblioteca: 'biblioteca', historial: 'biblioteca', calendari: 'biblioteca',
+  rotacions: 'mes', campanyes: 'mes', 'calendari-campanya': 'mes', registre: 'mes',
+});
+/** El nom i la icona del botó «Més» mentre es veu una de les seves pantalles. */
+const MORE_LABELS = /** @type {Record<string, [string, string]>} */ ({
+  rotacions: ['Rotacions', 'bi-arrow-repeat'], campanyes: ['Campanyes', 'bi-megaphone'],
+  'calendari-campanya': ['Campanyes', 'bi-megaphone'], registre: ['Registre', 'bi-journal-text'],
+});
+
+/** @param {keyof typeof TOP_TAB} name */
 function showView(name) {
-  for (const view of /** @type {const} */ (['emissio', 'planificador', 'biblioteca', 'rotacions', 'campanyes', 'historial', 'registre', 'calendari', 'calendari-campanya'])) {
-    const active = view === name;
-    $(`view-${view}`).classList.toggle('d-none', !active);
-    // Els calendaris no tenen pestanya: són part de Pistes (D-113) i de Campanyes (pas 3d), que continuen marcades
-    if (view === 'calendari' || view === 'calendari-campanya') continue;
-    const tab = $(`nav-${view}`);
-    const current = active || (view === 'biblioteca' && name === 'calendari') || (view === 'campanyes' && name === 'calendari-campanya');
-    tab.classList.toggle('active', current);
-    if (current) tab.setAttribute('aria-current', 'page');
-    else tab.removeAttribute('aria-current');
+  for (const view of /** @type {(keyof typeof TOP_TAB)[]} */ (Object.keys(TOP_TAB))) {
+    $(`view-${view}`).classList.toggle('d-none', view !== name);
   }
+  // Les pestanyes de dalt (els calendaris no en tenen: són part de Pistes, D-113, i de Campanyes, pas 3d)
+  for (const tab of ['emissio', 'planificador', 'biblioteca', 'mes']) {
+    const current = TOP_TAB[name] === tab;
+    $(`nav-${tab}`).classList.toggle('active', current);
+    if (current) $(`nav-${tab}`).setAttribute('aria-current', 'page');
+    else $(`nav-${tab}`).removeAttribute('aria-current');
+  }
+  const [moreLabel, moreIcon] = MORE_LABELS[name] ?? ['Més', 'bi-three-dots'];
+  $('nav-mes-label').textContent = moreLabel;
+  $('nav-mes-icon').className = `bi ${moreIcon}`;
+  // Pistes: les subpestanyes Biblioteca i Historial
+  $('subnav-pistes').classList.toggle('d-none', TOP_TAB[name] !== 'biblioteca');
+  $('sub-biblioteca').classList.toggle('active', name !== 'historial');
+  $('sub-historial').classList.toggle('active', name === 'historial');
   if (name === 'planificador') planner.show();
   else planner.hide();
   if (name === 'biblioteca') trackManager.show();
@@ -401,16 +422,40 @@ function showView(name) {
 $('nav-emissio').addEventListener('click', () => showView('emissio'));
 $('nav-planificador').addEventListener('click', () => showView('planificador'));
 $('nav-biblioteca').addEventListener('click', () => showView('biblioteca'));
-$('nav-rotacions').addEventListener('click', () => showView('rotacions'));
-$('nav-campanyes').addEventListener('click', () => showView('campanyes'));
-$('nav-historial').addEventListener('click', () => showView('historial'));
-$('nav-registre').addEventListener('click', () => showView('registre'));
+$('sub-biblioteca').addEventListener('click', () => showView('biblioteca'));
+$('sub-historial').addEventListener('click', () => showView('historial'));
+
+// El menú «Més» (D-168): s'obre i es tanca amb el botó; es tanca en triar, en fer clic a fora o amb Esc
+const moreMenu = $('menu-mes');
+/** @param {boolean} open */
+const setMoreOpen = (open) => {
+  moreMenu.classList.toggle('d-none', !open);
+  $('nav-mes').setAttribute('aria-expanded', String(open));
+  if (open) /** @type {HTMLElement | null} */ (moreMenu.querySelector('.more-item'))?.focus();
+};
+$('nav-mes').addEventListener('click', () => setMoreOpen(moreMenu.classList.contains('d-none')));
+moreMenu.addEventListener('click', (e) => {
+  const item = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('.more-item'));
+  if (!item) return;
+  setMoreOpen(false);
+  if (item.dataset.view) showView(/** @type {keyof typeof TOP_TAB} */ (item.dataset.view));
+});
+$('menu-settings').addEventListener('click', () => openStation());
+document.addEventListener('pointerdown', (e) => {
+  if (!moreMenu.classList.contains('d-none') && !/** @type {HTMLElement} */ (e.target).closest('.more-wrap')) setMoreOpen(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !moreMenu.classList.contains('d-none')) {
+    setMoreOpen(false);
+    $('nav-mes').focus();
+  }
+});
 $('btn-history-all').addEventListener('click', (ev) => {
   ev.stopPropagation(); // no plega el requadre
   showView('historial');
 });
-$('btn-station').addEventListener('click', () => openStation());
-// ⚙ Configuració és de l'administrador (si hi ha usuaris): el clic demana la sessió (session.js, data-needs)
+// ⚙ Configuració és al menú «Més» (D-168): l'administrador hi veu totes les pestanyes; l'operador i el programador, només
+// la sortida d'àudio. Sense sessió, el clic la demana (session.js, data-needs)
 
 // Saltar a la següent: interromp la cançó, per tant demana confirmació
 // «Regenera la cua» (D-034): només canvia les pistes que ha posat l'AutoDJ i no interromp res, per això no demana confirmació
@@ -468,7 +513,7 @@ $('btn-pause').addEventListener('click', async () => {
 });
 
 // Triar la sortida d'àudio, en clicar-la a la barra de sota (D-120)
-$('status-output').addEventListener('click', () => openOutputPicker(send));
+$('status-output').addEventListener('click', () => openStation('output'));
 
 // En clicar la X (D-054, D-162): es tanca la finestra i l'emissió continua. El motor no s'atura mai des de la interfície
 // de l'emissora; només en desenvolupament hi ha «Atura el motor i tanca» (i, sense connexió amb el motor, no es pot triar).

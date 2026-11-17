@@ -1,9 +1,9 @@
 // @ts-check
-// Triar la sortida d'àudio des de la barra d'estat (D-120). El motor ja ho sap fer en calent (output.set, D-038):
-// tanca la sortida d'ara i obre la nova. Talla l'emissió un instant, per això es demana confirmació.
+// ⚙ Configuració → pestanya «Sortida d'àudio» (D-120; abans, una finestra des de la barra d'estat; D-168). El motor ja ho
+// sap fer en calent (output.set, D-038): tanca la sortida d'ara i obre la nova. Talla l'emissió un instant, per això es
+// demana confirmació. La pot canviar l'operador (D-164): és l'única pestanya de ⚙ que veu.
 
 import { el, icon } from './dom.js';
-import { formDialog } from './form-dialog.js';
 import { confirmAction } from './confirm.js';
 
 const CONNECTORS = /** @type {Record<string, string>} */ ({
@@ -20,21 +20,17 @@ const STATUSES = /** @type {Record<string, string>} */ ({
 });
 
 /**
- * Obre la finestra per triar la sortida i, si se'n tria una altra i es confirma, hi passa.
+ * La pestanya: les sortides (la d'ara i la configurada marcades), «Mostra també les desactivades…» i «Canvia la
+ * sortida», que hi passa de seguida (amb confirmació), sense esperar el «Desa» de la finestra.
  * @param {(cmd: string, params?: any) => Promise<any>} send
+ * @returns {HTMLElement}
  */
-export async function openOutputPicker(send) {
+export function outputPanel(send) {
   /** @type {any} */
-  let output;
-  try {
-    output = (await send('output.get')).output;
-  } catch (err) {
-    await confirmAction({ title: 'No es pot triar la sortida', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
-    return;
-  }
-
+  let output = null;
   /** @type {string | null} */
-  let chosen = output.current?.id ?? null;
+  let chosen = null;
+  const warning = el('div', 'alert alert-danger py-2 d-none');
   const list = el('div', 'op-list');
   list.setAttribute('role', 'radiogroup');
   const showAll = /** @type {HTMLInputElement} */ (el('input', 'form-check-input'));
@@ -44,18 +40,31 @@ export async function openOutputPicker(send) {
   showAllLabel.htmlFor = showAll.id;
   const showAllBox = el('div', 'form-check mt-2');
   showAllBox.append(showAll, showAllLabel);
+  const change = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-primary mt-2'));
+  change.type = 'button';
+  change.append(icon('bi-arrow-left-right'), ' Canvia la sortida');
+  change.disabled = true;
+  change.dataset.needs = 'operator';
 
   const fill = async () => {
     list.replaceChildren(el('div', 'text-body-secondary', 'Carregant…'));
     /** @type {any[]} */
     let devices;
     try {
+      output = (await send('output.get')).output;
       devices = (await send('devices.list', { kind: 'output', includeInactive: showAll.checked })).devices;
     } catch (err) {
       list.replaceChildren(el('div', 'text-danger', `No s'han pogut llegir les sortides: ${/** @type {Error} */ (err).message}`));
       return;
     }
-    list.replaceChildren(...devices.map((device) => deviceRow(device, output, chosen, (id) => { chosen = id; })));
+    chosen = output.current?.id ?? null;
+    change.disabled = true;
+    warning.classList.toggle('d-none', !(output.emergency && output.problem));
+    warning.replaceChildren(icon('bi-exclamation-triangle-fill'), ' ', el('span', '', output.problem ?? ''));
+    list.replaceChildren(...devices.map((device) => deviceRow(device, output, chosen, (id) => {
+      chosen = id;
+      change.disabled = id === output.current?.id;
+    })));
     if (devices.length === 0) list.append(el('div', 'text-body-secondary', 'Windows no té cap sortida d\'àudio.'));
     // La configurada que no hi és (per això s'emet per la d'emergència)
     if (output.configured?.id && !devices.some((d) => d.id === output.configured.id)) {
@@ -66,38 +75,28 @@ export async function openOutputPicker(send) {
   };
   showAll.addEventListener('change', fill);
 
-  /** @type {HTMLElement[]} */
-  const body = [];
-  if (output.emergency && output.problem) {
-    const warning = el('div', 'alert alert-danger py-2');
-    warning.append(icon('bi-exclamation-triangle-fill'), ' ', el('span', '', output.problem));
-    body.push(warning);
-  }
-  body.push(list, showAllBox);
+  change.addEventListener('click', async () => {
+    if (!chosen || chosen === output?.current?.id) return;
+    const name = /** @type {HTMLElement | null} */ (list.querySelector(`[data-id="${CSS.escape(chosen)}"]`))?.dataset.name ?? chosen;
+    const sure = await confirmAction({
+      title: 'Canviar la sortida d\'àudio?',
+      message: `L'emissió passarà a sortir per «${name}». El so es tallarà un instant mentre es canvia de targeta.`,
+      confirm: 'Canvia la sortida',
+    });
+    if (!sure) return;
+    try {
+      await send('output.set', { deviceId: chosen });
+    } catch (err) {
+      await confirmAction({ title: 'No s\'ha pogut canviar la sortida', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
+    }
+    await fill();
+  });
+
   fill();
-
-  const ok = await formDialog({
-    title: 'Sortida d\'àudio',
-    icon: 'bi-speaker-fill',
-    message: 'Per on surt l\'emissió cap a la taula. Canviar-la talla el so un instant.',
-    body,
-    confirm: 'Canvia la sortida',
-    wide: true,
-  });
-  if (!ok || !chosen || chosen === output.current?.id) return;
-
-  const name = /** @type {HTMLElement | null} */ (list.querySelector(`[data-id="${CSS.escape(chosen)}"]`))?.dataset.name ?? chosen;
-  const sure = await confirmAction({
-    title: 'Canviar la sortida d\'àudio?',
-    message: `L'emissió passarà a sortir per «${name}». El so es tallarà un instant mentre es canvia de targeta.`,
-    confirm: 'Canvia la sortida',
-  });
-  if (!sure) return;
-  try {
-    await send('output.set', { deviceId: chosen });
-  } catch (err) {
-    await confirmAction({ title: 'No s\'ha pogut canviar la sortida', message: /** @type {Error} */ (err).message, confirm: 'D\'acord', info: true });
-  }
+  const element = el('div', 'cfg-output');
+  element.append(el('div', 'form-text mt-0 mb-2', 'Per on surt l\'emissió cap a la taula. Canviar-la talla el so un instant. Es desa en canviar-la.'),
+    warning, list, showAllBox, change);
+  return element;
 }
 
 /**
