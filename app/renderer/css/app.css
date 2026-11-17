@@ -5,6 +5,7 @@
   --ob-bg: #121417;
   --ob-panel: #191c20;
   --ob-border: #2a2e34;
+  --ob-window-edge: #3c3f44; /* la vora de la finestra (la de dalt, a .topbar; les altres les dibuixa Windows) */
   --ob-muted: #8b929b;
   --ob-mix: #f0b44c;        /* punt de mescla (com a la maqueta) */
   --ob-ok: #4cc38a;
@@ -32,6 +33,8 @@ body {
   align-items: center;
   gap: 1.5rem;
   padding: 0.5rem 1rem;
+  /* La vora de dalt: sense la barra de títol de Windows, la finestra no en té; és la de les altres vores */
+  border-top: 1px solid var(--ob-window-edge);
   border-bottom: 1px solid var(--ob-border);
   white-space: nowrap;
   /* Fa de barra de títol (js/ui/window-frame.js): s'hi arrossega la finestra (doble clic = maximitzar),
@@ -51,11 +54,11 @@ body {
 .zoom-indicator {
   color: var(--ob-muted);
   font-size: 0.85rem;
-  visibility: hidden;
+  display: none; /* amagat, no ocupa lloc entre la sessió i l'estat del motor */
 }
 
 .zoom-indicator.visible {
-  visibility: visible;
+  display: inline;
 }
 
 .brand {
@@ -3970,8 +3973,15 @@ button.pl-chip.is-off {
 
 /* ⚙ a la capçalera: les dades de l'emissora */
 /* Usuaris i sessió (fase 5, pas 8b; D-164): el botó de la sessió, a la dreta, abans de ⚙ */
-.topbar-session {
+/* La sessió, el zoom i l'estat del motor, a la dreta i junts (D-168) */
+.topbar-right {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.topbar-session {
   padding: 0.15rem 0.4rem;
   font-size: 1.1rem;
   text-decoration: none;

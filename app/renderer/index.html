@@ -30,12 +30,15 @@
         </div>
       </div>
     </nav>
-    <button id="btn-session" class="btn btn-sm btn-link topbar-session" type="button"><i class="bi bi-hourglass-split" aria-hidden="true"></i></button>
-    <span id="zoom-indicator" class="zoom-indicator" aria-live="polite"></span>
-    <span id="engine-status" class="engine-status status-connecting" role="status">
-      <i class="bi bi-hourglass-split"></i>
-      <span class="label">Connectant amb el motor…</span>
-    </span>
+    <!-- A la dreta, juntes: la sessió, el zoom i l'estat del motor -->
+    <div class="topbar-right">
+      <button id="btn-session" class="btn btn-sm btn-link topbar-session" type="button"><i class="bi bi-hourglass-split" aria-hidden="true"></i></button>
+      <span id="zoom-indicator" class="zoom-indicator" aria-live="polite"></span>
+      <span id="engine-status" class="engine-status status-connecting" role="status">
+        <i class="bi bi-hourglass-split"></i>
+        <span class="label">Connectant amb el motor…</span>
+      </span>
+    </div>
   </header>
 
   <!-- Sense connexió amb el motor: es torna a provar sol; també es pot arrencar a mà. -->
