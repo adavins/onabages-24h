@@ -50,7 +50,26 @@ A Ona Bages 24h, una acció pròpia:
   - Sense aquesta opció, val el comportament anterior: si cau, se salta a la pista següent (adequat per als butlletins curts).
 - **Streams a la cua i a les rotacions:** les mateixes regles valen per a una pista de tipus Stream posada a mà a la cua o per l'AutoDJ. La fitxa de la pista té la durada màxima i l'opció de silenci; l'acció `STREAM` pot sobreescriure-les.
 - RadioDJ ara no resol cap d'aquests casos.
-- Les dades del stream (nom, títol) es poden passar a l'exportació del títol per a BUTT.
+- Les dades del stream (nom, títol) es poden passar a l'exportació del títol per a BUTT: opció «Envia el títol del stream a BUTT» de l'acció `STREAM` (D-182).
+
+#### Retard dels streams i com reduir-lo (fase 2, pas 7e; D-183)
+
+El que sona per un stream arriba amb retard respecte de l'origen. Té dues parts, i només una depèn d'aquesta aplicació.
+
+**1. La ràfega del servidor (en connectar-s'hi).** Quan algú es connecta a un Shoutcast o a un Icecast, el servidor li envia de cop els últims segons que té guardats, perquè el reproductor comenci sense talls. Un reproductor normal els fa sonar i, per tant, va tants segons tard. A «Ona Bages directe» (Shoutcast DNAS 2.6.1 a `centauri.shoutca.st`) la ràfega és de **6 a 8 s** (mesurada el 17 i el 18-11-2026 amb `prova-stream`); a Ràdio Sant Fruitós, de 4 s; a La Xarxa, de 2,5 s.
+- **Aquí ja està resolt:** amb «Comença pel directe» (activat per defecte, D-176) el motor llença la ràfega i comença pel més recent, amb un marge d'1,5 s. No cal tocar el servidor perquè els streams sonin amb poc retard al PC 24h.
+- **Al servidor** (només afecta els oients d'internet, que reben la ràfega): al Shoutcast DNAS 2, la mida la decideix la memòria del servidor, a `sc_serv.conf`, secció «Network Buffers»: `buffertype` (1 = adaptativa, per defecte), `adaptivebuffersize` (segons; per defecte 5) i, si és fixa (`buffertype=0`), `fixedbuffersize` (bytes; per defecte 1.048.576, que a 256 kbps són uns 32 s). El DNAS 2 no té una opció de «mida de la ràfega» a part. Com que el servidor és d'un proveïdor, el canvi s'ha de demanar al proveïdor o fer-lo al seu tauler, si ho permet. Una memòria més petita (p. ex. `adaptivebuffersize=2`) vol dir menys retard per als oients, però més talls als que tenen una connexió dolenta: **no es recomana tocar-la** si només es vol reduir el retard al PC 24h.
+
+**2. El camí de l'àudio (sempre).** Des de la taula de l'origen fins a la sortida del PC 24h: la memòria de BUTT, el codificador MP3, la xarxa i el marge del motor.
+- **BUTT:** la memòria d'àudio no surt a la pantalla de configuració des de la versió 0.1.21. És al fitxer de configuració de BUTT (a Windows, normalment `buttrc` a la carpeta `%APPDATA%`; s'edita amb BUTT tancat), secció `[audio]`, clau `buffer_ms`, i per defecte és de **50 ms**. Si aquest valor és més gran, es pot tornar a 50; no cal baixar-lo més (per sota hi ha risc de talls a l'emissió). Amb el valor per defecte, BUTT afegeix menys d'un quart de segon, comptant-hi el codificador.
+- **Xarxa i servidor:** un oient que ja està connectat rep l'àudio tan bon punt el servidor el rep de BUTT; el servidor no hi afegeix retard (la ràfega només és en connectar-se).
+- **Motor:** el marge de «Comença pel directe», 1,5 s, i la latència de la sortida (uns 120 ms, la diu el registre en arrencar).
+
+**En resum:** amb «Comença pel directe», un directe d'Ona Bages arriba al PC 24h amb uns 2 s de retard; quasi tot és el marge del motor, que evita talls si la xarxa va a batzegades. El retard de l'origen que no es pot treure (p. ex. un butlletí que surt de l'emissora d'origen amb uns segons de retard) es compensa amb el **retard de connexió** de l'acció `STREAM` (D-178).
+
+**Com comprovar-ho:**
+- `prova-stream ADREÇA` (o a la consola, Diagnòstic → a) diu la ràfega del servidor. Si algun dia es canvia la memòria del servidor, ha de sortir més petita.
+- Per mesurar el retard sencer d'origen a sortida, a l'emissora d'origen es diu una paraula fàcil de reconèixer (o es fa un cop de mans) mentre se n'escolta la sortida del PC 24h per telèfon o per l'escriptori remot, i es compta el temps; o es compara la gravació de l'origen amb la de la sortida.
 
 ### 2.3. Supervisió i avisos per correu
 Ara hi ha un detector de silencis amb avís per correu, però no hi ha manera de detectar que RadioDJ s'ha encallat en una pista sense generar silenci. Hi ha un programa extern que ho intenta mirant MySQL, però no està activat.
