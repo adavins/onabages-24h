@@ -645,6 +645,20 @@ export class EventEditor {
         this.#restructured();
       }));
     }
+    if (action.type === 'TITOL') {
+      // Títol fix per a BUTT (D-184): el text i quant dura, des de l'hora de l'esdeveniment
+      li.append(
+        this.#textField('Text per a BUTT', p.text ?? '', (v) => {
+          p.text = v.trim();
+          action.label = p.text ? `Títol per a BUTT «${p.text}»` : 'Títol per a BUTT';
+        }, { maxlength: '200', placeholder: 'P. ex. Esport i Punt' }),
+        this.#textField('Durada (min)', secondsToMinutes(p.durada_seg), (v) => {
+          const seconds = minutesToSeconds(v);
+          if (seconds == null) delete p.durada_seg;
+          else p.durada_seg = seconds;
+        }, { inputmode: 'decimal' }, 'Des de l\'hora de l\'esdeveniment, BUTT envia aquest text i no els títols del que sona (d\'1 minut a 24 hores). Després torna sol el títol del que sona.'),
+      );
+    }
     if (action.type === 'STREAM') {
       if (p.songId == null) {
         // Esdeveniments d'abans (D-108): l'adreça escrita a mà. Els nous trien el stream de la biblioteca
@@ -795,6 +809,9 @@ export class EventEditor {
       }
       case 'AUTODJ':
         push({ type, params: { actiu: true }, label: 'Activa l\'AutoDJ' });
+        break;
+      case 'TITOL':
+        push({ type, params: { text: '', durada_seg: 3600 }, label: 'Títol per a BUTT', detail: '1 h 00 min' });
         break;
       case 'BOSSA': {
         const first = this.#bags[0];
@@ -1288,7 +1305,7 @@ function campaignDetail(c) {
 /** El desplegable «Afegeix» de les accions. */
 const ADD_TYPES = [
   ['PISTA', 'Pista'], ['CAMPANYA', 'Campanya'], ['AUXILIAR', 'Auxiliar'], ['ROTACIO', 'Rotació'], ['AUTODJ', 'AutoDJ'],
-  ['SWEEPERS', 'Sweepers'], ['BOSSA', 'Bossa'], // els streams, com a pista (D-109)
+  ['SWEEPERS', 'Sweepers'], ['BOSSA', 'Bossa'], ['TITOL', 'Títol per a BUTT'], // els streams, com a pista (D-109)
 ];
 
 /** Què fa cada tipus d'acció, en una frase (a sota del desplegable). */
@@ -1300,11 +1317,12 @@ const ADD_HELP = {
   AUTODJ: 'Activa o atura l\'AutoDJ.',
   SWEEPERS: 'Canvia la categoria de sweepers del trepitjador (sonen a sobre de l\'inici de les cançons).',
   BOSSA: 'Canvia la subcategoria d\'una bossa amb nom (p. ex. el dia 1 de cada mes).',
+  TITOL: 'Un text fix per a BUTT durant una estona (p. ex. el nom d\'un directe que no surt de la cua). Normalment, en un esdeveniment SISTEMA.',
 };
 
 const ACTION_NAMES = {
   PISTA: 'Pista', AUXILIAR: 'Auxiliar', ROTACIO: 'Rotació', AUTODJ: 'AutoDJ', STREAM: 'Stream', SWEEPERS: 'Sweepers', BOSSA: 'Bossa',
-  CAMPANYA: 'Campanya', PLANTILLA: 'Plantilla', ESPERA: 'Espera', ATURA: 'Atura', ENTRADA: 'Entrada', EXECUTA: 'Executa', REPRODUEIX: 'Reprodueix',
+  CAMPANYA: 'Campanya', TITOL: 'Títol per a BUTT', PLANTILLA: 'Plantilla', ESPERA: 'Espera', ATURA: 'Atura', ENTRADA: 'Entrada', EXECUTA: 'Executa', REPRODUEIX: 'Reprodueix',
 };
 
 /** @param {string} value @param {string} text */

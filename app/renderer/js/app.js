@@ -11,6 +11,7 @@ import { NowPlaying } from './ui/now-playing.js';
 import { QueueView, HistoryView } from './ui/queue.js';
 import { AutoDjView } from './ui/autodj.js';
 import { renderOutput, renderNowPlaying } from './ui/statusbar.js';
+import { openFixedTitle } from './ui/fixed-title.js';
 import { WarningsView } from './ui/warnings.js';
 import { LogView } from './ui/log-view.js';
 import { todayIso } from './event-form.js';
@@ -364,12 +365,24 @@ function showOutput(output) {
   renderOutput(output);
 }
 
+/** L'últim estat del títol per a BUTT (per obrir el diàleg del títol fix amb el que hi ha). @type {any} */
+let lastNowPlaying = null;
+
 async function refreshNowPlayingStatus() {
   try {
     const nowPlaying = (await send('nowplaying.get')).nowPlaying;
+    lastNowPlaying = nowPlaying;
     renderNowPlaying(nowPlaying);
   } catch { /* sense connexió: ja ho diu la capçalera */ }
 }
+
+// Títol fix per a BUTT (D-184): des de la barra d'estat
+$('status-butt').addEventListener('click', async () => {
+  const changed = await openFixedTitle(lastNowPlaying, send);
+  if (!changed) return;
+  lastNowPlaying = changed;
+  renderNowPlaying(changed);
+});
 
 // --- Pantalles: Emissió i Planificador (fase 2, pas 8a). L'emissió continua igual, es mostri la que es mostri. ---
 

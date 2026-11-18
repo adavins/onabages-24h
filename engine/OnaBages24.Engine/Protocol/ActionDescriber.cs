@@ -38,6 +38,9 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations, Camp
                     "Categoria de sweepers (trepitjador)", false, null),
                 EventActionType.Bag => new ActionInfo(BagLabel(Long(p, "bossaId"), Long(p, "subcategoriaId")), "Canvia la bossa", false, null),
                 EventActionType.Campaign => CampaignInfo(Long(p, "campanyaId")),
+                EventActionType.Title => new ActionInfo(
+                    String(p, "text") is { Length: > 0 } text ? $"Títol per a BUTT «{text}»" : "Títol per a BUTT sense text",
+                    Long(p, "durada_seg") is { } seconds ? Duration(seconds * 1000) : "sense durada", false, null),
                 EventActionType.AutoDj => new ActionInfo(
                     p.TryGetProperty("actiu", out var on) && on.ValueKind == JsonValueKind.False ? "Atura l'AutoDJ" : "Activa l'AutoDJ", null, false, null),
                 _ => new ActionInfo(Events.ActionTypeText(action.Type), "encara no fa res", false, null),

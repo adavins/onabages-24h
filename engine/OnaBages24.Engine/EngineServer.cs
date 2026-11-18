@@ -207,6 +207,18 @@ public static class EngineServer
         using var nowPlaying = new NowPlaying(queue, Path.Combine(RuntimeFile.DirectoryPath, "NowPlaying.txt"),
             ReadNowPlayingSettings(library, log), log);
         log.LogInformation("Títol per a BUTT: {State} {Path}", nowPlaying.Settings.Enabled ? "s'escriu a" : "desactivat;", nowPlaying.FilePath);
+        // Títol fix (D-184): es desa cada vegada que canvia i, si el motor s'ha reiniciat a mig programa, es recupera
+        try
+        {
+            if (library.GetSetting(FixedTitleSettingKey) is { } savedFixed && FixedTitle.FromJson(savedFixed) is { } fixedTitle)
+                nowPlaying.Restore(fixedTitle);
+        }
+        catch (DatabaseException ex) { log.LogWarning("No s'ha pogut llegir el títol fix per a BUTT: {Message}", ex.Message); }
+        nowPlaying.FixedChanged += title =>
+        {
+            try { library.SetSetting(FixedTitleSettingKey, title?.ToJson() ?? "null"); }
+            catch (DatabaseException ex) { log.LogWarning("No s'ha pogut desar el títol fix per a BUTT: {Message}", ex.Message); }
+        };
 
         // Planificador (fase 2, pas 3; D-008): al fil de control, amb el rellotge del motor. Si un esdeveniment canvia la
         // rotació, es desa com amb autodj.set, perquè es mantingui si el motor es reinicia (D-053).
@@ -226,7 +238,8 @@ public static class EngineServer
         RecalculatePlans();
         // TALLA a la mostra exacta (fase 2, pas 4): l'hora es converteix en el fotograma que sonarà, amb el rellotge de mostres
         var executor = new Scheduling.EventExecutor(library, queue, autoDj, rotationId =>
-            library.SetSetting(CommandRouter.AutoDjSettingKey, System.Text.Json.JsonSerializer.Serialize(new { rotationId })), sampleClock, aux, campaignPlans);
+            library.SetSetting(CommandRouter.AutoDjSettingKey, System.Text.Json.JsonSerializer.Serialize(new { rotationId })), sampleClock, aux, campaignPlans,
+            nowPlaying);
         var scheduler = new Scheduling.Scheduler(events, executor, log);
         scheduler.Fired += record =>
         {
@@ -764,6 +777,8 @@ public static class EngineServer
 
     /// <summary>Clau de la configuració amb la categoria de sweepers del trepitjador: <c>{ "subcategoryId": 55 }</c>.</summary>
     internal const string SweepersSettingKey = "sweepers";
+    /// <summary>Clau de la configuració on es desa el títol fix per a BUTT (D-184).</summary>
+    internal const string FixedTitleSettingKey = "nowplaying.fixed";
 
     /// <summary>
     /// La categoria de sweepers en arrencar el motor (fase 3, pas 5): la desada. Si no n'hi ha cap (primera vegada), cap:

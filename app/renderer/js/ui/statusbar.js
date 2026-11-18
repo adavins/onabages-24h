@@ -27,8 +27,14 @@ export function renderOutput(output) {
 export function renderNowPlaying(nowPlaying) {
   const target = $('status-butt');
   target.title = nowPlaying?.path ?? '';
+  const click = '\nClica per posar o treure un títol fix.';
   if (!nowPlaying) {
     target.replaceChildren();
+  } else if (nowPlaying.fixed && nowPlaying.enabled && !nowPlaying.problem) {
+    // Títol fix (D-184): es veu diferent, amb l'hora de final
+    const until = new Date(nowPlaying.fixed.until).toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit' });
+    target.replaceChildren(statusLabel('text-warning', 'bi-pin-angle-fill', `Títol fix: «${nowPlaying.fixed.text}» fins a les ${until}`));
+    target.title = `Títol per a BUTT fix fins a les ${until}${nowPlaying.fixed.eventName ? ` (esdeveniment «${nowPlaying.fixed.eventName}»)` : ' (posat a mà)'}. Després torna sol el títol del que sona.${click}`;
   } else if (!nowPlaying.enabled) {
     target.replaceChildren(statusLabel('text-body-secondary', 'bi-slash-circle', 'BUTT: desactivat'));
     target.title = 'Títol per a BUTT: desactivat';
@@ -38,7 +44,7 @@ export function renderNowPlaying(nowPlaying) {
   } else if (nowPlaying.text) {
     // El que sona, amb una icona de play (el que rep BUTT); la ruta del fitxer, en passar-hi el ratolí
     target.replaceChildren(statusLabel('', 'bi-play-fill', nowPlaying.text));
-    target.title = `Títol per a BUTT: ${nowPlaying.text}${nowPlaying.path ? `\n${nowPlaying.path}` : ''}`;
+    target.title = `Títol per a BUTT: ${nowPlaying.text}${nowPlaying.path ? `\n${nowPlaying.path}` : ''}${click}`;
   } else {
     target.replaceChildren(statusLabel('text-body-secondary', 'bi-play', 'Encara no hi ha cap títol'));
     target.title = 'Títol per a BUTT: encara no n\'hi ha cap';

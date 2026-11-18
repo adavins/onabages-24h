@@ -343,6 +343,13 @@ public static class QueueJson
         ["types"] = new JsonArray(nowPlaying.Settings.Types.Select(t => (JsonNode)Type(t)).ToArray()),
         ["text"] = nowPlaying.Text,
         ["problem"] = nowPlaying.Problem,
+        // Títol fix (D-184): el text, fins quan i qui l'ha posat (l'esdeveniment, o null si s'ha posat a mà); null si no n'hi ha
+        ["fixed"] = nowPlaying.Fixed is { } f ? new JsonObject
+        {
+            ["text"] = f.Text,
+            ["until"] = f.Until.ToLocalTime().ToString("O"),
+            ["eventName"] = f.EventName,
+        } : null,
     };
 
     /// <summary>

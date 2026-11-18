@@ -60,6 +60,7 @@ public enum EventActionType
     Run,          // EXECUTA
     Play,         // REPRODUEIX
     Bag,          // BOSSA (fase 3, pas 8c; D-096): canvia la subcategoria d'una bossa amb nom
+    Title,        // TITOL (D-184): títol fix per a BUTT durant una estona
 }
 
 /// <summary>Resultat d'una execució, al registre (secció 3; D-057).</summary>
@@ -631,7 +632,7 @@ public sealed class Events(Database database)
         (EventActionType.Template, "PLANTILLA"), (EventActionType.Auxiliary, "AUXILIAR"), (EventActionType.Rotation, "ROTACIO"),
         (EventActionType.Sweepers, "SWEEPERS"), (EventActionType.AutoDj, "AUTODJ"), (EventActionType.Wait, "ESPERA"),
         (EventActionType.Stop, "ATURA"), (EventActionType.Input, "ENTRADA"), (EventActionType.Run, "EXECUTA"),
-        (EventActionType.Play, "REPRODUEIX"), (EventActionType.Bag, "BOSSA"),
+        (EventActionType.Play, "REPRODUEIX"), (EventActionType.Bag, "BOSSA"), (EventActionType.Title, "TITOL"),
     ];
 
     private static readonly (ExecutionResult Value, string Text)[] ResultNames =

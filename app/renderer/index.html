@@ -531,7 +531,8 @@
       <i class="bi bi-sliders2-vertical" aria-hidden="true"></i><span class="visually-hidden">Processador</span>
       <span class="reduction-bar" aria-hidden="true"><span id="status-processor-fill" class="reduction-fill"></span></span>
     </button>
-    <span id="status-butt"></span>
+    <!-- Títol per a BUTT: el que s'envia; el clic posa o treu un títol fix (D-184) -->
+    <button data-needs="operator" id="status-butt" class="btn btn-link statusbar-link" type="button"></button>
     <span id="status-events" class="status-events"></span>
     <!-- Tots els avisos junts, amb el color del més greu (D-146); en clicar-hi, la llista -->
     <button id="status-warnings" class="btn btn-link statusbar-button" type="button"></button>
@@ -770,6 +771,25 @@
       <div class="d-flex justify-content-end gap-2">
         <button class="btn btn-secondary" value="cancel" formnovalidate>Cancel·la</button>
         <button id="text-ok" class="btn btn-primary" value="ok"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Títol fix per a BUTT (D-184): un text fins a una hora, sigui quina sigui la cua -->
+  <dialog id="fixed-title-dialog" class="ob-dialog">
+    <form method="dialog">
+      <h2 class="h5"><i class="bi bi-pin-angle-fill" aria-hidden="true"></i> Títol fix per a BUTT</h2>
+      <p class="ob-dialog-message">Mentre dura, BUTT envia aquest text i no els títols del que sona (p. ex. durant un directe que no surt de la cua).</p>
+      <label for="fixed-title-text" class="form-label">Text</label>
+      <input id="fixed-title-text" class="form-control mb-3" type="text" maxlength="200" autocomplete="off" placeholder="P. ex. Esport i Punt">
+      <label for="fixed-title-time" class="form-label">Fins a les</label>
+      <input id="fixed-title-time" class="form-control mb-1" type="time">
+      <p id="fixed-title-until" class="form-text"></p>
+      <p id="fixed-title-error" class="text-danger d-none" role="alert"></p>
+      <div class="d-flex justify-content-end gap-2">
+        <button id="fixed-title-clear" class="btn btn-outline-warning me-auto d-none" value="clear">Treu el títol fix</button>
+        <button class="btn btn-secondary" value="cancel" formnovalidate>Cancel·la</button>
+        <button id="fixed-title-ok" class="btn btn-primary" value="ok">Posa el títol fix</button>
       </div>
     </form>
   </dialog>

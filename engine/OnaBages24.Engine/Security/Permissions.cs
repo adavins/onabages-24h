@@ -112,6 +112,8 @@ public static class Permissions
         ["mail.set"] = Admin("Ha canviat els avisos per correu"),
         ["mail.test"] = Admin(null),
         ["nowplaying.set"] = Admin("Ha canviat el títol per a BUTT"),
+        ["nowplaying.fixed.set"] = Operator("Ha posat un títol fix per a BUTT"),
+        ["nowplaying.fixed.clear"] = Operator("Ha tret el títol fix per a BUTT"),
         ["backups.list"] = Admin(null),
         ["backups.inspect"] = Admin(null),
         ["backups.create"] = Admin("Ha fet una còpia de seguretat"),

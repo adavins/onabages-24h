@@ -58,15 +58,18 @@ public sealed class EventExecutor
     private readonly SampleClock? clock;
     private readonly AuxPlayers? aux;
     private readonly CampaignPlans? campaigns;
+    private readonly NowPlaying? nowPlaying;
     /// <summary>L'esdeveniment que s'aplica ara (per dir a l'AutoDJ qui li ha canviat la rotació).</summary>
     private string currentEventName = "";
 
     /// <param name="clock">Rellotge de mostres per tallar a la mostra exacta. Sense, el TALLA talla en el moment de disparar-lo.</param>
     /// <param name="aux">Reproductors auxiliars (accions AUXILIAR). Sense, aquestes accions no es fan (avís al registre).</param>
     /// <param name="campaigns">Plans de les campanyes (accions CAMPANYA, fase 4, pas 3b). Sense, aquestes accions no es fan (avís al registre).</param>
+    /// <param name="nowPlaying">Títol per a BUTT (accions TITOL, D-184). Sense, aquestes accions no es fan (avís al registre).</param>
     public EventExecutor(Library library, QueuePlayer queue, AutoDj? autoDj, Action<long?>? rememberRotation = null, SampleClock? clock = null,
-        AuxPlayers? aux = null, CampaignPlans? campaigns = null)
+        AuxPlayers? aux = null, CampaignPlans? campaigns = null, NowPlaying? nowPlaying = null)
     {
+        this.nowPlaying = nowPlaying;
         this.campaigns = campaigns;
         this.library = library;
         this.queue = queue;
@@ -430,6 +433,7 @@ public sealed class EventExecutor
                 EventActionType.AutoDj => ChangeAutoDj(action),
                 EventActionType.Sweepers => ChangeSweepers(action),
                 EventActionType.Bag => ChangeBag(action),
+                EventActionType.Title => SetTitle(action, occurrence),
                 _ => (false, $"L'acció {Events.ActionTypeText(action.Type)} encara no està disponible: no s'ha fet."),
             };
             if (action.Type is EventActionType.Track or EventActionType.Auxiliary or EventActionType.Campaign or EventActionType.Stream) continue;
@@ -488,6 +492,27 @@ public sealed class EventExecutor
         if (!autoDj.SetBag(bag, sub, $"esdeveniment «{currentEventName}»"))
             return (false, $"La bossa {bag} o la subcategoria {sub} no existeixen: no s'ha canviat la bossa.");
         return (true, $"bossa {bag} → {library.SubcategoryName(sub)}");
+    }
+
+    /// <summary>
+    /// Acció TITOL (D-184): títol fix per a BUTT des de l'hora de l'esdeveniment durant <c>durada_seg</c> (p. ex. un directe
+    /// que no surt de la cua). Es desa: si el motor es reinicia a mig programa, es recupera.
+    /// </summary>
+    private (bool Ok, string Note) SetTitle(EventAction action, Occurrence occurrence)
+    {
+        if (nowPlaying is null) return (false, "No hi ha títol per a BUTT: no s'ha posat el títol fix.");
+        if (ReadString(action, "text") is not { } text || string.IsNullOrWhiteSpace(text)) return (false, "Una acció TITOL no diu el text.");
+        if (ReadLong(action, "durada_seg") is not { } seconds || seconds <= 0) return (false, "Una acció TITOL no diu quant dura (durada_seg).");
+        var until = occurrence.At + TimeSpan.FromSeconds(seconds);
+        try
+        {
+            var title = nowPlaying.SetFixed(text, until, currentEventName);
+            return (true, $"títol per a BUTT «{title.Text}» fins a les {until.ToLocalTime():HH:mm}");
+        }
+        catch (ArgumentException ex)
+        {
+            return (false, $"No s'ha posat el títol fix: {ex.Message}");
+        }
     }
 
     private (bool Ok, string Note) ChangeAutoDj(EventAction action)

@@ -51,11 +51,41 @@ public sealed record NowPlayingSettings
 }
 
 /// <summary>
+/// Títol fix per a BUTT (D-184): mentre dura (fins a <paramref name="Until"/>), <c>NowPlaying.txt</c> diu aquest text sigui quina
+/// sigui la cua. <paramref name="EventName"/>: l'esdeveniment que l'ha posat (acció <c>TITOL</c>), o null si s'ha posat a mà.
+/// </summary>
+public sealed record FixedTitle(string Text, DateTimeOffset Until, string? EventName)
+{
+    public const int MaxLength = 200;
+
+    public string ToJson() => JsonSerializer.Serialize(new { text = Text, until = Until.ToString("O"), eventName = EventName });
+
+    /// <summary>El títol fix desat (per recuperar-lo si el motor es reinicia), o null si no n'hi ha o no s'entén.</summary>
+    public static FixedTitle? FromJson(string json)
+    {
+        try
+        {
+            if (JsonNode.Parse(json) is not JsonObject node) return null;
+            if (node["text"]?.GetValue<string>() is not { } text || node["until"]?.GetValue<string>() is not { } until) return null;
+            return new FixedTitle(text, DateTimeOffset.Parse(until, System.Globalization.CultureInfo.InvariantCulture),
+                node["eventName"]?.GetValue<string>());
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+}
+
+/// <summary>
 /// Exporta el títol de la pista que sona a un fitxer de text (<c>NowPlaying.txt</c>), que llegeix BUTT per enviar-lo al
 /// servidor d'streaming (D-009). Substitueix el plugin «Playing Info» de RadioDJ.
 ///
 /// Un stream amb l'opció «títol per a BUTT» (fase 2, pas 7e; D-182): mentre sona, s'hi escriu el títol que envia el servidor
 /// (ICY), i cada vegada que canvia.
+///
+/// Títol fix (D-184): un text que mana sobre el de la cua fins a una hora (un directe que no surt de la cua, p. ex. «Esport i
+/// Punt»). Quan s'acaba, torna sol el títol del que sona. El posa l'acció <c>TITOL</c> del planificador o l'operador a mà.
 ///
 /// El text es prepara al fil de control (quan comença una pista) i el fitxer s'escriu en un fil propi: si el disc o la
 /// carpeta de xarxa tarda o falla, l'emissió no se n'assabenta. Si no es pot escriure (p. ex. BUTT el té obert just en
@@ -73,6 +103,8 @@ public sealed class NowPlaying : IDisposable
     private readonly Thread _worker;
     private QueueItem? _lastItem;
     private string? _streamTitle; // el títol del stream que s'ha escrit l'últim (D-182), o null
+    private string? _queueText;   // el títol del que sona (el que hi hauria sense el títol fix)
+    private FixedTitle? _fixed;   // el títol fix (D-184), o null
     private bool _dirty;
     private long _writes;
 
@@ -108,6 +140,76 @@ public sealed class NowPlaying : IDisposable
     /// <summary>Quantes vegades s'ha escrit el fitxer (per a les proves).</summary>
     public long Writes => Interlocked.Read(ref _writes);
 
+    /// <summary>El títol fix que mana ara (D-184), o null.</summary>
+    public FixedTitle? Fixed
+    {
+        get { lock (_sync) return _fixed; }
+    }
+
+    /// <summary>S'ha posat, s'ha tret o s'ha acabat el títol fix (null): per desar-lo. Pot arribar des del fil d'escriptura.</summary>
+    public event Action<FixedTitle?>? FixedChanged;
+
+    /// <summary>
+    /// Posa un títol fix (D-184) fins a <paramref name="until"/>: substitueix el que hi hagués. El text es deixa en una línia;
+    /// ha de tenir entre 1 i <see cref="FixedTitle.MaxLength"/> caràcters, i l'hora de final ha de ser més tard que ara.
+    /// </summary>
+    public FixedTitle SetFixed(string text, DateTimeOffset until, string? eventName)
+    {
+        string clean = OneLine(text ?? "");
+        if (clean.Length == 0) throw new ArgumentException("Cal escriure el text del títol fix.");
+        if (clean.Length > FixedTitle.MaxLength) throw new ArgumentException($"El títol fix pot tenir {FixedTitle.MaxLength} caràcters com a màxim.");
+        if (until <= DateTimeOffset.Now) throw new ArgumentException("L'hora de final del títol fix ja ha passat.");
+        var title = new FixedTitle(clean, until, eventName);
+        Apply(title);
+        _log.LogInformation("Títol per a BUTT fix: «{Text}» fins a les {Until:HH:mm} ({Who})", clean, until.ToLocalTime(),
+            eventName is null ? "posat a mà" : $"esdeveniment «{eventName}»");
+        FixedChanged?.Invoke(title);
+        return title;
+    }
+
+    /// <summary>Recupera el títol fix desat (el motor s'ha reiniciat a mig programa). Si ja s'ha acabat, no fa res.</summary>
+    public bool Restore(FixedTitle title)
+    {
+        if (title.Until <= DateTimeOffset.Now || string.IsNullOrWhiteSpace(title.Text)) return false;
+        Apply(title with { Text = OneLine(title.Text) });
+        _log.LogInformation("Títol per a BUTT fix recuperat: «{Text}» fins a les {Until:HH:mm}", title.Text, title.Until.ToLocalTime());
+        return true;
+    }
+
+    /// <summary>Treu el títol fix (a mà): torna el títol del que sona. Retorna false si no n'hi havia cap.</summary>
+    public bool ClearFixed()
+    {
+        FixedTitle? old;
+        lock (_sync)
+        {
+            old = _fixed;
+            if (old is null) return false;
+            EndFixedLocked();
+        }
+        _log.LogInformation("Títol per a BUTT: s'ha tret el títol fix «{Text}»; torna el del que sona", old.Text);
+        FixedChanged?.Invoke(null);
+        return true;
+    }
+
+    private void Apply(FixedTitle title)
+    {
+        lock (_sync)
+        {
+            _fixed = title;
+            Text = title.Text;
+            if (Settings.Enabled) MarkDirty();
+            else if (_wake.CurrentCount == 0) _wake.Release(); // perquè el fil d'escriptura sàpiga quan s'acaba
+        }
+    }
+
+    /// <summary>S'acaba el títol fix: torna el del que sona (si encara no ha sonat res, el fitxer es queda com està). Dins del bloqueig.</summary>
+    private void EndFixedLocked()
+    {
+        _fixed = null;
+        Text = _queueText;
+        if (Settings.Enabled && Text is not null) MarkDirty();
+    }
+
     /// <summary>Una pista comença a sonar: si és d'un tipus que s'exporta, se n'escriu el títol.</summary>
     public void Show(QueueItem item)
     {
@@ -116,7 +218,9 @@ public sealed class NowPlaying : IDisposable
             if (!Settings.Types.Contains(item.Type)) return;
             _lastItem = item;
             _streamTitle = null;
-            Text = Format(Settings.Template, item.Artist, item.Title);
+            _queueText = Format(Settings.Template, item.Artist, item.Title);
+            if (_fixed is not null) return; // mana el títol fix (D-184)
+            Text = _queueText;
             if (Settings.Enabled) MarkDirty();
         }
     }
@@ -135,6 +239,8 @@ public sealed class NowPlaying : IDisposable
             if (_streamTitle == text) return;
             _streamTitle = text;
             _lastItem = null;
+            _queueText = text;
+            if (_fixed is not null) return; // mana el títol fix (D-184)
             Text = text;
             if (Settings.Enabled) MarkDirty();
         }
@@ -146,7 +252,8 @@ public sealed class NowPlaying : IDisposable
         lock (_sync)
         {
             Settings = settings;
-            if (_lastItem is { } item) Text = Format(settings.Template, item.Artist, item.Title);
+            if (_lastItem is { } item) _queueText = Format(settings.Template, item.Artist, item.Title);
+            Text = _fixed?.Text ?? _queueText;
             Problem = null;
             if (settings.Enabled && Text is not null) MarkDirty();
             else _dirty = false;
@@ -181,15 +288,41 @@ public sealed class NowPlaying : IDisposable
     {
         while (!_stop.IsCancellationRequested)
         {
-            bool retrying;
-            lock (_sync) retrying = _dirty && Problem is not null;
+            // Fins quan s'espera: per sempre, fins a tornar a provar d'escriure o fins que s'acabi el títol fix (D-184)
+            var wait = Timeout.InfiniteTimeSpan;
+            lock (_sync)
+            {
+                if (_dirty && Problem is not null) wait = RetryDelay;
+                if (_fixed is { } f)
+                {
+                    var left = f.Until - DateTimeOffset.Now;
+                    left = left < TimeSpan.Zero ? TimeSpan.Zero : left + TimeSpan.FromMilliseconds(1);
+                    if (wait == Timeout.InfiniteTimeSpan || left < wait) wait = left;
+                }
+            }
             try
             {
-                _wake.Wait(retrying ? RetryDelay : Timeout.InfiniteTimeSpan, _stop.Token);
+                _wake.Wait(wait, _stop.Token);
             }
             catch (OperationCanceledException)
             {
                 return;
+            }
+
+            // El títol fix s'ha acabat: torna el del que sona
+            FixedTitle? ended = null;
+            lock (_sync)
+            {
+                if (_fixed is { } f && DateTimeOffset.Now >= f.Until)
+                {
+                    ended = f;
+                    EndFixedLocked();
+                }
+            }
+            if (ended is not null)
+            {
+                _log.LogInformation("Títol per a BUTT: s'ha acabat el títol fix «{Text}»; torna el del que sona", ended.Text);
+                FixedChanged?.Invoke(null);
             }
 
             string text, path;

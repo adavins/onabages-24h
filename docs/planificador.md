@@ -151,6 +151,7 @@ CREATE TABLE registre_execucio (
 | `AUXILIAR` | `{songId, player, duckingDb?}` | `PluginAction|Auxiliary Players|Play File From Database` |
 | `ROTACIO` | `{rotacioId}` | `Load Rotation` |
 | `SWEEPERS` | `{subcategoriaId}` | `Set Sweeper Category` |
+| `TITOL` | `{text, durada_seg}` | Títol fix per a BUTT (D-184): des de l'hora de l'esdeveniment, durant `durada_seg` (1 min – 24 h), `NowPlaying.txt` diu `text` sigui quina sigui la cua (p. ex. un directe que no surt de la cua, com «Esport i Punt»). Després torna sol el títol del que sona. Es recupera si el motor es reinicia a mig programa. També es pot posar a mà (`nowplaying.fixed.set`). RadioDJ no ho tenia |
 | `AUTODJ` | `{actiu}` | `Assisted Enable!` / `Assisted Disable!` (només quan es vol de veritat, no com a pegat) |
 | `ESPERA` | `{segons}` | `Seconds To Wait` |
 | `ATURA` | `{fadeMs?}` | `Stop!` |

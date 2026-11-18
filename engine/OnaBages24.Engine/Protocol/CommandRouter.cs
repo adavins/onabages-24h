@@ -261,6 +261,8 @@ public sealed partial class CommandRouter
                 "log.list" => LogList(msg, session, client),
                 "nowplaying.get" => new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(NowPlayingOrError()) },
                 "nowplaying.set" => NowPlayingSet(msg),
+                "nowplaying.fixed.set" => NowPlayingFixedSet(msg),
+                "nowplaying.fixed.clear" => NowPlayingFixedClear(),
                 "scheduler.list" => SchedulerList(),
                 "scheduler.get" => SchedulerGet(msg),
                 "scheduler.save" => SchedulerSave(msg),
@@ -2100,6 +2102,38 @@ public sealed partial class CommandRouter
         return new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(nowPlaying) };
     }
 
+    /// <summary>El títol fix més llarg que es pot posar a mà (D-184): fins a l'endemà a aquesta hora.</summary>
+    public static readonly TimeSpan MaxFixedTitle = TimeSpan.FromHours(24);
+
+    /// <summary>Títol fix per a BUTT posat a mà (D-184): <c>text</c> i <c>until</c> (hora local amb zona, com a molt d'aquí a 24 h).</summary>
+    private JsonObject NowPlayingFixedSet(JsonObject msg)
+    {
+        var nowPlaying = NowPlayingOrError();
+        string text = ReadString(msg["text"]) ?? throw new BadParamsException("Falta 'text' (el títol fix).");
+        if (ReadString(msg["until"]) is not { } untilText
+            || !DateTimeOffset.TryParse(untilText, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var until))
+            throw new BadParamsException("Falta 'until' (l'hora de final, p. ex. 2026-11-18T21:00:00+01:00).");
+        if (until - DateTimeOffset.Now > MaxFixedTitle)
+            throw new BadParamsException("El títol fix pot durar 24 hores com a màxim.");
+        try
+        {
+            nowPlaying.SetFixed(text, until, null);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new BadParamsException(ex.Message);
+        }
+        return new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(nowPlaying) };
+    }
+
+    /// <summary>Treu el títol fix (D-184): torna el del que sona. Si no n'hi havia cap, no passa res.</summary>
+    private JsonObject NowPlayingFixedClear()
+    {
+        var nowPlaying = NowPlayingOrError();
+        nowPlaying.ClearFixed();
+        return new JsonObject { ["nowPlaying"] = QueueJson.NowPlaying(nowPlaying) };
+    }
+
     // --- Planificador (fase 2, pas 3) ---
 
     private Events EventsOrError() => _events ?? throw new BadParamsException("El motor no té planificador.");
@@ -2219,6 +2253,16 @@ public sealed partial class CommandRouter
     private static void CheckContent(ScheduledEvent ev)
     {
         if (ev.Actions.Count == 0) throw new ArgumentException("Cal afegir alguna acció (què ha de fer l'esdeveniment).");
+        // Títol fix per a BUTT (D-184): el text (una línia, com a màxim 200 caràcters) i la durada (d'1 minut a 24 hores)
+        foreach (var action in ev.Actions.Where(a => a.Type == EventActionType.Title))
+        {
+            var p = JsonNode.Parse(action.Params) as JsonObject;
+            string text = p?["text"] is JsonValue t && t.TryGetValue(out string? s) ? s.Trim() : "";
+            if (text.Length == 0) throw new ArgumentException("Cal escriure el text del títol per a BUTT.");
+            if (text.Length > FixedTitle.MaxLength) throw new ArgumentException($"El títol per a BUTT pot tenir {FixedTitle.MaxLength} caràcters com a màxim.");
+            if (p?["durada_seg"] is not JsonValue d || !d.TryGetValue(out long seconds) || seconds < 60 || seconds > MaxFixedTitle.TotalSeconds)
+                throw new ArgumentException("El títol per a BUTT ha de durar d'1 minut a 24 hores.");
+        }
         foreach (var action in ev.Actions.Where(a => a.Type == EventActionType.Stream))
         {
             var p = JsonNode.Parse(action.Params) as JsonObject;
