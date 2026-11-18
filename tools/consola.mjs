@@ -444,6 +444,7 @@ async function diagnosticsMenu() {
       ['8', 'Enviar una ordre lliure'],
       ['9', 'Últimes línies del registre del motor'],
       ['a', 'Provar un stream de ràdio (prova-stream): si funciona, format i retard'],
+      ['b', 'Provar una entrada de línia (prova-entrada): si funciona, format, nivell i rellotge'],
       ['0', 'Tornar'],
     ]);
     switch (choice) {
@@ -457,6 +458,7 @@ async function diagnosticsMenu() {
       case '8': await sendCommand(); break;
       case '9': showLog(); break;
       case 'a': await probeStream(); break;
+      case 'b': await probeInput(); break;
       case '0': case '': return;
       default: continue;
     }
@@ -618,6 +620,19 @@ async function probeStream() {
   if (!address) return;
   const seconds = await ask('Quants segons (Retorn = 10): ');
   run(ENGINE_EXE, ['prova-stream', address, ...(seconds ? ['--segons', seconds] : [])]);
+}
+
+/** prova-entrada (D-185): llista les entrades i n'escolta una uns segons sense fer sonar res. Es pot fer amb el motor en marxa. */
+async function probeInput() {
+  if (!existsSync(ENGINE_EXE)) {
+    console.log(color.yellow('\nEl motor encara no està compilat (opció 5 del menú principal).'));
+    return;
+  }
+  run(ENGINE_EXE, ['prova-entrada']);
+  const which = await ask('\nQuina entrada (número o nom; Retorn = cap): ');
+  if (!which) return;
+  const seconds = await ask('Quants segons (Retorn = 10): ');
+  run(ENGINE_EXE, ['prova-entrada', which, ...(seconds ? ['--segons', seconds] : [])]);
 }
 
 /** «ordre nom=valor nom=valor»: el valor es llegeix com a JSON si es pot (16, null, true, [1,2]); si no, és un text. */
