@@ -513,6 +513,10 @@ public static class EngineServer
                     incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, null);
                     incidents.Report(IncidentKind.Stream, key + ":tornat", IncidentSeverity.Info, $"El stream «{e.Item}»: {e.Message}", e.Item.Path, recovered: true);
                     break;
+                case "prova":
+                    // Com va la connexió de prova (D-180): només al registre, per saber per què no ha tornat
+                    log.LogInformation("Stream «{Item}»: {Message}", e.Item, e.Message);
+                    break;
                 case "resum":
                     incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, null);
                     incidents.Report(IncidentKind.Stream, key + ":resum", IncidentSeverity.Info, $"El stream «{e.Item}» s'ha acabat. {e.Message}", e.Item.Path, recovered: true);

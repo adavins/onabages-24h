@@ -351,13 +351,13 @@ public sealed class QueueStreamTests : IDisposable
     // --- Reconnexió durant tota la durada (D-031, D-180) ---
 
     /// <summary>Com <see cref="NewPlayer"/>, amb els temps de la reconnexió escurçats (preparar 2 s abans, provar cada 0,5 s, 1 s per donar-lo per bo).</summary>
-    private QueuePlayer NewHoldPlayer()
+    private QueuePlayer NewHoldPlayer(double prepareSeconds = 2)
     {
         var player = new QueuePlayer(_mixer, new QueueSettings
         {
             StallTimeout = TimeSpan.FromSeconds(1),
             StreamConnectFor = TimeSpan.FromSeconds(1),
-            PrepareAhead = TimeSpan.FromSeconds(2),
+            PrepareAhead = TimeSpan.FromSeconds(prepareSeconds),
             StreamRetryEvery = TimeSpan.FromMilliseconds(500),
             StreamStableFor = TimeSpan.FromSeconds(1),
         });
@@ -473,6 +473,140 @@ public sealed class QueueStreamTests : IDisposable
         var back = _started.Last();
         Assert.Equal("Directe", back.Item.Title);
         Assert.InRange(back.StartFrame - fill.StartFrame, 6 * Rate - Rate / 50, 6 * Rate + Rate / 20); // en acabar la cançó
+    }
+
+    [Fact]
+    public void El_vigilant_de_pistes_de_durada_variable_no_toca_els_streams_de_la_cua()
+    {
+        // La durada d'un stream és la de l'esdeveniment; la pista de la biblioteca no en té (D-180)
+        var player = NewPlayer();
+        var stream = new QueueItem { Path = "http://127.0.0.1:1/", Title = "Directe", Type = TrackType.Stream, TrackId = 7 }.AsStream(600_000);
+        player.Enqueue(stream);
+
+        int updated = player.RefreshTrack(new Track { Id = 7, Path = "http://127.0.0.1:1/", Type = TrackType.Stream });
+
+        Assert.Equal(0, updated);
+        Assert.Equal(600_000, player.Upcoming[0].EndMs);
+    }
+
+    [Fact]
+    public void Amb_tornada_en_acabar_la_canço_el_stream_que_ja_funciona_de_fa_estona_torna_a_la_mescla()
+    {
+        // Prova del desenvolupador (18-11-2026, 14:39): només el stream a la cua, sona la reserva i, al darrere, música de
+        // l'AutoDJ; el stream ja arribava bé molt abans de la mescla de la reserva, però no hi va tornar: el vigilant de
+        // pistes de durada variable (cada 5 s) el veia diferent de la biblioteca i el tornava a preparar
+        var mp3 = FakeRadio.Mp3(60, 0.5f);
+        var watch = Stopwatch.StartNew();
+        int connections = 0;
+        var lastConnection = TimeSpan.Zero;
+        using var radio = new FakeRadio(async (client, _) =>
+        {
+            lastConnection = watch.Elapsed;
+            if (Interlocked.Increment(ref connections) == 1) await SendLive(client, mp3, 1, closeAfterSeconds: 2);
+            else if (watch.Elapsed < TimeSpan.FromSeconds(4)) await FakeRadio.Send(client, "HTTP/1.0 503 Service Unavailable\r\n\r\n");
+            else await SendLive(client, mp3, 1);
+        });
+        FillWith(30);
+        var player = NewHoldPlayer(prepareSeconds: 6);
+        var reserve = File(Wav(14, 0.25f)) with { Title = "Reserva" };
+        player.Enqueue(Reconnecting(radio, 60_000, afterSong: true) with { StreamFallback = reserve, TrackId = 7 });
+        var libraryStream = new Track { Id = 7, Path = $"http://127.0.0.1:{radio.Port}/directe", Type = TrackType.Stream };
+        using var checker = new Timer(_ => player.RefreshTrack(libraryStream), null, 1000, 300); // com TrackChangeChecker (quan ja sona, com després d'un TALLA)
+
+        Run(player, 20);
+
+        Assert.Equal(new[] { "Directe", "Reserva", "Directe" }, _started.Select(s => s.Item.Title));
+        Assert.Contains(_notices, n => n.Kind == "tornat");
+        // Quan ja arribava bé (cap als 5 s), ja no s'hi ha tornat a connectar: la tornada no s'ha desfet
+        Assert.InRange(lastConnection.TotalSeconds, 0, 8);
+    }
+
+    [Fact]
+    public void Amb_tornada_en_acabar_la_canço_si_l_operador_mou_la_canço_el_stream_torna_a_la_mescla_nova()
+    {
+        // Prova del desenvolupador (18-11-2026): va moure la cançó de farciment a prop del final i el stream hi va entrar,
+        // però no es va anotar «Ha tornat»
+        var mp3 = FakeRadio.Mp3(40, 0.5f);
+        var watch = Stopwatch.StartNew();
+        int connections = 0;
+        using var radio = new FakeRadio(async (client, _) =>
+        {
+            if (Interlocked.Increment(ref connections) == 1) await SendLive(client, mp3, 1, closeAfterSeconds: 2);
+            else if (watch.Elapsed < TimeSpan.FromSeconds(4)) await FakeRadio.Send(client, "HTTP/1.0 503 Service Unavailable\r\n\r\n");
+            else await SendLive(client, mp3, 1);
+        });
+        FillWith(30);
+        var player = NewHoldPlayer();
+        var reserve = File(Wav(30, 0.25f)) with { Title = "Reserva" }; // com a la prova: la que sonava era la reserva
+        player.Enqueue(Reconnecting(radio, 40_000, afterSong: true) with { StreamFallback = reserve }, File(Wav(5, 0.2f)) with { Title = "Resta" });
+
+        Run(player, 8);
+        var fill = player.Current!;
+        Assert.Equal("Reserva", fill.Title);
+        Assert.Null(player.Seek(fill.Id, TimeSpan.FromSeconds(26))); // queden 4 s de cançó
+        Run(player, 6);
+
+        Assert.Equal("Directe", _started.Last().Item.Title);
+        Assert.Contains(_notices, n => n.Kind == "tornat");
+    }
+
+    [Fact]
+    public void Si_es_mou_la_canço_quan_el_stream_ja_espera_la_mescla_continua_tornant()
+    {
+        var mp3 = FakeRadio.Mp3(40, 0.5f);
+        var watch = Stopwatch.StartNew();
+        int connections = 0;
+        using var radio = new FakeRadio(async (client, _) =>
+        {
+            if (Interlocked.Increment(ref connections) == 1) await SendLive(client, mp3, 1, closeAfterSeconds: 2);
+            else if (watch.Elapsed < TimeSpan.FromSeconds(4)) await FakeRadio.Send(client, "HTTP/1.0 503 Service Unavailable\r\n\r\n");
+            else await SendLive(client, mp3, 1);
+        });
+        // Prova del desenvolupador (18-11-2026): el stream ja esperava la mescla (es prepara 20 s abans) i es va moure la
+        // cançó; el stream va anar a la cua com una pista qualsevol i la reconnexió es va quedar penjada
+        FillWith(30);
+        var player = NewHoldPlayer(prepareSeconds: 6);
+        player.Enqueue(Reconnecting(radio, 60_000, afterSong: true), File(Wav(5, 0.2f)) with { Title = "Resta" });
+
+        Run(player, 8);
+        var fill = player.Current!;
+        Assert.Equal("Farciment", fill.Title);
+        Assert.Null(player.Seek(fill.Id, TimeSpan.FromSeconds(22))); // queden 8 s: d'aquí a 2 s, el stream ja és la següent
+        Run(player, 3.5);
+        Assert.Equal("Directe", player.Upcoming[0].Title); // espera la mescla
+        Assert.Null(player.Seek(fill.Id, TimeSpan.FromSeconds(18))); // es mou la cançó: la mescla és més tard
+        Run(player, 14);
+
+        Assert.Equal("Directe", _started.Last().Item.Title);
+        Assert.Contains(_notices, n => n.Kind == "tornat");
+        Assert.DoesNotContain(player.Upcoming, i => i.Title == "Directe");
+    }
+
+    [Fact]
+    public void Si_l_operador_fa_sonar_una_altra_pista_mentre_sona_el_stream_ja_no_s_espera()
+    {
+        var mp3 = FakeRadio.Mp3(40, 0.5f);
+        var watch = Stopwatch.StartNew();
+        int connections = 0;
+        using var radio = new FakeRadio(async (client, _) =>
+        {
+            if (Interlocked.Increment(ref connections) == 1) await SendLive(client, mp3, 1, closeAfterSeconds: 2);
+            else if (watch.Elapsed < TimeSpan.FromSeconds(4)) await FakeRadio.Send(client, "HTTP/1.0 503 Service Unavailable\r\n\r\n");
+            else await SendLive(client, mp3, 1);
+        });
+        FillWith(30);
+        var player = NewHoldPlayer();
+        var rest = File(Wav(5, 0.2f)) with { Title = "Resta" };
+        player.Enqueue(Reconnecting(radio, 40_000), rest);
+
+        Run(player, 8); // ha caigut i ha tornat
+        Assert.Contains(_notices, n => n.Kind == "tornat");
+        Assert.NotNull(player.PlayNow(rest.Id, TimeSpan.FromMilliseconds(500)));
+        Run(player, 1);
+
+        Assert.Equal("Resta", _started.Last().Item.Title);
+        Assert.StartsWith("Ja no s'espera que torni", Assert.Single(_notices, n => n.Kind == "resum").Message);
+        Assert.False(player.WantsFill);
     }
 
     [Fact]

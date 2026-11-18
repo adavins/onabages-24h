@@ -496,6 +496,8 @@ public sealed class QueuePlayer : IDisposable
         lock (_sync)
         {
             if (_cut is not null || _next is { HasStarted: true }) return null;
+            // Mentre sona un stream amb reconnexió, l'operador en fa sonar una altra: ja no s'espera que torni (D-031)
+            if (_hold is { } h && _current?.Item.Id == h.Stream.Id) FinishHold(_mixer.FramesRendered, events, reachedEnd: false);
             if (_next?.Item.Id != itemId)
             {
                 if (_next is not null) UnprepareNext(events);
@@ -521,7 +523,8 @@ public sealed class QueuePlayer : IDisposable
     public int RefreshTrack(Track track)
     {
         QueueItem Updated(QueueItem i) => i with { StartMs = track.StartMs, MixMs = track.MixMs, EndMs = track.EndMs, FileDurationMs = track.DurationMs };
-        bool Differs(QueueItem i) => i.TrackId == track.Id &&
+        // Un stream no (D-180): la seva durada és la de l'esdeveniment, no la de la biblioteca (es desfaria la tornada)
+        bool Differs(QueueItem i) => !i.IsStream && i.TrackId == track.Id &&
             (i.StartMs != track.StartMs || i.MixMs != track.MixMs || i.EndMs != track.EndMs || i.FileDurationMs != track.DurationMs);
         var events = new List<Action>();
         int count = 0;
@@ -1303,6 +1306,7 @@ public sealed class QueuePlayer : IDisposable
         h.RetryAt = now;
         h.StableSince = -1;
         h.NoFillSince = -1;
+        h.ProbeStatus = null;
 
         string music = first && item.StreamFallback is not null ? "Sona la pista de reserva i després música de la rotació" : "Sona música de la rotació";
         string text = $"{message} {music} mentre es prova de reconnectar (queden {Span(FramesToTime(h.MixFrame - now))}).";
@@ -1337,6 +1341,7 @@ public sealed class QueuePlayer : IDisposable
         var probe = h.Probe;
         if (probe.Reader.State == ReaderState.Failed || probe.Reader is not StreamVoiceReader reader)
         {
+            ProbeSays(h, $"La connexió de prova no s'ha pogut connectar: {Sentence(probe.Reader.Error ?? "sense motiu")} Es torna a provar cada {_settings.StreamRetryEvery.TotalSeconds:0} s.", events);
             Retire(probe);
             h.Probe = null;
             h.RetryAt = now + Frames(_settings.StreamRetryEvery);
@@ -1348,11 +1353,20 @@ public sealed class QueuePlayer : IDisposable
         bool silent = h.Stream.StreamSilenceSeconds is > 0 && reader.SilentFor >= TimeSpan.FromSeconds(1);
         if (cut || silent || reader.State != ReaderState.Ready || !reader.Connected)
         {
+            if (cut) ProbeSays(h, "La connexió de prova s'ha tornat a tallar.", events);
+            else if (silent && reader.Connected) ProbeSays(h, "La connexió de prova rep el stream, però arriba en silenci.", events);
             h.StableSince = -1;
             return;
         }
         if (h.StableSince < 0) h.StableSince = now;
-        if (now - h.StableSince < Frames(_settings.StreamStableFor)) return;
+        if (now - h.StableSince < Frames(_settings.StreamStableFor))
+        {
+            ProbeSays(h, "La connexió de prova torna a rebre àudio.", events);
+            return;
+        }
+        ProbeSays(h, h.Stream.StreamReturnAfterSong
+            ? $"Fa {_settings.StreamStableFor.TotalSeconds:0} s que arriba bé: tornarà al punt de mescla de la cançó que sona."
+            : $"Fa {_settings.StreamStableFor.TotalSeconds:0} s que arriba bé: torna ara.", events);
 
         // Torna. Si la següent ja comença a sonar (s'estan encadenant), un moment; si ha d'esperar la cançó, fins que s'acosti la mescla.
         if (_next is { HasStarted: true }) return;
@@ -1374,6 +1388,17 @@ public sealed class QueuePlayer : IDisposable
         h.Probe = null;
         h.Returning = true;
         events.Add(() => Changed?.Invoke());
+    }
+
+    /// <summary>
+    /// Anota al registre com va la connexió de prova (D-180), només quan canvia: per saber per què un stream no ha tornat.
+    /// </summary>
+    private void ProbeSays(StreamHold h, string status, List<Action> events)
+    {
+        if (h.ProbeStatus == status) return;
+        h.ProbeStatus = status;
+        var item = h.Stream;
+        events.Add(() => StreamNotice?.Invoke(new QueueStreamNotice(item, "prova", status)));
     }
 
     /// <summary>
@@ -1526,7 +1551,14 @@ public sealed class QueuePlayer : IDisposable
     {
         DropFiller();
         if (_next is null || _next.HasStarted) return;
-        _upcoming.Insert(0, _next.Item);
+        if (_next.Returning && _hold is { } h)
+        {
+            // El stream que tornava (D-031) no va a la cua com una pista qualsevol: es torna a provar i tornarà quan toqui
+            // (p. ex. l'operador ha mogut la cançó que sona: la mescla és en un altre punt)
+            h.Returning = false;
+            h.RetryAt = _mixer.FramesRendered;
+        }
+        else _upcoming.Insert(0, _next.Item);
         Retire(_next);
         _next = null;
     }
@@ -1674,6 +1706,8 @@ public sealed class QueuePlayer : IDisposable
         public long StableSince { get; set; } = -1;
         /// <summary>Des de quan cal una pista de farciment i encara no n'hi ha cap (-1 = no cal o ja n'hi ha).</summary>
         public long NoFillSince { get; set; } = -1;
+        /// <summary>L'últim que s'ha anotat al registre de la connexió de prova (per no repetir-ho).</summary>
+        public string? ProbeStatus { get; set; }
     }
 
     /// <summary>Fotogrames sonats d'una emissió en veus que ja s'han acabat (D-103).</summary>
