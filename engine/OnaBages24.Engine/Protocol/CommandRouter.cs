@@ -2234,6 +2234,8 @@ public sealed partial class CommandRouter
                 throw new ArgumentException($"El silenci que acaba el stream ha de ser d'1 a {Scheduling.EventExecutor.MaxStreamSilenceSeconds} s.");
             if (Number(p, "retard_seg") is { } delay && delay is < 0 or > Scheduling.EventExecutor.MaxStreamDelaySeconds)
                 throw new ArgumentException($"El retard de connexió del stream ha de ser de 0 a {Scheduling.EventExecutor.MaxStreamDelaySeconds} s.");
+            if (p?["tornada"] is JsonValue back && (!back.TryGetValue(out string? backText) || backText is not ("seguida" or "canco")))
+                throw new ArgumentException("La tornada del stream ha de ser «seguida» o «canco».");
         }
     }
 

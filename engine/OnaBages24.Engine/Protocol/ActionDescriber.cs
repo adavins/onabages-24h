@@ -118,6 +118,8 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations, Camp
         if (Long(p, "silenci_seg") is { } silence and > 0) parts.Add($"s'acaba si arriba en silenci {silence} s");
         if (Long(p, "retard_seg") is { } delay and > 0) parts.Add($"retard de connexió {delay} s");
         if (Long(p, "fade_ms") is { } fade && fade != Playback.QueueItem.StreamFadeMs) parts.Add($"fos final {fade / 1000.0:0.#} s");
+        if (Bool(p, "reconnecta") == true)
+            parts.Add(String(p, "tornada") == "canco" ? "es reconnecta si cau (torna en acabar la cançó)" : "es reconnecta si cau (torna de seguida)");
         if (Long(p, "reserva_songId") is { } reserveId)
         {
             var reserve = library?.GetTrack(reserveId);

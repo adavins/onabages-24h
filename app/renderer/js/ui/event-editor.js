@@ -675,6 +675,24 @@ export class EventEditor {
         { inputmode: 'numeric', placeholder: '0' }, ev.mode === 'TALLA'
           ? 'El tall es fa aquests segons més tard, perquè el que sona quadri amb l\'origen (que arriba amb retard).'
           : 'Només en un esdeveniment TALLA (a l\'hora exacta).'));
+      // Reconnexió durant tota la durada (D-031, D-180): per als programes llargs
+      li.append(this.#check('Si cau, es reconnecta (programes llargs)', p.reconnecta === true, (on) => {
+        if (on) p.reconnecta = true;
+        else {
+          delete p.reconnecta;
+          delete p.tornada;
+        }
+        this.#restructured();
+      }), el('div', 'form-text', p.reconnecta === true
+        ? 'Si cau o no connecta a l\'hora, sona música de la rotació mentre es prova de reconnectar; el stream torna quan funciona. La resta de l\'esdeveniment espera a l\'hora prevista de final.'
+        : 'Si cau i no es recupera en uns segons, passa a la resta de l\'esdeveniment (per als butlletins curts).'));
+      if (p.reconnecta === true) {
+        li.append(this.#select('Quan torna', [['seguida', 'De seguida (la música baixa amb un fos)'], ['canco', 'En acabar la cançó que sona']],
+          p.tornada === 'canco' ? 'canco' : 'seguida', (v) => {
+            if (v === 'canco') p.tornada = 'canco';
+            else delete p.tornada;
+          }));
+      }
       // Pista de reserva: si el stream no connecta, sona aquesta en el seu lloc (si no n'hi ha, se salta)
       const reserveName = action.reserveLabel ?? (/reserva «(.+?)»/.exec(action.detail ?? '')?.[1]) ?? (p.reserva_songId != null ? `Pista ${p.reserva_songId}` : null);
       const reserve = el('div', 'ee-reserve');
@@ -686,7 +704,9 @@ export class EventEditor {
         action.reserveLabel = label;
         this.#restructured();
       }));
-      reserve.append(el('span', 'form-label mb-0', reserveName ? `Pista de reserva: «${reserveName}»` : 'Sense pista de reserva: si no connecta, se salta.'), choose);
+      reserve.append(el('span', 'form-label mb-0', reserveName ? `Pista de reserva: «${reserveName}»` : p.reconnecta === true
+        ? 'Sense pista de reserva: si no connecta, sona música de la rotació.'
+        : 'Sense pista de reserva: si no connecta, se salta.'), choose);
       if (reserveName) {
         const remove = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-link'));
         remove.type = 'button';

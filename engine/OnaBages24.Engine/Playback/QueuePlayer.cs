@@ -53,6 +53,12 @@ public sealed record QueueSettings
     /// com a molt això). Ha de ser més curt que <see cref="StallTimeout"/>, perquè la reconnexió hi càpiga.
     /// </summary>
     public TimeSpan StreamTimeout { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>Reconnexió durant tota la durada (D-031): mentre el stream és caigut, cada quant es torna a provar de connectar-s'hi.</summary>
+    public TimeSpan StreamRetryEvery { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Reconnexió (D-031): quanta estona ha de rebre àudio seguit (i, si té silenci, sense silenci) perquè torni a sonar.</summary>
+    public TimeSpan StreamStableFor { get; init; } = TimeSpan.FromSeconds(5);
 }
 
 /// <summary>
@@ -89,7 +95,9 @@ public sealed record QueueFailed(QueueItem Item, string Message, QueueItem? Fall
 
 /// <summary>
 /// Un stream que sona (fase 2, pas 7b; D-030): s'ha tallat (<see cref="Kind"/> «tall»; es prova de reconnectar), s'ha
-/// recuperat («recuperat») o s'ha acabat perquè arribava en silenci («silenci»).
+/// recuperat («recuperat») o s'ha acabat perquè arribava en silenci («silenci»). Amb reconnexió durant tota la durada
+/// (D-031, D-180): ha caigut i sona música mentre es prova de reconnectar («caigut»), torna a sonar («tornat») o s'ha
+/// acabat el temps previst, amb els talls i el temps sense senyal («resum»).
 /// </summary>
 public sealed record QueueStreamNotice(QueueItem Item, string Kind, string Message);
 
@@ -149,6 +157,40 @@ public sealed class QueuePlayer : IDisposable
 
     /// <summary>Ha començat una pista d'emergència perquè la que tocava no s'ha pogut obrir a temps.</summary>
     public event Action<QueueEmergency>? EmergencyStarted;
+
+    // Reconnexió durant tota la durada (D-031, D-180): el stream que ha caigut i s'espera que torni (null = cap)
+    private StreamHold? _hold;
+
+    /// <summary>Per entrar en reconnexió, ha de quedar com a mínim això a més de <see cref="QueueSettings.PrepareAhead"/> (si no, se salta, com abans).</summary>
+    private static readonly TimeSpan MinHold = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Un stream amb reconnexió ha caigut i cal música de la rotació per omplir (D-031): l'AutoDJ hi posa una pista amb
+    /// <see cref="AddFill"/>. N'hi ha com a molt una d'avançada, al davant de la cua.
+    /// </summary>
+    public bool WantsFill
+    {
+        get { lock (_sync) return _hold is { Down: true, Returning: false } h && !FillFront(h); }
+    }
+
+    /// <summary>
+    /// Posa una pista de farciment (D-031) al davant de la cua, mentre el stream és caigut. Quan el stream torna o s'acaba
+    /// el temps previst, les que no han sonat es treuen. Retorna false (i no fa res) si ja no cal.
+    /// </summary>
+    public bool AddFill(QueueItem item)
+    {
+        lock (_sync)
+        {
+            if (_hold is not { Down: true, Returning: false } h || FillFront(h)) return false;
+            _upcoming.Insert(0, item);
+            h.Fill.Add(item.Id);
+        }
+        Changed?.Invoke();
+        return true;
+    }
+
+    /// <summary>La primera de la cua és de farciment.</summary>
+    private bool FillFront(StreamHold h) => _upcoming.Count > 0 && h.Fill.Contains(_upcoming[0].Id);
 
     // Pausa i salt dins de la pista (D-103)
     private Paused? _paused;   // la pista en pausa (llavors _current és null)
@@ -273,9 +315,16 @@ public sealed class QueuePlayer : IDisposable
                 if (pending.First is { } first) entries.Add((first.Item, first, pending.Frame));
                 else cutStart = pending.Frame; // tall sense pista oberta: la primera de la cua comença al fotograma del tall
             }
+            bool holdAhead = _hold is not null; // reconnexió (D-031): la resta comença a l'hora prevista de final del stream
             foreach (var item in _upcoming)
             {
-                entries.Add((item, null, cutStart));
+                long? fixedStart = cutStart;
+                if (holdAhead && !_hold!.Fill.Contains(item.Id))
+                {
+                    fixedStart ??= _hold.MixFrame;
+                    holdAhead = false;
+                }
+                entries.Add((item, null, fixedStart));
                 cutStart = null;
             }
 
@@ -574,6 +623,7 @@ public sealed class QueuePlayer : IDisposable
         {
             // Un TALLA sona sempre a la seva hora (D-103): si hi ha una pausa, s'acaba; un salt pendent ja no es fa
             EndPause(events);
+            FinishHold(_mixer.FramesRendered, events, reachedEnd: false); // i ja no s'espera que torni cap stream (D-031)
             Playing? reserved = null;
             if (reservation is { } r && _reserved.Remove(r, out var res)) reserved = res;
             if (_cut?.First is { } previous) Retire(previous); // dos talls seguits en pocs segons: mana el darrer
@@ -633,7 +683,12 @@ public sealed class QueuePlayer : IDisposable
     public void Skip(TimeSpan fade)
     {
         var events = new List<Action>();
-        lock (_sync) SkipLocked(fade, events);
+        lock (_sync)
+        {
+            // L'operador passa a la següent mentre sona un stream amb reconnexió: ja no s'espera que torni (D-031)
+            if (_hold is { } h && _current?.Item.Id == h.Stream.Id) FinishHold(_mixer.FramesRendered, events, reachedEnd: false);
+            SkipLocked(fade, events);
+        }
         Raise(events);
     }
 
@@ -811,7 +866,7 @@ public sealed class QueuePlayer : IDisposable
             long now = _mixer.FramesRendered;
 
             // 0. Un stream que espera per sonar i no ha pogut connectar, si encara no és l'hora (D-179): es torna a obrir
-            if (_next is { HasStarted: false, Scheduled: false, Item.IsStream: true, Reader.State: ReaderState.Failed } early && StreamHasTime(now))
+            if (_next is { HasStarted: false, Scheduled: false, Returning: false, Item.IsStream: true, Reader.State: ReaderState.Failed } early && StreamHasTime(now))
             {
                 Retire(early);
                 _next = Open(early.Item);
@@ -825,11 +880,21 @@ public sealed class QueuePlayer : IDisposable
                 string message = failed.Reader.Error ?? "No s'ha pogut obrir el fitxer.";
                 Retire(failed);
                 _next = null;
-                // Un stream que no connecta i té pista de reserva (D-010): sona la reserva al seu lloc
-                var fallback = item.StreamFallback;
-                if (fallback is not null) _upcoming.Insert(0, fallback);
-                events.Add(() => Failed?.Invoke(new QueueFailed(item, message, fallback)));
-                events.Add(() => Changed?.Invoke());
+                if (_hold is { } h && h.Stream.Id == item.Id)
+                {
+                    // El stream que tornava ha tornat a caure abans de sonar (D-031): continua la música i es torna a provar
+                    h.Returning = false;
+                    h.RetryAt = now;
+                    events.Add(() => Changed?.Invoke());
+                }
+                else if (!EnterHoldAt(item, DueFrame(now), now, $"No s'ha pogut connectar a l'hora: {Sentence(message)}", events))
+                {
+                    // Un stream que no connecta i té pista de reserva (D-010): sona la reserva al seu lloc
+                    var fallback = item.StreamFallback;
+                    if (fallback is not null) _upcoming.Insert(0, fallback);
+                    events.Add(() => Failed?.Invoke(new QueueFailed(item, message, fallback)));
+                    events.Add(() => Changed?.Invoke());
+                }
             }
 
             // 1a. Streams i puntualitat (D-179):
@@ -849,12 +914,16 @@ public sealed class QueuePlayer : IDisposable
                 var item = waiting.Item;
                 string message = late.LastError is { } why ? $"A l'hora de començar encara no s'hi havia pogut connectar: {why}"
                     : "A l'hora de començar encara no s'hi havia pogut connectar.";
+                long due = DueFrame(now);
                 Retire(waiting);
                 _next = null;
-                var fallback = item.StreamFallback;
-                if (fallback is not null) _upcoming.Insert(0, fallback);
-                events.Add(() => Failed?.Invoke(new QueueFailed(item, message, fallback)));
-                events.Add(() => Changed?.Invoke());
+                if (!EnterHoldAt(item, due, now, Sentence(message), events))
+                {
+                    var fallback = item.StreamFallback;
+                    if (fallback is not null) _upcoming.Insert(0, fallback);
+                    events.Add(() => Failed?.Invoke(new QueueFailed(item, message, fallback)));
+                    events.Add(() => Changed?.Invoke());
+                }
             }
 
             // 1b. Un fitxer que fa massa estona que s'està obrint (fase 5, pas 4; D-159): la xarxa no respon. Es dona per perdut
@@ -882,6 +951,16 @@ public sealed class QueuePlayer : IDisposable
                 long? cutFrame = started.CutFrame;
                 events.Add(() => Started?.Invoke(new QueueStarted(item, frame, cutFrame)));
                 events.Add(() => Changed?.Invoke());
+                if (started.Returning && _hold is { } h && h.Stream.Id == item.Id)
+                {
+                    // Torna a sonar (D-031): s'acaba el temps sense senyal
+                    var gap = FramesToTime(Math.Max(0, frame - h.DownSince));
+                    h.DownFrames += Math.Max(0, frame - h.DownSince);
+                    h.Down = false;
+                    h.Returning = false;
+                    events.Add(() => StreamNotice?.Invoke(new QueueStreamNotice(item, "tornat",
+                        $"Ha tornat després de {Span(gap)} sense senyal i torna a sonar en directe.")));
+                }
             }
 
             // 3. Xarxa de seguretat (fase 5, pas 2; D-157): una veu que encara sona més d'un segon després del seu final previst
@@ -954,8 +1033,12 @@ public sealed class QueuePlayer : IDisposable
                     cur.Stuck = true;
                     var item = cur.Item;
                     var position = FramesToTime(Math.Max(0, now - cur.StartFrame));
+                    long mix = cur.MixFrame, end = cur.EndFrame; // abans del salt, que els canvia
                     SkipLocked(TimeSpan.Zero, events); // de cop: no té dades (un fos sense dades no avançaria)
-                    events.Add(() => Stuck?.Invoke(new QueueStuck(item, position, null)));
+                    // Un stream amb reconnexió (D-031): sona música mentre es prova de reconnectar
+                    if (!EnterHold(item, mix, end, now,
+                        $"S'ha tallat al minut {(int)position.TotalMinutes}:{position.Seconds:00} i no s'ha recuperat en {_settings.StallTimeout.TotalSeconds:0} s.", events))
+                        events.Add(() => Stuck?.Invoke(new QueueStuck(item, position, null)));
                     events.Add(() => Changed?.Invoke());
                 }
             }
@@ -976,9 +1059,13 @@ public sealed class QueuePlayer : IDisposable
             {
                 var item = quiet.Item;
                 var position = FramesToTime(Math.Max(0, now - quiet.StartFrame));
+                long mix = quiet.MixFrame, end = quiet.EndFrame;
                 SkipLocked(TimeSpan.FromMilliseconds(QueueItem.StreamFadeMs), events);
-                events.Add(() => StreamNotice?.Invoke(new QueueStreamNotice(item, "silenci",
-                    $"Arribava en silenci des de fa {silenceSeconds} s: s'ha acabat al minut {(int)position.TotalMinutes}:{position.Seconds:00} i ha passat a la següent.")));
+                // Amb reconnexió (D-031), el silenci és com un tall: sona música fins que torni amb so
+                if (!EnterHold(item, mix, end, now,
+                    $"Arribava en silenci des de fa {silenceSeconds} s (minut {(int)position.TotalMinutes}:{position.Seconds:00}).", events))
+                    events.Add(() => StreamNotice?.Invoke(new QueueStreamNotice(item, "silenci",
+                        $"Arribava en silenci des de fa {silenceSeconds} s: s'ha acabat al minut {(int)position.TotalMinutes}:{position.Seconds:00} i ha passat a la següent.")));
                 events.Add(() => Changed?.Invoke());
             }
 
@@ -1043,10 +1130,14 @@ public sealed class QueuePlayer : IDisposable
                 }
             }
 
+            // Reconnexió durant tota la durada (D-031, D-180)
+            if (_hold is not null) TickHold(now, events);
+
             // 4. Preparar la següent: si no sona res, de seguida; si no, uns segons abans del punt de mescla.
             // No durant una pausa ni mentre s'obre la pista en un altre punt (el punt de mescla encara no se sap).
             if (_next is null && _upcoming.Count > 0 && _paused is null && _resume is null
-                && (_current is null || now >= _current.MixFrame - Frames(_settings.PrepareAhead)))
+                && (_current is null || now >= _current.MixFrame - Frames(_settings.PrepareAhead))
+                && !WaitingForFill(now))
             {
                 var item = _upcoming[0];
                 _upcoming.RemoveAt(0);
@@ -1077,6 +1168,23 @@ public sealed class QueuePlayer : IDisposable
                         emergency.MixFrame = Math.Min(emergency.MixFrame, start);
                         emergency.EndFrame = start + fade;
                     }
+                }
+                else if (ready.Returning && _hold is { } hold)
+                {
+                    // El stream torna (D-031): de seguida (la música baixa amb un fos) o al punt de mescla de la cançó que
+                    // sona. S'acaba a l'hora prevista del principi, no més tard.
+                    if (ready.ReturnNow || _current is not { Scheduled: true })
+                    {
+                        start = now + Frames(StreamVoiceReader.FillBefore);
+                        int fade = Frames(Ms(QueueItem.StreamFadeMs));
+                        if (_current is { Scheduled: true } song && song.EndFrame > start + fade)
+                        {
+                            song.Voice.Stop(start, fade);
+                            song.MixFrame = Math.Min(song.MixFrame, start);
+                            song.EndFrame = start + fade;
+                        }
+                    }
+                    ready.Until = (hold.MixFrame, hold.EndFrame);
                 }
                 Schedule(ready, start);
                 DropFiller(); // la que tocava ja és a punt: la d'emergència que s'obria ja no cal
@@ -1147,6 +1255,189 @@ public sealed class QueuePlayer : IDisposable
         if (EmergencyPicker?.Invoke() is { } emergencyItem) _filler = Open(emergencyItem);
     }
 
+    // --- Reconnexió durant tota la durada (D-031, D-180) ---
+
+    /// <summary>
+    /// <see cref="EnterHold"/> per a un stream que no ha pogut començar: havia de començar a <paramref name="startFrame"/>, i
+    /// la resta comença on hauria acabat.
+    /// </summary>
+    private bool EnterHoldAt(QueueItem item, long startFrame, long now, string message, List<Action> events)
+    {
+        long startMs = item.StartMs ?? 0;
+        long endMs = item.EndMs ?? QueueItem.DefaultStreamMs;
+        long mixMs = Math.Clamp(item.MixMs ?? endMs, startMs, endMs);
+        return EnterHold(item, startFrame + FramesFromMs(mixMs - startMs), startFrame + FramesFromMs(endMs - startMs), now, message, events);
+    }
+
+    /// <summary>
+    /// Un stream amb reconnexió (D-031) ha caigut, no ha connectat a l'hora o arriba en silenci: fins a
+    /// <paramref name="mixFrame"/> sona música de farciment (primer la pista de reserva, si en té) i es prova de reconnectar.
+    /// Si torna a caure el mateix stream, es torna a començar el cicle. Retorna false si no té reconnexió o queda massa poc
+    /// temps: llavors es fa com sempre (se salta). Dins del bloqueig.
+    /// </summary>
+    private bool EnterHold(QueueItem item, long mixFrame, long endFrame, long now, string message, List<Action> events)
+    {
+        StreamHold h;
+        bool first = false;
+        if (_hold is { } same && same.Stream.Id == item.Id)
+        {
+            h = same;
+            h.Cuts++;
+        }
+        else
+        {
+            if (!item.StreamReconnect || !IsNetStream(item, out _) || mixFrame - now < Frames(_settings.PrepareAhead + MinHold)) return false;
+            FinishHold(now, events, reachedEnd: false); // un altre stream que s'esperava (no hauria de passar)
+            h = new StreamHold(item, mixFrame, endFrame) { Cuts = 1 };
+            _hold = h;
+            first = true;
+            if (item.StreamFallback is { } fallback)
+            {
+                _upcoming.Insert(0, fallback);
+                h.Fill.Add(fallback.Id);
+            }
+        }
+        h.Down = true;
+        h.Returning = false;
+        h.DownSince = now;
+        h.RetryAt = now;
+        h.StableSince = -1;
+        h.NoFillSince = -1;
+
+        string music = first && item.StreamFallback is not null ? "Sona la pista de reserva i després música de la rotació" : "Sona música de la rotació";
+        string text = $"{message} {music} mentre es prova de reconnectar (queden {Span(FramesToTime(h.MixFrame - now))}).";
+        events.Add(() => StreamNotice?.Invoke(new QueueStreamNotice(item, "caigut", text)));
+        events.Add(() => Changed?.Invoke());
+        return true;
+    }
+
+    /// <summary>
+    /// Cada volta mentre s'espera un stream (D-031): la connexió de prova (cada <see cref="QueueSettings.StreamRetryEvery"/>),
+    /// la comprovació que funciona (<see cref="QueueSettings.StreamStableFor"/> rebent àudio seguit) i la tornada; i, uns
+    /// segons abans de l'hora prevista de final, s'acaba. Dins del bloqueig.
+    /// </summary>
+    private void TickHold(long now, List<Action> events)
+    {
+        var h = _hold!;
+        if (now >= h.MixFrame - Frames(_settings.PrepareAhead))
+        {
+            FinishHold(now, events, reachedEnd: true);
+            return;
+        }
+        if (!h.Down || h.Returning) return;
+        h.NoFillSince = FillFront(h) ? -1 : h.NoFillSince < 0 ? now : h.NoFillSince;
+
+        if (h.Probe is null)
+        {
+            if (now < h.RetryAt) return;
+            h.Probe = Open(h.Stream); // una veu que no sona: només es connecta i es mira si arriba àudio
+            h.StableSince = -1;
+            return;
+        }
+        var probe = h.Probe;
+        if (probe.Reader.State == ReaderState.Failed || probe.Reader is not StreamVoiceReader reader)
+        {
+            Retire(probe);
+            h.Probe = null;
+            h.RetryAt = now + Frames(_settings.StreamRetryEvery);
+            return;
+        }
+
+        // Funciona? Connectat, rebent àudio seguit i, si té silenci, sense silenci; si es talla, es torna a comptar
+        bool cut = reader.TakeNotices().Any(n => n.Cut);
+        bool silent = h.Stream.StreamSilenceSeconds is > 0 && reader.SilentFor >= TimeSpan.FromSeconds(1);
+        if (cut || silent || reader.State != ReaderState.Ready || !reader.Connected)
+        {
+            h.StableSince = -1;
+            return;
+        }
+        if (h.StableSince < 0) h.StableSince = now;
+        if (now - h.StableSince < Frames(_settings.StreamStableFor)) return;
+
+        // Torna. Si la següent ja comença a sonar (s'estan encadenant), un moment; si ha d'esperar la cançó, fins que s'acosti la mescla.
+        if (_next is { HasStarted: true }) return;
+        if (h.Stream.StreamReturnAfterSong && _current is { Scheduled: true } song && now < song.MixFrame - Frames(_settings.PrepareAhead)) return;
+        if (_next is { } prepared)
+        {
+            if (h.Fill.Contains(prepared.Item.Id))
+            {
+                Retire(prepared);
+                _next = null;
+            }
+            else UnprepareNext(events);
+        }
+        DropFiller();
+        _upcoming.RemoveAll(i => h.Fill.Contains(i.Id)); // la música que encara no ha sonat ja no cal
+        probe.Returning = true;
+        probe.ReturnNow = !h.Stream.StreamReturnAfterSong;
+        _next = probe;
+        h.Probe = null;
+        h.Returning = true;
+        events.Add(() => Changed?.Invoke());
+    }
+
+    /// <summary>
+    /// Mentre el stream és caigut, la pista següent ha de ser de farciment (no la resta de l'esdeveniment, que espera l'hora
+    /// prevista): s'espera que l'AutoDJ n'hi posi una. Si en <see cref="QueueSettings.EmergencyWait"/> no n'hi ha cap, sona
+    /// el que hi hagi a la cua (mai silenci).
+    /// </summary>
+    private bool WaitingForFill(long now) =>
+        _hold is { Down: true, Returning: false } h && !FillFront(h) && (h.NoFillSince < 0 || now - h.NoFillSince < Frames(_settings.EmergencyWait));
+
+    /// <summary>
+    /// Ja no s'espera el stream (D-031): s'acaba el temps previst (<paramref name="reachedEnd"/>, uns segons abans de l'hora
+    /// de final), hi ha un tall nou o l'operador l'ha saltat. La música de farciment que no ha sonat es treu (si hi ha res més
+    /// a la cua) i, a l'hora de final, la cançó de farciment que sona es talla perquè la resta comenci a l'hora. Dins del bloqueig.
+    /// </summary>
+    private void FinishHold(long now, List<Action> events, bool reachedEnd)
+    {
+        if (_hold is not { } h) return;
+        _hold = null;
+        if (h.Probe is not null) Retire(h.Probe);
+        if (_next is { HasStarted: false, Returning: true } back && back.Item.Id == h.Stream.Id)
+        {
+            Retire(back);
+            _next = null;
+        }
+
+        bool restAhead = _upcoming.Any(i => !h.Fill.Contains(i.Id));
+        if (restAhead)
+        {
+            _upcoming.RemoveAll(i => h.Fill.Contains(i.Id));
+            if (_next is { HasStarted: false } fill && h.Fill.Contains(fill.Item.Id))
+            {
+                Retire(fill);
+                _next = null;
+            }
+            // A l'hora de final, la cançó de farciment que encara sonaria es talla (si acaba abans, la resta hi entra a sobre)
+            bool fillPlaying = (_current is { Scheduled: true } c && h.Fill.Contains(c.Item.Id) && c.MixFrame > h.MixFrame)
+                || (_next is { HasStarted: true } n && h.Fill.Contains(n.Item.Id));
+            if (reachedEnd && fillPlaying && _cut is null)
+            {
+                _cut = new PendingCut(h.MixFrame, Frames(Ms(QueueItem.StreamFadeMs)), null);
+                ApplyCut();
+            }
+        }
+
+        if (h.Down) h.DownFrames += Math.Max(0, (reachedEnd ? h.MixFrame : now) - h.DownSince);
+        var item = h.Stream;
+        string cuts = h.Cuts == 1 ? "1 tall" : $"{h.Cuts} talls";
+        string text = reachedEnd
+            ? $"S'ha acabat el temps previst: {cuts}, {Span(FramesToTime(h.DownFrames))} sense senyal."
+            : $"Ja no s'espera que torni (un tall nou o l'operador l'ha saltat): {cuts}, {Span(FramesToTime(h.DownFrames))} sense senyal.";
+        events.Add(() => StreamNotice?.Invoke(new QueueStreamNotice(item, "resum", text)));
+        events.Add(() => Changed?.Invoke());
+    }
+
+    /// <summary>«45 s», «7 min», «1 h 05 min».</summary>
+    private static string Span(TimeSpan t) =>
+        t.TotalSeconds < 60 ? $"{Math.Max(0, (int)Math.Round(t.TotalSeconds))} s"
+        : t.TotalMinutes < 60 ? $"{(int)Math.Round(t.TotalMinutes)} min"
+        : $"{(int)t.TotalHours} h {t.Minutes:00} min";
+
+    /// <summary>El text acabat en punt.</summary>
+    private static string Sentence(string text) => text.TrimEnd() is var m && m.EndsWith('.') ? m : m + ".";
+
     /// <summary>Deixa anar la pista d'emergència que s'estava obrint (si n'hi ha). Dins del bloqueig.</summary>
     private void DropFiller()
     {
@@ -1161,11 +1452,22 @@ public sealed class QueuePlayer : IDisposable
         var voice = _mixer.AcquireVoice();
         if (voice is null) return null;
         bool hold = HoldOpeningForTests?.Invoke(item.Path) == true;
-        IVoiceReader reader = item.IsStream && Uri.TryCreate(item.Path, UriKind.Absolute, out var url) && url.Scheme is "http" or "https"
+        IVoiceReader reader = IsNetStream(item, out var url)
             ? new StreamVoiceReader(voice, url, _mixer.SampleRate, StreamOptionsFor(item), () => _mixer.FramesRendered)
             : new VoiceReader(voice, item.Path, _mixer.SampleRate, Ms(item.StartMs ?? 0), item.EndMs is { } end ? Ms(end) : null, hold);
         return new Playing(item, voice, reader) { OpenedFrame = _mixer.FramesRendered };
     }
+
+    /// <summary>Un stream per internet (http o https): s'obre amb el lector de streams.</summary>
+    private static bool IsNetStream(QueueItem item, out Uri url)
+    {
+        url = null!;
+        return item.IsStream && Uri.TryCreate(item.Path, UriKind.Absolute, out url!) && url.Scheme is "http" or "https";
+    }
+
+    /// <summary>On havia de començar la pista que es prepara (el tall, el punt de mescla de la que sona o ara).</summary>
+    private long DueFrame(long now) =>
+        _cutFrame > 0 ? _cutFrame : _current is { Scheduled: true } playing ? Math.Min(playing.MixFrame, now) : now;
 
     /// <summary>
     /// Si la pista que es prepara ja hauria de sonar (D-179): és l'hora del tall o el punt de mescla de la que sona. Si no
@@ -1207,6 +1509,11 @@ public sealed class QueuePlayer : IDisposable
         p.StartFrame = trackStart;
         p.MixFrame = trackStart + FramesFromMs(mixMs - startMs);
         p.EndFrame = trackStart + FramesFromMs(endMs - startMs);
+        if (p.Until is { } until) // el stream que torna (D-031): fins a l'hora prevista
+        {
+            p.MixFrame = until.Mix;
+            p.EndFrame = until.End;
+        }
         p.PlannedEndFrame = p.EndFrame;
         p.Voice.Start(start, fadeInFrames);
         // Si s'ha saltat més enllà del punt de mescla, el fos comença de seguida (i la següent entra en quant sigui a punt)
@@ -1287,6 +1594,8 @@ public sealed class QueuePlayer : IDisposable
             _resume = null;
             _paused = null;
             if (_cut?.First is { } cutFirst) Retire(cutFirst);
+            if (_hold?.Probe is { } probe) Retire(probe);
+            _hold = null;
             foreach (var r in _reserved.Values) Retire(r);
             _reserved.Clear();
             _cut = null;
@@ -1332,6 +1641,39 @@ public sealed class QueuePlayer : IDisposable
 
         /// <summary>El fotograma en què es va començar a obrir (fase 5, pas 4: un fitxer que no s'obre mai es dona per perdut).</summary>
         public long OpenedFrame { get; init; }
+
+        /// <summary>És el stream que torna després d'haver caigut (D-031); <see cref="ReturnNow"/>: de seguida, sense esperar la cançó.</summary>
+        public bool Returning { get; set; }
+        public bool ReturnNow { get; set; }
+
+        /// <summary>Si no és null, el punt de mescla i el final fixos (el stream que torna acaba a l'hora prevista del principi).</summary>
+        public (long Mix, long End)? Until { get; set; }
+    }
+
+    /// <summary>
+    /// Un stream amb reconnexió que ha caigut (D-031, D-180): fins a <see cref="MixFrame"/> (on comença la resta, com si
+    /// hagués sonat sencer) sona música de farciment i, en segon pla, es prova de connectar-s'hi (<see cref="Probe"/>).
+    /// </summary>
+    private sealed class StreamHold(QueueItem stream, long mixFrame, long endFrame)
+    {
+        public QueueItem Stream { get; } = stream;
+        public long MixFrame { get; } = mixFrame;
+        public long EndFrame { get; } = endFrame;
+        /// <summary>Les pistes de farciment (per treure les que no han sonat quan el stream torna o s'acaba).</summary>
+        public HashSet<Guid> Fill { get; } = [];
+        /// <summary>Ara no sona (ha caigut); <see cref="Returning"/>: torna, ja és la següent.</summary>
+        public bool Down { get; set; } = true;
+        public bool Returning { get; set; }
+        public long DownSince { get; set; }
+        public long DownFrames { get; set; }
+        public int Cuts { get; set; }
+        /// <summary>La connexió de prova (una veu que encara no sona), o null.</summary>
+        public Playing? Probe { get; set; }
+        public long RetryAt { get; set; }
+        /// <summary>Des de quan la connexió de prova rep àudio seguit (-1 = encara no).</summary>
+        public long StableSince { get; set; } = -1;
+        /// <summary>Des de quan cal una pista de farciment i encara no n'hi ha cap (-1 = no cal o ja n'hi ha).</summary>
+        public long NoFillSince { get; set; } = -1;
     }
 
     /// <summary>Fotogrames sonats d'una emissió en veus que ja s'han acabat (D-103).</summary>

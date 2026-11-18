@@ -45,6 +45,15 @@ public sealed record QueueItem
     /// <summary>Pista de reserva (acció STREAM, D-010): si el stream no connecta, sona aquesta en el seu lloc. Null = cap (se salta).</summary>
     public QueueItem? StreamFallback { get; init; }
 
+    /// <summary>
+    /// Reconnexió durant tota la durada (acció STREAM, D-031, D-180): si cau (o no connecta a l'hora), sona música de la
+    /// rotació mentre es prova de reconnectar, i el stream torna quan funciona. El que va darrere no s'avança.
+    /// </summary>
+    public bool StreamReconnect { get; init; }
+
+    /// <summary>Amb <see cref="StreamReconnect"/>: quan el stream torna, espera que s'acabi la cançó que sona (si no, de seguida).</summary>
+    public bool StreamReturnAfterSong { get; init; }
+
     /// <summary>Quant sonarà, de l'inici al final (sense comptar el solapament amb la següent), o null si no se sap.</summary>
     public long? PlannedMs => (EndMs ?? FileDurationMs) is { } end ? Math.Max(0, end - (StartMs ?? 0)) : null;
     public QueueOrigin Origin { get; init; } = QueueOrigin.Manual;

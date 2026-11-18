@@ -505,6 +505,18 @@ public static class EngineServer
                 case "recuperat":
                     incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, null);
                     break;
+                // Reconnexió durant tota la durada (D-031, D-180): oberta mentre és caigut; el resum, al final
+                case "caigut":
+                    incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, $"El stream «{e.Item}» ha caigut: {e.Message}", e.Item.Path);
+                    break;
+                case "tornat":
+                    incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, null);
+                    incidents.Report(IncidentKind.Stream, key + ":tornat", IncidentSeverity.Info, $"El stream «{e.Item}»: {e.Message}", e.Item.Path, recovered: true);
+                    break;
+                case "resum":
+                    incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, null);
+                    incidents.Report(IncidentKind.Stream, key + ":resum", IncidentSeverity.Info, $"El stream «{e.Item}» s'ha acabat. {e.Message}", e.Item.Path, recovered: true);
+                    break;
                 default:
                     incidents.Report(IncidentKind.Stream, key + ":silenci", IncidentSeverity.Warning, $"El stream «{e.Item}» s'ha acabat abans d'hora. {e.Message}", e.Item.Path, recovered: true);
                     break;

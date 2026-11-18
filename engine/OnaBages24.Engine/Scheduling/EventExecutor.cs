@@ -248,6 +248,8 @@ public sealed class EventExecutor
             StreamLiveEdge = ReadBool(action, "directe") ?? true,
             StreamDelaySeconds = delay,
             StreamFallback = fallback,
+            StreamReconnect = ReadBool(action, "reconnecta") ?? false,
+            StreamReturnAfterSong = ReadString(action, "tornada") == "canco",
         };
     }
 

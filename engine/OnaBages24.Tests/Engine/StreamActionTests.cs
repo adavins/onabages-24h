@@ -81,6 +81,17 @@ public sealed class StreamActionTests : IDisposable
         var item = Assert.Single(Prepare(Event($$"""{"songId":{{_stream}},"durada_seg":60}""")).Items);
         Assert.Equal((60_000L, 58_000L), (item.EndMs, item.MixMs));
         Assert.Equal((true, (int?)null, (int?)null, (QueueItem?)null), (item.StreamLiveEdge, item.StreamSilenceSeconds, item.StreamDelaySeconds, item.StreamFallback));
+        Assert.Equal((false, false), (item.StreamReconnect, item.StreamReturnAfterSong));
+    }
+
+    [Theory]
+    [InlineData(""","reconnecta":true""", true, false)]
+    [InlineData(""","reconnecta":true,"tornada":"seguida" """, true, false)]
+    [InlineData(""","reconnecta":true,"tornada":"canco" """, true, true)]
+    public void La_reconnexio_i_la_tornada_passen_a_la_cua(string options, bool reconnect, bool afterSong)
+    {
+        var item = Assert.Single(Prepare(Event($$"""{"songId":{{_stream}},"durada_seg":3600{{options}}}""")).Items);
+        Assert.Equal((reconnect, afterSong), (item.StreamReconnect, item.StreamReturnAfterSong));
     }
 
     [Fact]
@@ -143,12 +154,21 @@ public sealed class StreamActionTests : IDisposable
         Assert.Equal("LA XARXA - Directe", info.Label);
         Assert.Equal("Stream · 1 h 30 min · http://127.0.0.1:9/directe · comença pel directe · s'acaba si arriba en silenci 8 s · " +
                      "retard de connexió 3 s · reserva «Butlletí de reserva»", info.Detail);
+
+        var reconnect = describer.Describe(new EventAction
+        {
+            Type = EventActionType.Stream,
+            Params = $$"""{"songId":{{_stream}},"durada_seg":3600,"reconnecta":true,"tornada":"canco"}""",
+        });
+        Assert.EndsWith("es reconnecta si cau (torna en acabar la cançó)", reconnect.Detail);
     }
 
     [Theory]
     [InlineData("\"retard_seg\":31", "retard de connexió")]
     [InlineData("\"silenci_seg\":0", "silenci")]
     [InlineData("\"fade_ms\":20000", "fos final")]
+    [InlineData("\"tornada\":\"despres\"", "tornada")]
+    [InlineData("\"tornada\":3", "tornada")]
     public void En_desar_es_comproven_els_limits(string option, string expected)
     {
         var router = new CommandRouter(new EngineState(), () => { }, _library, () => [], _queue, events: _events);

@@ -328,6 +328,15 @@ public sealed class AutoDj
         {
             var now = _clock();
 
+            // Música de farciment (D-031, D-180): un stream amb reconnexió ha caigut. La pista següent de la rotació va al
+            // davant de la cua; també amb l'AutoDJ aturat (mai silenci).
+            if (_queue.WantsFill && now >= _retryAt)
+            {
+                var fill = PickNext(DateOnly.FromDateTime(now.LocalDateTime), out _);
+                if (fill is null) _retryAt = now + _settings.RetryAfterNothing;
+                else _queue.AddFill(fill);
+            }
+
             // Aturat (D-073): es torna a activar sol quan s'acaba el temps, o abans si a la cua ja no queda res (mai silenci)
             if (!Enabled)
             {
