@@ -528,7 +528,7 @@ public static class EngineServer
                     break;
                 case "prova":
                     // Com va la connexió de prova (D-180): només al registre, per saber per què no ha tornat
-                    log.LogInformation("Stream «{Item}»: {Message}", e.Item, e.Message);
+                    log.LogInformation("{Source} «{Item}»: {Message}", e.Item.IsInput ? "Entrada" : "Stream", e.Item, e.Message);
                     break;
                 case "resum":
                     incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, null);
