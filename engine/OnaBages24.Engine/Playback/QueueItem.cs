@@ -44,6 +44,12 @@ public sealed record QueueItem
     /// <summary>L'identificador de Windows de l'entrada (si no hi és, es busca pel nom, <see cref="Title"/>).</summary>
     public string? InputDeviceId { get; init; }
 
+    /// <summary>
+    /// Títol per a BUTT mentre sona (acció ENTRADA, D-189): el que escriu <c>NowPlaying.txt</c>, sigui quin sigui el tipus de
+    /// la pista. Null = el de sempre (una entrada no canvia el títol).
+    /// </summary>
+    public string? ButtTitle { get; init; }
+
     /// <summary>Guany fix de l'entrada, en dB (D-188). 0 = tal com arriba.</summary>
     public double InputGainDb { get; init; }
 

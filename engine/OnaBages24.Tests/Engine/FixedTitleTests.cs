@@ -104,6 +104,34 @@ public sealed class FixedTitleTests : IDisposable
     }
 
     [Fact]
+    public void Una_entrada_amb_titol_per_a_BUTT_l_escriu_mentre_sona_i_el_titol_fix_hi_mana()
+    {
+        _nowPlaying.Show(Song("Macy Gray", "Still"));
+        WaitForFile("Macy Gray - Still");
+
+        // Sense títol, una entrada (tipus Stream) no canvia el títol
+        var input = QueueItem.FromInput(null, "Línia 2", QueueOrigin.Event);
+        _nowPlaying.Show(input);
+        Thread.Sleep(200);
+        Assert.Equal("Macy Gray - Still", File.ReadAllText(_path));
+
+        // Amb títol, sí (en una línia), encara que el tipus no sigui dels que canvien el títol
+        _nowPlaying.Show(input with { ButtTitle = "Esport i Punt\n(en directe)" });
+        WaitForFile("Esport i Punt (en directe)");
+
+        // Canviar la plantilla no el toca; quan torna una cançó, torna el títol de la cançó
+        _nowPlaying.Configure(_nowPlaying.Settings with { Template = "$title$" });
+        Assert.Equal("Esport i Punt (en directe)", _nowPlaying.Text);
+        _nowPlaying.Show(Song("Txarango", "Som riu"));
+        WaitForFile("Som riu");
+
+        // Amb un títol fix, mana el fix
+        _nowPlaying.SetFixed("Títol fix", DateTimeOffset.Now.AddHours(1), null);
+        _nowPlaying.Show(input with { ButtTitle = "Esport i Punt" });
+        WaitForFile("Títol fix");
+    }
+
+    [Fact]
     public void Si_el_motor_es_reinicia_a_mig_programa_es_recupera_i_si_ja_ha_passat_no()
     {
         var saved = new FixedTitle("Esport i Punt", DateTimeOffset.Now.AddHours(1), "Esport i Punt");

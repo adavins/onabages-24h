@@ -152,6 +152,7 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations, Camp
         var parts = new List<string> { "Entrada", seconds is { } s ? Duration(s * 1000) : "sense durada" };
         if (Long(p, "silenci_seg") is { } silence and > 0) parts.Add($"s'acaba si arriba en silenci {silence} s");
         if (Long(p, "fade_ms") is { } fade && fade != Playback.QueueItem.StreamFadeMs) parts.Add($"fos final {fade / 1000.0:0.#} s");
+        if (String(p, "titol_butt") is { } buttTitle && buttTitle.Trim().Length > 0) parts.Add($"títol per a BUTT «{buttTitle.Trim()}»");
         // Guany i AGC (D-188)
         if (DoubleOf(p, "guany_db") is { } gain && Math.Abs(gain) >= 0.05)
             parts.Add($"guany {(gain > 0 ? "+" : "−")}{Math.Abs(gain).ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("ca-ES"))} dB");

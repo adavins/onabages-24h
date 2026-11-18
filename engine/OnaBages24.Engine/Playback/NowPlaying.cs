@@ -215,6 +215,17 @@ public sealed class NowPlaying : IDisposable
     {
         lock (_sync)
         {
+            // Una entrada amb el seu títol per a BUTT (D-189): aquest text, sigui quin sigui el tipus
+            if (item.ButtTitle is { } buttTitle && OneLine(buttTitle) is { Length: > 0 } text)
+            {
+                _lastItem = null;
+                _streamTitle = text;
+                _queueText = text;
+                if (_fixed is not null) return; // mana el títol fix (D-184)
+                Text = text;
+                if (Settings.Enabled) MarkDirty();
+                return;
+            }
             if (!Settings.Types.Contains(item.Type)) return;
             _lastItem = item;
             _streamTitle = null;

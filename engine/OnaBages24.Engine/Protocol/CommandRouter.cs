@@ -2279,6 +2279,8 @@ public sealed partial class CommandRouter
                 throw new ArgumentException($"El silenci que acaba l'entrada ha de ser d'1 a {Scheduling.EventExecutor.MaxStreamSilenceSeconds} s.");
             if (p?["tornada"] is JsonValue back && (!back.TryGetValue(out string? backText) || backText is not ("seguida" or "canco")))
                 throw new ArgumentException("La tornada de l'entrada ha de ser «seguida» o «canco».");
+            if (Text(p, "titol_butt") is { } buttTitle && buttTitle.Trim().Length > FixedTitle.MaxLength)
+                throw new ArgumentException($"El títol per a BUTT de l'entrada pot tenir {FixedTitle.MaxLength} caràcters com a màxim.");
             // Guany i AGC (D-188)
             static double? Real(JsonObject? o, string name) => o?[name] is JsonValue n && n.TryGetValue(out double x) ? x : null;
             if (Real(p, "guany_db") is { } gain && Math.Abs(gain) > Scheduling.EventExecutor.MaxInputGainDb)

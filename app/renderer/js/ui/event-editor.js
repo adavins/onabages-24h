@@ -699,6 +699,13 @@ export class EventEditor {
             ? 'El tall es fa aquests segons més tard, perquè el que sona quadri amb l\'origen (que arriba amb retard).'
             : 'Només en un esdeveniment TALLA (a l\'hora exacta).'));
       }
+      // Títol per a BUTT mentre sona l'entrada (D-189)
+      if (isInput) {
+        li.append(this.#textField('Títol per a BUTT', p.titol_butt ?? '', (v) => {
+          if (v.trim()) p.titol_butt = v.trim();
+          else delete p.titol_butt;
+        }, { maxlength: '200', placeholder: 'P. ex. Esport i Punt' }, 'Mentre sona l\'entrada, NowPlaying.txt diu aquest text. Si cau i sona música, els títols de les cançons. Buit: el títol no canvia (continua el de la cançó d\'abans).'));
+      }
       // Volum de l'entrada (D-188): un guany fix i, si cal, l'anivellador automàtic
       if (isInput) {
         const db = (/** @type {number | undefined} */ v) => (v == null ? '' : String(v).replace('.', ',').replace('-', '−'));

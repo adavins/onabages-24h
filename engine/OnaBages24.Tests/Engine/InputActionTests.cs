@@ -74,6 +74,10 @@ public sealed class InputActionTests : IDisposable
         Assert.Equal(0, plain.InputGainDb);
         Assert.Null(plain.InputAgc);
 
+        Assert.Null(plain.ButtTitle);
+        var titled = Assert.Single(Prepare("""{"dispositiu":"Línia 2","durada_seg":600,"titol_butt":" Esport i Punt "}""").Items);
+        Assert.Equal("Esport i Punt", titled.ButtTitle);
+
         var gain = Assert.Single(Prepare("""{"dispositiu":"Línia 2","durada_seg":600,"guany_db":6}""").Items);
         Assert.Equal(6, gain.InputGainDb);
 
@@ -115,14 +119,14 @@ public sealed class InputActionTests : IDisposable
         var response = _router.Handle("""
             { "v": 1, "id": 1, "cmd": "scheduler.save", "event": {
                 "name": "Programa de fora", "mode": "TALLA", "startTime": "13:00:00",
-                "actions": [ { "type": "ENTRADA", "params": { "dispositiuId": "{x}", "dispositiu": "Línia 2", "durada_seg": 3600, "silenci_seg": 8, "guany_db": -4.5, "agc": true, "reconnecta": true } } ] } }
+                "actions": [ { "type": "ENTRADA", "params": { "dispositiuId": "{x}", "dispositiu": "Línia 2", "durada_seg": 3600, "silenci_seg": 8, "titol_butt": "Esport i Punt", "guany_db": -4.5, "agc": true, "reconnecta": true } } ] } }
             """);
 
         Assert.True(response["ok"]!.GetValue<bool>(), response.ToJsonString());
         var action = response["result"]!["event"]!["actions"]![0]!;
         Assert.Equal("ENTRADA", action["type"]!.GetValue<string>());
         Assert.Equal("Entrada «Línia 2»", action["label"]!.GetValue<string>());
-        Assert.Equal("Entrada · 1 h 00 min · s'acaba si arriba en silenci 8 s · guany −4,5 dB · AGC a −13 LUFS (com a molt +12 dB) · es reconnecta si cau (torna de seguida)",
+        Assert.Equal("Entrada · 1 h 00 min · s'acaba si arriba en silenci 8 s · títol per a BUTT «Esport i Punt» · guany −4,5 dB · AGC a −13 LUFS (com a molt +12 dB) · es reconnecta si cau (torna de seguida)",
             action["detail"]!.GetValue<string>());
     }
 }

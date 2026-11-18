@@ -304,6 +304,7 @@ public sealed class EventExecutor
             StreamFallback = fallback,
             StreamReconnect = ReadBool(action, "reconnecta") ?? false,
             StreamReturnAfterSong = ReadString(action, "tornada") == "canco",
+            ButtTitle = ReadString(action, "titol_butt") is { } title && title.Trim().Length > 0 ? title.Trim() : null,
             InputGainDb = Math.Clamp(ReadDouble(action, "guany_db") ?? 0, -MaxInputGainDb, MaxInputGainDb),
             InputAgc = ReadBool(action, "agc") == true
                 ? (Math.Clamp(ReadDouble(action, "agc_objectiu") ?? QueueItem.DefaultAgcTargetLufs, MinAgcTargetLufs, MaxAgcTargetLufs),
