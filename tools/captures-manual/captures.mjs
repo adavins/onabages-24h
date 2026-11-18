@@ -8,10 +8,10 @@
 // Cal que l'aplicació de sempre estigui tancada (el motor fa servir el port 47824) i que s'hagin generat els àudios
 // (node genera-audios.mjs). La carpeta «dades» de sempre no es toca. Els àudios són tons fluixos (uns −30 dB) i, a
 // més, el volum de sortida es posa a −20 dB: no se sent gairebé res (si es vol, es pot silenciar l'altaveu).
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { APP, AUDIO, DATA, ENGINE_PORT, SHOTS, sleep } from './comu.mjs';
+import { APP, AUDIO, DATA, DRIVE, DRIVE_AUDIO, DRIVE_DATA, ENGINE_PORT, SHOTS, WORK, sleep } from './comu.mjs';
 
 const DEBUG_PORT = 9482;
 const PLAY_SECONDS = 60; // quant sona abans de les captures (historial, cua, pròxims esdeveniments)
@@ -30,10 +30,24 @@ try {
 fs.rmSync(DATA, { recursive: true, force: true }); // sempre des de zero
 fs.mkdirSync(DATA, { recursive: true });
 fs.mkdirSync(SHOTS, { recursive: true });
+// Una pista d'emergència (si no, el registre tindria l'avís «no hi ha cap pista d'emergència»)
+fs.mkdirSync(path.join(DATA, 'emergencia'), { recursive: true });
+fs.copyFileSync(path.join(AUDIO, 'Musica pop', 'Artista A - Cançó del matí.wav'), path.join(DATA, 'emergencia', 'Artista A - Cançó del matí.wav'));
+
+// La carpeta de treball com a M: (rutes sense el nom de l'usuari, vegeu comu.mjs)
+spawnSync('subst', [DRIVE, '/d'], { stdio: 'ignore' }); // d'una vegada anterior que no hagués acabat
+if (fs.existsSync(DRIVE + '\\')) {
+  console.log(`La unitat ${DRIVE} ja existeix: no es pot fer servir per a les captures.`);
+  process.exit(2);
+}
+if (spawnSync('subst', [DRIVE, WORK], { stdio: 'ignore' }).status !== 0) {
+  console.log(`No s'ha pogut crear la unitat ${DRIVE}.`);
+  process.exit(2);
+}
 
 // Electron amb la carpeta de dades de mostra i el depurador remot (per clicar i fer captures).
 // VS Code (que també és Electron) deixa ELECTRON_RUN_AS_NODE posada: s'ha de treure.
-const env = { ...process.env, ONABAGES_DATA_DIR: DATA };
+const env = { ...process.env, ONABAGES_DATA_DIR: DRIVE_DATA };
 delete env.ELECTRON_RUN_AS_NODE;
 const electron = spawn(path.join(APP, 'node_modules', 'electron', 'dist', 'electron.exe'),
   [`--remote-debugging-port=${DEBUG_PORT}`, '.'], { cwd: APP, stdio: 'ignore', env });
@@ -48,6 +62,8 @@ async function finish(/** @type {number} */ code) {
   try { if (engine) await send('engine.shutdown'); } catch { /* ja tancat */ }
   await sleep(1000);
   electron.kill();
+  await sleep(1000);
+  spawnSync('subst', [DRIVE, '/d'], { stdio: 'ignore' });
   process.exit(code);
 }
 process.on('unhandledRejection', async (e) => {
@@ -60,7 +76,7 @@ let runtime = null;
 for (let i = 0; i < 120 && !runtime; i++) {
   await sleep(1000);
   try {
-    const info = JSON.parse(fs.readFileSync(path.join(DATA, 'engine.json'), 'utf8'));
+    const info = JSON.parse(fs.readFileSync(path.join(DRIVE_DATA, 'engine.json'), 'utf8'));
     await fetch(`http://127.0.0.1:${info.port}/health`, { signal: AbortSignal.timeout(1000) });
     runtime = info;
   } catch { /* encara no */ }
@@ -92,6 +108,9 @@ function send(/** @type {string} */ cmd, params = {}) {
 console.log('Creant les dades de mostra…');
 await send('station.set', { name: 'Ràdio de Mostra', frequency: '100,0 FM' });
 await send('processor.set', { volumeDb: -20 });
+// La sortida, desada (a les dades de mostra no n'hi ha cap: s'emetria per la d'emergència, amb un avís)
+const output = (await send('output.get')).output;
+if (output?.current?.id) await send('output.set', { deviceId: output.current.id });
 
 const category = async (/** @type {string} */ name) => (await send('category.save', { name })).id;
 const subcategory = async (/** @type {string} */ name, /** @type {number} */ categoryId) => (await send('subcategory.save', { name, categoryId })).id;
@@ -103,7 +122,7 @@ const sweepers = await subcategory('Indicatius', await category('Sweepers'));
 const programes = await subcategory('Programes', await category('Programes'));
 
 async function importFolder(/** @type {string} */ folder, /** @type {number} */ subcategoryId, /** @type {string} */ type) {
-  await send('library.import', { folder: path.join(AUDIO, folder), subcategoryId, type });
+  await send('library.import', { folder: path.join(DRIVE_AUDIO, folder), subcategoryId, type });
   for (let i = 0; i < 300; i++) {
     await sleep(500);
     const status = (await send('library.importStatus')).import;
@@ -114,11 +133,13 @@ async function importFolder(/** @type {string} */ folder, /** @type {number} */ 
   }
   throw new Error(`Importació de ${folder}: no s'acaba`);
 }
-await importFolder('Musica pop', pop, 'music');
-await importFolder('Musica catala', catala, 'music');
+// Els programes primer: l'analitzador no calcula els punts dels fitxers llargs («sense so» al resum de la importació) i, si
+// fossin l'última, el resum es veuria a la captura de la biblioteca
+await importFolder('Programes', programes, 'program');
 await importFolder('Falques', falques, 'commercial');
 await importFolder('Sweepers', sweepers, 'sweeper');
-await importFolder('Programes', programes, 'program');
+await importFolder('Musica catala', catala, 'music');
+await importFolder('Musica pop', pop, 'music');
 const track = async (/** @type {string} */ text) => {
   const found = (await send('library.search', { text, limit: 5 })).tracks;
   if (!found?.length) throw new Error(`No es troba la pista «${text}»`);
@@ -164,8 +185,29 @@ await save({ name: 'Canvi de bossa', mode: 'SISTEMA', startTime: '00:00:00', rec
   actions: [{ type: 'BOSSA', params: { bossaId: bagA, subcategoriaId: catala } }] });
 await send('notes.set', { text: 'Recordatori: divendres hi ha retransmissió especial a les 19 h.' });
 
+// Una incidència de debò per al registre: una pista el fitxer de la qual s'ha esborrat, a la cua (se saltarà)
+const lostFolder = path.join(DATA, 'perduda');
+fs.mkdirSync(lostFolder, { recursive: true });
+const lostFile = path.join(lostFolder, 'Artista L - Tarda de pluja.wav');
+fs.copyFileSync(path.join(AUDIO, 'Musica catala', 'Artista J - Riu avall.wav'), lostFile);
+await importFolder('../dades/perduda', catala, 'music');
+const lost = await track('Tarda de pluja');
+fs.rmSync(lostFile); // (és la mateixa carpeta, vista com a M:)
+await send('queue.insert', { items: [{ trackId: lost }], position: 'next' });
+
+// Un esdeveniment d'aquí a uns segons: al registre hi haurà la seva execució
+const soon = new Date(Date.now() + 40_000);
+const hhmmss = [soon.getHours(), soon.getMinutes(), soon.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
+await save({ name: 'Cortina de notícies', mode: 'ENCUA', startTime: hhmmss, recurrence: 'DATES', includedDates: [day(0)],
+  actions: [{ type: 'PISTA', params: { songId: await track('Cortina de notícies') } }] });
+
 console.log(`Sonant ${PLAY_SECONDS} s perquè hi hagi historial…`);
 await sleep(PLAY_SECONDS * 1000);
+// Unes quantes cançons més a l'historial (i a «Últimes pistes»), sense esperar que s'acabin
+for (let i = 0; i < 4; i++) {
+  await send('player.next');
+  await sleep(6000);
+}
 
 // --- La finestra (Chrome DevTools Protocol) ---
 let target;
@@ -207,16 +249,49 @@ const click = (/** @type {string} */ selector) => run(`document.querySelector(${
 await click('#nav-emissio');
 await shot('emissio');
 await click('#nav-planificador');
+await sleep(1000);
+await run(`(() => {
+  // El tros de la graella que es desplaça: el que té més per baixar
+  const all = [...document.querySelectorAll('#view-planificador *')].filter((e) => e.scrollHeight > e.clientHeight + 10
+    && getComputedStyle(e).overflowY !== 'visible');
+  const grid = all.sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight))[0];
+  if (grid) grid.scrollTop = grid.scrollHeight * 9.5 / 24;
+  return true;
+})()`);
 await shot('planificador');
 await click('#nav-biblioteca');
 await click('#sub-biblioteca');
+// Sense el resum de l'última importació (la de la pista perduda de mostra)
+await run(`(() => {
+  [...document.querySelectorAll('#tm-import-panel button')].find((b) => b.textContent.trim() === 'Tanca')?.click();
+  return true;
+})()`);
 await shot('biblioteca');
 await click('#sub-historial');
 await shot('historial');
-for (const view of ['rotacions', 'campanyes', 'registre']) {
-  await click(`[data-view="${view}"]`);
-  await shot(view);
-}
+const openItem = (/** @type {string} */ view, /** @type {string} */ text) => run(`(() => {
+  const item = [...document.querySelectorAll('#view-${view} .rt-item')].find((b) => b.textContent.includes(${JSON.stringify(text)}));
+  item?.click();
+  return !!item;
+})()`);
+await click('[data-view="rotacions"]');
+await sleep(500);
+await openItem('rotacions', 'Mostra');
+await shot('rotacions');
+await click('[data-view="campanyes"]');
+await sleep(500);
+await openItem('campanyes', 'Ferreteria Exemple');
+await shot('campanyes');
+await click('[data-view="registre"]');
+await sleep(1000);
+// Sense els canvis (els de les dades de mostra) ni les sessions; amb les execucions dels esdeveniments
+await run(`(() => {
+  const box = (/** @type {string} */ v) => document.querySelector('#view-registre input[id$="-' + v + '"]');
+  for (const v of ['change', 'session']) if (box(v)?.checked) box(v).click();
+  if (box('event') && !box('event').checked) box('event').click();
+  return true;
+})()`);
+await shot('registre');
 await click('#nav-emissio');
 
 if (consoleErrors.length) console.log(`Errors a la consola de la interfície:\n  ${consoleErrors.join('\n  ')}`);
