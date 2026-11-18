@@ -357,10 +357,13 @@ async function stopEngine() {
 async function shutdownEngine() {
   await withEngine(async (engine) => {
     // El motor pot tancar la connexió abans de respondre: no és un error
-    await engine.send('engine.shutdown').catch((error) => {
-      // Un error del motor (p. ex. la contrasenya no és bona) es diu; tancar la connexió abans de respondre, no
-      if (error.code) console.log(color.red(`\n${error.message}`));
-    });
+    await engine.send('engine.shutdown').then(
+      () => console.log(color.dim('\nEl motor ha rebut l\'ordre d\'aturada.')),
+      (error) => {
+        // Un error del motor (p. ex. la contrasenya no és bona) es diu; tancar la connexió abans de respondre, no
+        if (error.code) console.log(color.red(`\n${error.message}`));
+        else if (!/tancat la connexió/.test(error.message)) console.log(color.red(`\nNo s'ha pogut enviar l'ordre d'aturada: ${error.message}`));
+      });
   });
   // Espera que el procés acabi (com a molt 10 s)
   for (let i = 0; i < 50 && runtimeInfo(); i++) await new Promise((resolve) => setTimeout(resolve, 200));
