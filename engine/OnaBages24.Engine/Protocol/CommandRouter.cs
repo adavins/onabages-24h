@@ -2279,6 +2279,14 @@ public sealed partial class CommandRouter
                 throw new ArgumentException($"El silenci que acaba l'entrada ha de ser d'1 a {Scheduling.EventExecutor.MaxStreamSilenceSeconds} s.");
             if (p?["tornada"] is JsonValue back && (!back.TryGetValue(out string? backText) || backText is not ("seguida" or "canco")))
                 throw new ArgumentException("La tornada de l'entrada ha de ser «seguida» o «canco».");
+            // Guany i AGC (D-188)
+            static double? Real(JsonObject? o, string name) => o?[name] is JsonValue n && n.TryGetValue(out double x) ? x : null;
+            if (Real(p, "guany_db") is { } gain && Math.Abs(gain) > Scheduling.EventExecutor.MaxInputGainDb)
+                throw new ArgumentException($"El guany de l'entrada ha de ser de −{Scheduling.EventExecutor.MaxInputGainDb:0} a +{Scheduling.EventExecutor.MaxInputGainDb:0} dB.");
+            if (Real(p, "agc_objectiu") is { } target && target is < Scheduling.EventExecutor.MinAgcTargetLufs or > Scheduling.EventExecutor.MaxAgcTargetLufs)
+                throw new ArgumentException($"L'objectiu de l'AGC ha de ser de {Scheduling.EventExecutor.MinAgcTargetLufs:0} a {Scheduling.EventExecutor.MaxAgcTargetLufs:0} LUFS.");
+            if (Real(p, "agc_max_db") is { } boost && boost is < 0 or > OnaBages.Audio.Leveler.MaxMaxBoostDb)
+                throw new ArgumentException($"El màxim que pot apujar l'AGC ha de ser de 0 a {OnaBages.Audio.Leveler.MaxMaxBoostDb:0} dB.");
         }
         foreach (var action in ev.Actions.Where(a => a.Type == EventActionType.Stream))
         {

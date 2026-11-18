@@ -152,6 +152,11 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations, Camp
         var parts = new List<string> { "Entrada", seconds is { } s ? Duration(s * 1000) : "sense durada" };
         if (Long(p, "silenci_seg") is { } silence and > 0) parts.Add($"s'acaba si arriba en silenci {silence} s");
         if (Long(p, "fade_ms") is { } fade && fade != Playback.QueueItem.StreamFadeMs) parts.Add($"fos final {fade / 1000.0:0.#} s");
+        // Guany i AGC (D-188)
+        if (DoubleOf(p, "guany_db") is { } gain && Math.Abs(gain) >= 0.05)
+            parts.Add($"guany {(gain > 0 ? "+" : "−")}{Math.Abs(gain).ToString("0.#", System.Globalization.CultureInfo.GetCultureInfo("ca-ES"))} dB");
+        if (Bool(p, "agc") == true)
+            parts.Add($"AGC a {(DoubleOf(p, "agc_objectiu") ?? Playback.QueueItem.DefaultAgcTargetLufs).ToString("0", System.Globalization.CultureInfo.InvariantCulture).Replace("-", "−")} LUFS (com a molt +{(DoubleOf(p, "agc_max_db") ?? Playback.QueueItem.DefaultAgcMaxBoostDb):0} dB)");
         if (Bool(p, "reconnecta") == true)
             parts.Add(String(p, "tornada") == "canco" ? "es reconnecta si cau (torna en acabar la cançó)" : "es reconnecta si cau (torna de seguida)");
         if (Long(p, "reserva_songId") is { } reserveId)
@@ -163,6 +168,9 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations, Camp
         return new ActionInfo(name is null ? "Entrada sense triar" : $"Entrada «{name}»", string.Join(" · ", parts), name is null && String(p, "dispositiuId") is null,
             seconds * 1000);
     }
+
+    private static double? DoubleOf(JsonElement p, string name) =>
+        p.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out double d) ? d : null;
 
     private string RotationName(long? id)
     {

@@ -44,6 +44,18 @@ public sealed record QueueItem
     /// <summary>L'identificador de Windows de l'entrada (si no hi és, es busca pel nom, <see cref="Title"/>).</summary>
     public string? InputDeviceId { get; init; }
 
+    /// <summary>Guany fix de l'entrada, en dB (D-188). 0 = tal com arriba.</summary>
+    public double InputGainDb { get; init; }
+
+    /// <summary>Anivellador automàtic de l'entrada (AGC, D-188): l'objectiu (LUFS) i el màxim que pot apujar (dB), o null.</summary>
+    public (double TargetLufs, double MaxBoostDb)? InputAgc { get; init; }
+
+    /// <summary>
+    /// AGC per defecte (D-188): el nivell al qual es porta l'entrada i el màxim que es pot apujar. L'objectiu és el de la
+    /// música mesurada a la sortida («Lo que se oye», 18-11-2026: −13 LUFS); al PC 24h s'ha de tornar a mesurar.
+    /// </summary>
+    public const double DefaultAgcTargetLufs = -13, DefaultAgcMaxBoostDb = 12;
+
     /// <summary>Una entrada de línia de Windows a la cua: amb el seu identificador i el seu nom (per si l'identificador canvia).</summary>
     public static QueueItem FromInput(string? deviceId, string deviceName, QueueOrigin origin, string? eventName = null) => new()
     {

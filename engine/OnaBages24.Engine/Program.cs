@@ -93,10 +93,11 @@ public static class Program
                   diu si funciona, el format, el títol, el nivell i quants segons envia el servidor de cop en connectar-s'hi
                   (el retard que hi afegeix). Es pot fer amb el motor en marxa.
 
-              prova-entrada [NÚMERO o NOM] [--segons N]
+              prova-entrada [NÚMERO o NOM] [--segons N] [--objectiu LUFS]
                   Sense res, llista les entrades d'àudio de Windows. Amb una entrada, l'escolta N segons (per defecte, 10)
                   sense fer sonar res, i diu si funciona, el format, el nivell, el silenci i a quina velocitat va el seu
-                  rellotge respecte del de l'ordinador (D-185). Es pot fer amb el motor en marxa.
+                  rellotge respecte del de l'ordinador (D-185), i la sonoritat amb el guany recomanat per arribar a
+                  l'objectiu (per defecte, −13 LUFS; D-188). Es pot fer amb el motor en marxa.
             """);
         return 2;
     }

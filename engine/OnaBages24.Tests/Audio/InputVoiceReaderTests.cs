@@ -21,13 +21,16 @@ public sealed class InputVoiceReaderTests : IDisposable
     }
 
     /// <summary>Una entrada falsa que envia so constant pel seu compte, com una targeta que va <paramref name="speed"/> vegades més de pressa.</summary>
-    private FakeInput Feeding(double speed, float value = 0.4f)
+    private FakeInput Feeding(double speed, float value = 0.4f) => Feeding(speed, _ => value);
+
+    /// <summary>Com l'altra, amb el so que diu <paramref name="sample"/> per a cada fotograma (p. ex. un to).</summary>
+    private FakeInput Feeding(double speed, Func<long, float> sample)
     {
         var input = new FakeInput(Rate, 2);
         _ = Task.Run(() =>
         {
             int packet = Rate / 100;
-            var buffer = Enumerable.Repeat(value, packet * 2).ToArray();
+            var buffer = new float[packet * 2];
             var watch = Stopwatch.StartNew();
             long sent = 0;
             while (!_stop.IsCancellationRequested)
@@ -35,6 +38,7 @@ public sealed class InputVoiceReaderTests : IDisposable
                 if (!input.IsRunning) { Thread.Sleep(5); watch.Restart(); sent = 0; continue; }
                 while (sent <= watch.Elapsed.TotalSeconds * Rate * speed)
                 {
+                    for (int i = 0; i < packet; i++) buffer[i * 2] = buffer[i * 2 + 1] = sample(sent + i);
                     input.Push(buffer);
                     sent += packet;
                 }
@@ -45,29 +49,43 @@ public sealed class InputVoiceReaderTests : IDisposable
     }
 
     /// <summary>Fa sonar el mesclador en temps real (com la targeta de sortida) durant <paramref name="seconds"/>.</summary>
-    private void Play(double seconds, Action? every100ms = null)
+    private List<float> Play(double seconds, Action? every100ms = null)
     {
         const int block = Rate / 100;
         var bytes = new byte[block * 2 * sizeof(float)];
+        var floats = new float[block * 2];
+        var peaks = new List<float>();
+        float peak = 0;
         var watch = Stopwatch.StartNew();
         long frames = (long)(seconds * Rate);
         for (long done = 0; done < frames; done += block)
         {
             _mixer.Read(bytes);
-            if ((done / block) % 10 == 9) every100ms?.Invoke();
+            Buffer.BlockCopy(bytes, 0, floats, 0, bytes.Length);
+            foreach (float f in floats) peak = Math.Max(peak, Math.Abs(f));
+            if ((done / block) % 10 == 9)
+            {
+                peaks.Add(peak);
+                peak = 0;
+                every100ms?.Invoke();
+            }
             while (watch.Elapsed.TotalSeconds < (double)(done + block) / Rate) Thread.Sleep(1);
         }
+        return peaks;
     }
 
-    private InputVoiceReader Start(FakeInput input, TimeSpan tolerance)
+    private InputVoiceReader Start(FakeInput input, TimeSpan tolerance) =>
+        Start(input, new InputOptions { Duration = TimeSpan.FromMinutes(1), DriftTolerance = tolerance });
+
+    private InputVoiceReader Start(FakeInput input, InputOptions options)
     {
         var voice = _mixer.AcquireVoice()!;
-        var reader = new InputVoiceReader(voice, () => input, Rate,
-            new InputOptions { Duration = TimeSpan.FromMinutes(1), DriftTolerance = tolerance }, () => _mixer.FramesRendered);
+        var reader = new InputVoiceReader(voice, () => input, Rate, options, () => _mixer.FramesRendered);
         var until = DateTime.UtcNow.AddSeconds(3);
         while (reader.State != ReaderState.Ready && DateTime.UtcNow < until) Thread.Sleep(10);
         Assert.Equal(ReaderState.Ready, reader.State);
-        voice.Start(_mixer.FramesRendered + Rate / 100);
+        // Com la cua: la veu comença una mica més tard (la cua l'omple mig segon abans de l'hora)
+        voice.Start(_mixer.FramesRendered + Rate / 5);
         return reader;
     }
 
@@ -106,6 +124,37 @@ public sealed class InputVoiceReaderTests : IDisposable
         Assert.InRange(reader.Buffered.TotalMilliseconds, 60, 240); // no s'ha quedat sense so guardat
     }
 
+    // --- Volum (D-188) ---
+
+    [Theory]
+    [InlineData(0.25f, 6.0, 0.5f)]   // +6 dB: el doble
+    [InlineData(0.4f, -6.0, 0.2f)]   // −6 dB: la meitat
+    [InlineData(0.8f, 6.0, 1.0f)]    // si passa de 1, es retalla
+    public void El_guany_fix_s_aplica_al_so_de_l_entrada(float value, double gainDb, float expected)
+    {
+        var input = Feeding(1.0, value);
+        using var reader = Start(input, new InputOptions { Duration = TimeSpan.FromMinutes(1), GainDb = gainDb });
+
+        var peaks = Play(1.5);
+
+        Assert.InRange(peaks[^3], expected - 0.01f, expected + 0.01f);
+    }
+
+    [Fact]
+    public void L_AGC_apuja_una_entrada_fluixa_i_la_fa_sonar_1_s_mes_tard()
+    {
+        // Un to de 440 Hz molt fluix (pic 0,02: uns −37 LUFS); amb l'objectiu a −16, l'AGC l'apuja el màxim, 12 dB
+        var input = Feeding(1.0, frame => 0.02f * (float)Math.Sin(2 * Math.PI * 440 * frame / Rate));
+        using var reader = Start(input, new InputOptions { Duration = TimeSpan.FromMinutes(1), Agc = (-16, 12) });
+        int underrunsAtStart = reader.Voice.Underruns;
+
+        var peaks = Play(4);
+
+        Assert.InRange(peaks[^3], 0.075f, 0.085f); // 0,02 × 4 (12 dB)
+        Assert.InRange(reader.Buffered.TotalSeconds, 1.15, 1.6); // 1 s per endavant (i el marge)
+        Assert.Equal(underrunsAtStart, reader.Voice.Underruns);
+    }
+
     [Fact]
     public void Si_les_dues_targetes_van_igual_no_es_toca_res()
     {
@@ -115,7 +164,9 @@ public sealed class InputVoiceReaderTests : IDisposable
         Play(5);
 
         var (dropped, repeated) = reader.DriftCorrections;
-        Assert.True(dropped + repeated < 50, $"tretes {dropped}, repetides {repeated}");
+        // Com a molt unes poques correccions pel soroll de la prova (fils que no es desperten a temps: fins a 15 ms); que
+        // amb les dues iguals no toca res, ho comprova exactament DriftControlTests
+        Assert.True(dropped + repeated < 1000, $"tretes {dropped}, repetides {repeated}");
         Assert.InRange(reader.Buffered.TotalMilliseconds, 80, 240);
     }
 

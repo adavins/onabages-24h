@@ -679,7 +679,7 @@ export class EventEditor {
       );
       // Opcions (fase 2, pas 7c; D-030, D-178)
       const setNumber = (/** @type {string} */ name, /** @type {string} */ v, /** @type {number} */ factor = 1) => {
-        const n = Number(v.trim().replace(',', '.'));
+        const n = Number(v.trim().replace(',', '.').replace('−', '-'));
         if (v.trim() === '' || !Number.isFinite(n)) delete p[name];
         else p[name] = Math.round(n * factor);
       };
@@ -698,6 +698,27 @@ export class EventEditor {
           { inputmode: 'numeric', placeholder: '0' }, ev.mode === 'TALLA'
             ? 'El tall es fa aquests segons més tard, perquè el que sona quadri amb l\'origen (que arriba amb retard).'
             : 'Només en un esdeveniment TALLA (a l\'hora exacta).'));
+      }
+      // Volum de l'entrada (D-188): un guany fix i, si cal, l'anivellador automàtic
+      if (isInput) {
+        const db = (/** @type {number | undefined} */ v) => (v == null ? '' : String(v).replace('.', ',').replace('-', '−'));
+        li.append(this.#textField('Guany (dB)', db(p.guany_db), (v) => setNumber('guany_db', v),
+          { inputmode: 'decimal', placeholder: '0' }, 'Per apujar (+) o abaixar (−) l\'entrada, de −20 a +20 dB. El valor el pots mesurar amb prova-entrada (consola, Diagnòstic → b), amb la font sonant com sempre: diu el guany recomanat. Buit: tal com arriba.'));
+        li.append(this.#check('Anivella el volum (AGC)', p.agc === true, (on) => {
+          if (on) p.agc = true;
+          else {
+            delete p.agc;
+            delete p.agc_objectiu;
+            delete p.agc_max_db;
+          }
+          this.#restructured();
+        }), el('div', 'form-text', 'Iguala el volum mentre sona, a poc a poc (les pauses no les apuja). Per a les fonts que arriben unes vegades més fluixes i altres més fortes. L\'entrada sona 1 s més tard que l\'origen (ha de mirar endavant).'));
+        if (p.agc === true) {
+          li.append(this.#textField('Objectiu (LUFS)', db(p.agc_objectiu), (v) => setNumber('agc_objectiu', v),
+            { inputmode: 'decimal', placeholder: '−13' }, 'El volum al qual es porta, de −30 a −6. Buit: −13 (el de la música, mesurat a la sortida).'));
+          li.append(this.#textField('Com a molt, apuja (dB)', db(p.agc_max_db), (v) => setNumber('agc_max_db', v),
+            { inputmode: 'decimal', placeholder: '12' }, 'Perquè no apugi de més una font molt fluixa (i el seu soroll), de 0 a 20. Buit: 12.'));
+        }
       }
       // Reconnexió durant tota la durada (D-031, D-180): per als programes llargs
       li.append(this.#check('Si cau, es reconnecta (programes llargs)', p.reconnecta === true, (on) => {

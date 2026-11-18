@@ -1605,6 +1605,8 @@ public sealed class QueuePlayer : IDisposable
     {
         Duration = Ms(item.EndMs ?? QueueItem.DefaultStreamMs),
         ConnectFor = _settings.StreamConnectFor,
+        GainDb = item.InputGainDb,
+        Agc = item.InputAgc,
     };
 
     /// <summary>Una font en directe que pot caure i tornar (D-031): un stream per internet o una entrada de línia (D-185).</summary>

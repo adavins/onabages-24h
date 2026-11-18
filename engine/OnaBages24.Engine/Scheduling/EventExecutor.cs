@@ -197,6 +197,8 @@ public sealed class EventExecutor
     /// <summary>««Ferreteria» no ha sonat: està desactivada.» (D-146)</summary>
     /// <summary>Límits dels paràmetres d'una acció STREAM (també els comprova <c>scheduler.save</c>).</summary>
     public const int MaxStreamFadeMs = 10_000, MaxStreamSilenceSeconds = 300, MaxStreamDelaySeconds = 30;
+    /// <summary>Entrades (D-188): el guany fix (±dB), i el marge de l'objectiu i del màxim de l'AGC.</summary>
+    public const double MaxInputGainDb = 20, MinAgcTargetLufs = -30, MaxAgcTargetLufs = -6;
 
     /// <summary>
     /// Una acció STREAM (D-010, D-030, D-108, D-178): el stream de la biblioteca (`songId`) o, als esdeveniments d'abans,
@@ -302,6 +304,11 @@ public sealed class EventExecutor
             StreamFallback = fallback,
             StreamReconnect = ReadBool(action, "reconnecta") ?? false,
             StreamReturnAfterSong = ReadString(action, "tornada") == "canco",
+            InputGainDb = Math.Clamp(ReadDouble(action, "guany_db") ?? 0, -MaxInputGainDb, MaxInputGainDb),
+            InputAgc = ReadBool(action, "agc") == true
+                ? (Math.Clamp(ReadDouble(action, "agc_objectiu") ?? QueueItem.DefaultAgcTargetLufs, MinAgcTargetLufs, MaxAgcTargetLufs),
+                   Math.Clamp(ReadDouble(action, "agc_max_db") ?? QueueItem.DefaultAgcMaxBoostDb, 0, OnaBages.Audio.Leveler.MaxMaxBoostDb))
+                : null,
         };
     }
 

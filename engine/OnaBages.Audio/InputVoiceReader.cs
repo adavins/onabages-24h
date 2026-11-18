@@ -29,6 +29,15 @@ public sealed record InputOptions
 
     /// <summary>Cap amunt o cap avall del marge, quanta diferència es deixa estar abans de corregir la deriva dels rellotges.</summary>
     public TimeSpan DriftTolerance { get; init; } = TimeSpan.FromMilliseconds(40);
+
+    /// <summary>Guany fix (dB) que s'aplica al so de l'entrada (D-188). 0 = tal com arriba.</summary>
+    public double GainDb { get; init; }
+
+    /// <summary>
+    /// Anivellador automàtic (AGC, D-188): iguala el volum mentre sona (<see cref="Leveler"/>). Mira 1 s endavant: l'entrada
+    /// sona aquesta estona més tard. Null = no.
+    /// </summary>
+    public (double TargetLufs, double MaxBoostDb)? Agc { get; init; }
 }
 
 /// <summary>
@@ -67,6 +76,11 @@ public sealed class InputVoiceReader : ILiveVoiceReader
     private LineInputReader? _input;
     private long _dropped, _repeated;
     private DriftControl? _drift; // de la connexió d'ara (es torna a crear en tornar a obrir l'entrada)
+    private Leveler? _leveler;    // l'AGC de la connexió d'ara, o null
+    private long _intoLeveler, _outOfLeveler; // mostres que hi han entrat i que n'han sortit (el que té dins)
+    private int _repeatPending;   // mostres (fotogrames) per repetir a la propera lectura (deriva)
+    private readonly float _gain;
+    private float[] _levelerBlock = [];
 
     /// <param name="open">Obre l'entrada (la de debò: <see cref="LineInputReader.OpenDevice"/>; a les proves, una de falsa).</param>
     /// <param name="now">El fotograma del mesclador ara (per saber quan comença la veu).</param>
@@ -77,6 +91,7 @@ public sealed class InputVoiceReader : ILiveVoiceReader
         _sampleRate = sampleRate;
         _options = options;
         _now = now;
+        _gain = (float)Math.Pow(10, options.GainDb / 20);
         _thread = new Thread(Run) { IsBackground = true, Name = $"Entrada veu {voice.Index}", Priority = ThreadPriority.AboveNormal };
         _thread.Start();
     }
@@ -102,8 +117,8 @@ public sealed class InputVoiceReader : ILiveVoiceReader
     /// <summary>Quantes mostres s'han tret i quantes s'han repetit per la deriva (per a les proves i el diagnòstic).</summary>
     public (long Dropped, long Repeated) DriftCorrections => (Interlocked.Read(ref _dropped), Interlocked.Read(ref _repeated));
 
-    /// <summary>El so guardat ara (a l'entrada i a la veu): el retard que hi afegeix el motor. Ha de quedar a prop del marge.</summary>
-    public TimeSpan Buffered => TimeSpan.FromSeconds(((Volatile.Read(ref _input)?.Buffer.Count ?? 0) + Voice.Buffer.Count) / 2.0 / _sampleRate);
+    /// <summary>El so guardat ara (a l'entrada, a l'AGC i a la veu): el retard que hi afegeix el motor. Ha de quedar a prop del que cal.</summary>
+    public TimeSpan Buffered => TimeSpan.FromSeconds(((Volatile.Read(ref _input)?.Buffer.Count ?? 0) + Interlocked.Read(ref _intoLeveler) - Interlocked.Read(ref _outOfLeveler) + Voice.Buffer.Count) / 2.0 / _sampleRate);
 
     public IReadOnlyList<StreamNotice> TakeNotices()
     {
@@ -153,12 +168,17 @@ public sealed class InputVoiceReader : ILiveVoiceReader
 
                 // Rebent: fins que es talla (si ja sonava, s'acaba de fer sonar el que havia arribat) o s'atura
                 _drift = null;
+                _repeatPending = 0;
+                _intoLeveler = _outOfLeveler = 0;
+                _leveler = _options.Agc is { } agc
+                    ? new Leveler(dest => ReadSource(input.Buffer, dest), _sampleRate, agc.TargetLufs, agc.MaxBoostDb, startGainDb: Started ? 0 : null)
+                    : null;
                 while (input.State == LineInputState.Receiving || (Started && input.Buffer.Count > 0))
                 {
                     token.ThrowIfCancellationRequested();
                     _reading.Wait(token);
                     Pump(input, chunk);
-                    if (State == ReaderState.Opening && input.Buffer.Count + Voice.Buffer.Count >= Frames(_options.Margin) * 2)
+                    if (State == ReaderState.Opening && input.Buffer.Count + Voice.Buffer.Count >= Keep)
                         Volatile.Write(ref _state, (int)ReaderState.Ready);
                     token.WaitHandle.WaitOne(10);
                 }
@@ -215,26 +235,38 @@ public sealed class InputVoiceReader : ILiveVoiceReader
         return input;
     }
 
-    /// <summary>Passa so de l'entrada a la veu, guardant només el marge, i corregeix la deriva dels rellotges.</summary>
+    /// <summary>
+    /// El so que es guarda (mostres): el marge i, amb l'AGC, el que l'anivellador ha de tenir per endavant (1 s, i un tros de
+    /// 100 ms del que entra i un del que surt, perquè es passa a trossos).
+    /// </summary>
+    private long Keep => Frames(_options.Margin) * 2 + (_options.Agc is null ? 0 : Frames(TimeSpan.FromSeconds(Leveler.LookaheadSeconds + 0.2)) * 2);
+
+    /// <summary>El que té dins l'anivellador ara (mostres).</summary>
+    private long LevelerHeld => _intoLeveler - _outOfLeveler;
+
+    /// <summary>
+    /// Passa so de l'entrada a la veu, guardant només el que cal (<see cref="Keep"/>), i corregeix la deriva dels rellotges.
+    /// El camí és sempre el mateix: l'entrada (amb les mostres repetides de la deriva) → el guany → l'AGC, si n'hi ha → la veu.
+    /// </summary>
     private void Pump(LineInputReader input, float[] chunk)
     {
         var buffer = input.Buffer;
-        long keep = Frames(_options.Margin) * 2;
+        long keep = Keep;
+        long total = buffer.Count + LevelerHeld + Voice.Buffer.Count;
         if (!Started)
         {
-            // Abans de començar, entre el lector i la veu, només el més recent: l'espera no ha d'afegir retard
-            long extra = buffer.Count + Voice.Buffer.Count - keep;
+            // Abans de començar, només el més recent: l'espera no ha d'afegir retard
+            long extra = total - keep;
             if (extra > 0) buffer.Skip((int)Math.Min(extra, buffer.Count) & ~1);
             long start = Voice.ScheduledStartFrame;
             if (start < 0 || start - _now() > Frames(FillBefore)) return;
         }
         else
         {
-            long total = buffer.Count + Voice.Buffer.Count;
-            _drift ??= new DriftControl(Frames(_options.Margin), Frames(_options.DriftTolerance), _sampleRate);
+            _drift ??= new DriftControl(keep / 2.0, Frames(_options.DriftTolerance), _sampleRate);
             if (total > keep + Frames(MaxBacklog) * 2)
             {
-                // N'hi ha molt de més (Windows s'ha encallat i n'ha enviat de cop): es torna al marge
+                // N'hi ha molt de més (Windows s'ha encallat i n'ha enviat de cop): es torna al que cal
                 buffer.Skip((int)Math.Min(total - keep, buffer.Count) & ~1);
                 _drift.Reset();
             }
@@ -249,21 +281,59 @@ public sealed class InputVoiceReader : ILiveVoiceReader
                 }
                 else if (correction < 0)
                 {
-                    Span<float> frame = stackalloc float[2];
-                    buffer.Read(frame);
-                    for (int i = 0; i <= -correction; i++)
-                        if (!Write(frame)) throw new OperationCanceledException();
+                    _repeatPending += -correction;
                     Interlocked.Add(ref _repeated, -correction);
                 }
             }
         }
 
-        while (buffer.Count > 0)
+        if (_leveler is null)
         {
-            int n = buffer.Read(chunk);
-            if (n == 0) break;
-            if (!Write(chunk.AsSpan(0, n))) throw new OperationCanceledException();
+            int n;
+            while ((n = ReadSource(buffer, chunk)) > 0)
+            {
+                // Sense AGC, un guany fix pot passar de ±1: es retalla aquí (el processador de la sortida pot estar desactivat)
+                if (_gain != 1f) for (int i = 0; i < n; i++) chunk[i] = Math.Clamp(chunk[i], -1f, 1f);
+                if (!Write(chunk.AsSpan(0, n))) throw new OperationCanceledException();
+            }
+            return;
         }
+
+        // Amb l'AGC: l'anivellador demana el so a trossos de 100 ms i, si no el troba sencer, es pensa que s'ha acabat. Només
+        // se li demana un tros quan el que necessita ja hi és (la primera vegada, 1 s per endavant i el tros).
+        int block = _sampleRate / 10 * 2;
+        if (_levelerBlock.Length != block) _levelerBlock = new float[block];
+        for (;;)
+        {
+            long needed = LevelerHeld == 0 ? (long)(Leveler.LookaheadSeconds * 10 + 1) * block : block;
+            if (buffer.Count < needed) break;
+            int n = _leveler.Read(_levelerBlock);
+            if (n <= 0) break;
+            _outOfLeveler += n;
+            if (!Write(_levelerBlock.AsSpan(0, n))) throw new OperationCanceledException();
+        }
+    }
+
+    /// <summary>
+    /// Llegeix so de l'entrada amb les mostres que cal repetir per la deriva i el guany fix. Al fil del lector.
+    /// </summary>
+    private int ReadSource(SampleRingBuffer buffer, Span<float> destination)
+    {
+        int written = 0;
+        if (_repeatPending > 0 && destination.Length >= 4 && buffer.Count >= 2)
+        {
+            // Una mostra que es repeteix: es llegeix i s'escriu (1 + les que toquin) vegades
+            Span<float> frame = stackalloc float[2];
+            buffer.Read(frame);
+            int times = Math.Min(_repeatPending + 1, destination.Length / 2);
+            for (int i = 0; i < times; i++) frame.CopyTo(destination[(i * 2)..]);
+            _repeatPending -= times - 1;
+            written = times * 2;
+        }
+        written += buffer.Read(destination[written..]);
+        if (_gain != 1f) for (int i = 0; i < written; i++) destination[i] *= _gain;
+        if (_leveler is not null) _intoLeveler += written;
+        return written;
     }
 
     /// <summary>Escriu a la veu, si encara és nostra (si no, false: s'ha deslligat).</summary>
