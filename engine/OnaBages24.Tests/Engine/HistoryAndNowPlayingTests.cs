@@ -204,6 +204,39 @@ public class HistoryAndNowPlayingTests : IDisposable
         Assert.Null(_nowPlaying.Problem);
     }
 
+    private static QueueStreamStatus StreamPlaying(string? title, bool forButt) =>
+        new(new QueueItem { Path = "http://127.0.0.1/directe", Title = "Ràdio Sant Fruitós", Type = TrackType.Stream, StreamTitleForButt = forButt },
+            "live", title, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(59), false, false, 0, null, null);
+
+    [Fact]
+    public void El_titol_del_stream_va_a_BUTT_nomes_si_l_accio_ho_diu()
+    {
+        string path = _temp.File("NowPlaying.txt");
+        _nowPlaying.Show(Item("Macy Gray", "Still"));
+        WaitForFile(path, "Macy Gray - Still");
+
+        // Sense l'opció, el títol del stream no hi va
+        _nowPlaying.ShowStream(StreamPlaying("Txarango - Som riu", forButt: false));
+        // Amb l'opció, però sense títol, tampoc
+        _nowPlaying.ShowStream(StreamPlaying(null, forButt: true));
+        Thread.Sleep(200);
+        Assert.Equal("Macy Gray - Still", File.ReadAllText(path));
+
+        // Amb l'opció, sí; i cada vegada que canvia (en una sola línia)
+        _nowPlaying.ShowStream(StreamPlaying("Txarango - Som riu", forButt: true));
+        WaitForFile(path, "Txarango - Som riu");
+        _nowPlaying.ShowStream(StreamPlaying("Esport i Punt\r\namb en Pere", forButt: true));
+        WaitForFile(path, "Esport i Punt  amb en Pere");
+
+        // Canviar la plantilla no esborra el títol del stream
+        _nowPlaying.Configure(_nowPlaying.Settings with { Template = "$title$" });
+        Assert.Equal("Esport i Punt  amb en Pere", _nowPlaying.Text);
+
+        // Quan torna la música, torna el títol de la cançó
+        _nowPlaying.Show(Item("Macy Gray", "Still"));
+        WaitForFile(path, "Still");
+    }
+
     [Fact]
     public void El_fitxer_es_utf8_sense_bom()
     {

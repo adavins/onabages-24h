@@ -693,6 +693,11 @@ export class EventEditor {
             else delete p.tornada;
           }));
       }
+      // Títol per a BUTT (D-182): el que envia el servidor del stream, mentre sona
+      li.append(this.#check('Envia el títol del stream a BUTT', p.titol === true, (on) => {
+        if (on) p.titol = true;
+        else delete p.titol;
+      }), el('div', 'form-text', 'Mentre sona, el títol que envia el servidor va a NowPlaying.txt. No l\'activis en un stream que retransmet la mateixa emissió d\'Ona Bages: el títol seria el que ja hi ha escrit.'));
       // Pista de reserva: si el stream no connecta, sona aquesta en el seu lloc (si no n'hi ha, se salta)
       const reserveName = action.reserveLabel ?? (/reserva «(.+?)»/.exec(action.detail ?? '')?.[1]) ?? (p.reserva_songId != null ? `Pista ${p.reserva_songId}` : null);
       const reserve = el('div', 'ee-reserve');

@@ -54,6 +54,9 @@ public sealed record NowPlayingSettings
 /// Exporta el títol de la pista que sona a un fitxer de text (<c>NowPlaying.txt</c>), que llegeix BUTT per enviar-lo al
 /// servidor d'streaming (D-009). Substitueix el plugin «Playing Info» de RadioDJ.
 ///
+/// Un stream amb l'opció «títol per a BUTT» (fase 2, pas 7e; D-182): mentre sona, s'hi escriu el títol que envia el servidor
+/// (ICY), i cada vegada que canvia.
+///
 /// El text es prepara al fil de control (quan comença una pista) i el fitxer s'escriu en un fil propi: si el disc o la
 /// carpeta de xarxa tarda o falla, l'emissió no se n'assabenta. Si no es pot escriure (p. ex. BUTT el té obert just en
 /// aquell moment), es torna a provar cada <see cref="RetryDelay"/>, amb un avís al registre.
@@ -69,6 +72,7 @@ public sealed class NowPlaying : IDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly Thread _worker;
     private QueueItem? _lastItem;
+    private string? _streamTitle; // el títol del stream que s'ha escrit l'últim (D-182), o null
     private bool _dirty;
     private long _writes;
 
@@ -79,7 +83,12 @@ public sealed class NowPlaying : IDisposable
         _defaultPath = defaultPath;
         _log = log;
         Settings = settings;
-        if (queue is not null) queue.Started += e => Show(e.Item);
+        if (queue is not null)
+        {
+            queue.Started += e => Show(e.Item);
+            // El títol del stream (D-182): la cua avisa quan canvia
+            queue.Changed += () => ShowStream(queue.StreamStatus);
+        }
         // Fil propi, no del grup de fils de .NET: si el grup va carregat, el títol no s'ha d'esperar
         _worker = new Thread(Run) { IsBackground = true, Name = "Títol per a BUTT" };
         _worker.Start();
@@ -106,7 +115,27 @@ public sealed class NowPlaying : IDisposable
         {
             if (!Settings.Types.Contains(item.Type)) return;
             _lastItem = item;
+            _streamTitle = null;
             Text = Format(Settings.Template, item.Artist, item.Title);
+            if (Settings.Enabled) MarkDirty();
+        }
+    }
+
+    /// <summary>
+    /// Com va el stream que sona (D-182): si té l'opció «títol per a BUTT» i el servidor n'envia un, s'escriu aquest títol
+    /// (tal com arriba, en una línia). Si no, no es toca res.
+    /// </summary>
+    public void ShowStream(QueueStreamStatus? status)
+    {
+        if (status is not { Item.StreamTitleForButt: true, Title: { } title }) return;
+        string text = OneLine(title);
+        if (text.Length == 0) return;
+        lock (_sync)
+        {
+            if (_streamTitle == text) return;
+            _streamTitle = text;
+            _lastItem = null;
+            Text = text;
             if (Settings.Enabled) MarkDirty();
         }
     }
@@ -130,7 +159,6 @@ public sealed class NowPlaying : IDisposable
     /// </summary>
     public static string Format(string template, string artist, string title)
     {
-        static string OneLine(string s) => s.Replace("\r", " ").Replace("\n", " ").Trim();
         artist = OneLine(artist);
         title = OneLine(title);
         string text = OneLine(template
@@ -139,6 +167,8 @@ public sealed class NowPlaying : IDisposable
         if (artist.Length == 0 || title.Length == 0) text = text.Trim(' ', '-', '–', '—', '|', '/', ':', '·');
         return text;
     }
+
+    private static string OneLine(string s) => s.Replace("\r", " ").Replace("\n", " ").Trim();
 
     private void MarkDirty()
     {

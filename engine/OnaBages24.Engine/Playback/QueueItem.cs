@@ -54,6 +54,12 @@ public sealed record QueueItem
     /// <summary>Amb <see cref="StreamReconnect"/>: quan el stream torna, espera que s'acabi la cançó que sona (si no, de seguida).</summary>
     public bool StreamReturnAfterSong { get; init; }
 
+    /// <summary>
+    /// Acció STREAM (fase 2, pas 7e; D-182): mentre sona, el títol que envia el servidor (ICY) va a <c>NowPlaying.txt</c>.
+    /// Desactivat per defecte: si el stream és la mateixa emissió, el títol seria el que ja hi ha escrit.
+    /// </summary>
+    public bool StreamTitleForButt { get; init; }
+
     /// <summary>Quant sonarà, de l'inici al final (sense comptar el solapament amb la següent), o null si no se sap.</summary>
     public long? PlannedMs => (EndMs ?? FileDurationMs) is { } end ? Math.Max(0, end - (StartMs ?? 0)) : null;
     public QueueOrigin Origin { get; init; } = QueueOrigin.Manual;

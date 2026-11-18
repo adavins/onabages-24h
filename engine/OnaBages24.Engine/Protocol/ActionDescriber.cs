@@ -120,6 +120,7 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations, Camp
         if (Long(p, "fade_ms") is { } fade && fade != Playback.QueueItem.StreamFadeMs) parts.Add($"fos final {fade / 1000.0:0.#} s");
         if (Bool(p, "reconnecta") == true)
             parts.Add(String(p, "tornada") == "canco" ? "es reconnecta si cau (torna en acabar la cançó)" : "es reconnecta si cau (torna de seguida)");
+        if (Bool(p, "titol") == true) parts.Add("el seu títol va a BUTT");
         if (Long(p, "reserva_songId") is { } reserveId)
         {
             var reserve = library?.GetTrack(reserveId);

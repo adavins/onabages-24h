@@ -250,6 +250,7 @@ public sealed class EventExecutor
             StreamFallback = fallback,
             StreamReconnect = ReadBool(action, "reconnecta") ?? false,
             StreamReturnAfterSong = ReadString(action, "tornada") == "canco",
+            StreamTitleForButt = ReadBool(action, "titol") ?? false,
         };
     }
 

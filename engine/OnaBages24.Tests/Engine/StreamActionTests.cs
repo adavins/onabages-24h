@@ -94,6 +94,15 @@ public sealed class StreamActionTests : IDisposable
         Assert.Equal((reconnect, afterSong), (item.StreamReconnect, item.StreamReturnAfterSong));
     }
 
+    [Theory]
+    [InlineData("", false)]
+    [InlineData(""","titol":true""", true)]
+    public void El_titol_per_a_BUTT_passa_a_la_cua(string options, bool title)
+    {
+        var item = Assert.Single(Prepare(Event($$"""{"songId":{{_stream}},"durada_seg":3600{{options}}}""")).Items);
+        Assert.Equal(title, item.StreamTitleForButt);
+    }
+
     [Fact]
     public void Els_esdeveniments_d_abans_amb_l_adreça_escrita_també_sonen()
     {
