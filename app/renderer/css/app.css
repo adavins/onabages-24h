@@ -313,6 +313,26 @@ body {
   background: #6c757d;
 }
 
+/* Estat del stream (fase 2, pas 7e): sempre amb icona i text */
+.now-stream {
+  font-weight: 600;
+  padding: 0.05rem 0.5rem;
+  border-radius: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.now-stream.is-live { color: #fff; background: #146c43; }
+.now-stream.is-warning { color: #000; background: #ffc107; }
+.now-stream.is-down { color: #fff; background: #b02a37; }
+.now-stream.is-returning { color: #000; background: #6edff6; }
+
+.queue-stream {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 .now-paused {
   color: #fff;
   background: #b02a37;

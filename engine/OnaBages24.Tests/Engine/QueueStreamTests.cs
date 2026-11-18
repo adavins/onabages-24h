@@ -5,6 +5,7 @@ using NAudio.Wave;
 using OnaBages.Audio;
 using OnaBages24.Data;
 using OnaBages24.Engine.Playback;
+using OnaBages24.Engine.Protocol;
 using OnaBages24.Tests.Data;
 
 namespace OnaBages24.Tests.Engine;
@@ -670,6 +671,101 @@ public sealed class QueueStreamTests : IDisposable
         Assert.Equal((0L, QueueItem.DefaultStreamMs, QueueItem.DefaultStreamMs - QueueItem.StreamFadeMs), (item.StartMs, item.EndMs, item.MixMs));
         Assert.Equal(90_000L, QueueItem.FromTrack(track with { DurationMs = 90_000 }, QueueOrigin.Manual).EndMs);
         Assert.False(QueueItem.FromTrack(track with { Path = @"C:\musica\a.mp3", Type = TrackType.Music }, QueueOrigin.Manual).IsStream);
+    }
+
+    // --- Estat dels streams per a la interfície (fase 2, pas 7e) ---
+
+    [Fact]
+    public void Mentre_sona_un_stream_la_cua_diu_que_es_en_directe_i_quant_en_falta()
+    {
+        var mp3 = FakeRadio.Mp3(20, 0.5f);
+        using var radio = new FakeRadio((client, _) => SendLive(client, mp3, 1));
+        var player = NewPlayer();
+        player.Enqueue(Stream(radio, 20_000), File(Wav(3, 0.2f)));
+
+        Run(player, 3);
+
+        var status = player.StreamStatus;
+        Assert.NotNull(status);
+        Assert.Equal("Directe", status.Item.Title);
+        Assert.Equal("live", status.State);
+        Assert.False(status.Reconnects);
+        Assert.InRange(status.Elapsed.TotalSeconds, 1.5, 3.1);
+        // Fins a l'hora prevista de final (on comença la següent): la durada menys el fos
+        Assert.InRange((status.Elapsed + status.Remaining).TotalMilliseconds, 20_000 - QueueItem.StreamFadeMs - 50, 20_000 - QueueItem.StreamFadeMs + 50);
+        var json = QueueJson.Queue(player)["stream"]!;
+        Assert.Equal("live", (string?)json["state"]);
+        Assert.Equal(status.Item.Id.ToString(), (string?)json["itemId"]);
+    }
+
+    [Fact]
+    public void Amb_reconnexio_la_cua_diu_quan_ha_caigut_com_va_la_prova_i_quan_torna()
+    {
+        // Emet 3 s, després no emet (503) fins als 6 s, i després torna
+        var mp3 = FakeRadio.Mp3(40, 0.5f);
+        var watch = Stopwatch.StartNew();
+        int connections = 0;
+        using var radio = new FakeRadio(async (client, _) =>
+        {
+            if (Interlocked.Increment(ref connections) == 1) await SendLive(client, mp3, 1, closeAfterSeconds: 3);
+            else if (watch.Elapsed < TimeSpan.FromSeconds(6)) await FakeRadio.Send(client, "HTTP/1.0 503 Service Unavailable\r\n\r\n");
+            else await SendLive(client, mp3, 1);
+        });
+        FillWith(20);
+        var player = NewHoldPlayer();
+        var states = new List<string>();
+        player.Changed += () =>
+        {
+            if (player.StreamStatus is { } s) lock (states) if (states.Count == 0 || states[^1] != s.State) states.Add(s.State);
+        };
+        player.Enqueue(Reconnecting(radio, 30_000), File(Wav(5, 0.2f)) with { Title = "Resta" });
+
+        Run(player, 5.5);
+
+        var down = player.StreamStatus;
+        Assert.NotNull(down);
+        Assert.Equal("down", down.State);
+        Assert.Equal("trying", down.Probe); // encara respon 503
+        Assert.Equal(1, down.Cuts);
+        Assert.True(down.Reconnects);
+        Assert.NotNull(down.DownFor);
+        Assert.InRange(down.DownFor.Value.TotalSeconds, 0.5, 4);
+        Assert.InRange(down.Elapsed.TotalSeconds, 4.5, 5.6); // des de l'inici del stream, no de la música
+        long planned = 30_000 - QueueItem.StreamFadeMs;
+        Assert.InRange((down.Elapsed + down.Remaining).TotalMilliseconds, planned - 50, planned + 50);
+        var json = QueueJson.Queue(player)["stream"]!;
+        Assert.Equal("down", (string?)json["state"]);
+        Assert.NotNull((string?)json["downSince"]);
+
+        Run(player, 5.5);
+
+        var back = player.StreamStatus;
+        Assert.NotNull(back);
+        Assert.Equal("live", back.State);
+        Assert.Null(back.DownFor);
+        Assert.Null(back.Probe);
+        // El temps continua comptant des de l'inici del stream, no des que ha tornat
+        Assert.InRange(back.Elapsed.TotalSeconds, 10, 11.2);
+        Assert.InRange((back.Elapsed + back.Remaining).TotalMilliseconds, planned - 50, planned + 50);
+        // La interfície ho ha sabut a cada canvi
+        lock (states) Assert.Equal(["live", "down", "returning", "live"], states.Where(s => s != "cut"));
+    }
+
+    [Fact]
+    public void Un_stream_que_espera_a_la_cua_diu_quan_ja_es_a_punt()
+    {
+        var mp3 = FakeRadio.Mp3(20, 0.5f);
+        using var radio = new FakeRadio((client, _) => SendLive(client, mp3, 1));
+        var player = NewPlayer();
+        var stream = Stream(radio, 10_000);
+        player.Enqueue(File(Wav(6, 0.2f)), stream);
+
+        Run(player, 3);
+
+        Assert.Equal("ready", player.UpcomingStreamStates[stream.Id]);
+        var upcoming = QueueJson.Queue(player)["upcoming"]!.AsArray();
+        Assert.Equal("ready", (string?)upcoming[0]!["streamState"]);
+        Assert.Null(player.StreamStatus); // encara no sona cap stream
     }
 
     private static byte[] Concat(params byte[][] parts) => parts.SelectMany(p => p).ToArray();

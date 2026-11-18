@@ -37,6 +37,7 @@ public static class QueueJson
         var forecast = player.Forecast();
         var starts = forecast.Starts.ToDictionary(s => s.Id, s => s.StartsIn);
         var pause = player.Pause;
+        var streamStates = player.UpcomingStreamStates;
         return new JsonObject
         {
             ["current"] = player.Current is { } current ? Item(current) : null,
@@ -48,14 +49,34 @@ public static class QueueJson
                 ["autoResumeAt"] = (now + pause.AutoResumeIn).ToString("O"),
             },
             ["pauseNotice"] = player.PauseNotice,
+            // Streams (fase 2, pas 7e): com va el que sona o el que s'espera que torni (D-180), o null
+            ["stream"] = Stream(player.StreamStatus, now),
             ["upcoming"] = new JsonArray(upcoming.Select(i =>
             {
                 var json = Item(i);
                 json["plannedAt"] = starts.GetValueOrDefault(i.Id) is { } inTime ? (now + inTime).ToString("O") : null;
+                // Un stream que ja s'està connectant (fase 2, pas 7e): "connecting" o "ready"
+                if (streamStates.TryGetValue(i.Id, out var streamState)) json["streamState"] = streamState;
                 return (JsonNode)json;
             }).ToArray()),
         };
     }
+
+    /// <summary>Com va un stream (fase 2, pas 7e; docs/protocol.md, 4.2), amb hores locals amb zona.</summary>
+    public static JsonObject? Stream(QueueStreamStatus? status, DateTimeOffset now) => status is null ? null : new JsonObject
+    {
+        ["itemId"] = status.Item.Id.ToString(),
+        ["name"] = status.Item.ToString(),
+        ["state"] = status.State,
+        ["title"] = status.Title,
+        ["startedAt"] = (now - status.Elapsed).ToString("O"),
+        ["endsAt"] = (now + status.Remaining).ToString("O"),
+        ["reconnects"] = status.Reconnects,
+        ["returnAfterSong"] = status.ReturnAfterSong,
+        ["cuts"] = status.Cuts,
+        ["downSince"] = status.DownFor is { } down ? (now - down).ToString("O") : null,
+        ["probe"] = status.Probe,
+    };
 
     public static JsonObject Track(Track track) => new()
     {

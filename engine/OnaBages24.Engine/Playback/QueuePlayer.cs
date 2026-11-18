@@ -111,6 +111,17 @@ public sealed record QueueEmergency(QueueItem Waiting, QueueItem Emergency);
 /// <summary>Previsió de la cua: d'aquí a quant s'acaba la que sona i d'aquí a quant comença cada pista que espera (null = no se sap).</summary>
 public sealed record QueueForecast(TimeSpan? CurrentEndsIn, IReadOnlyList<(Guid Id, TimeSpan? StartsIn)> Starts);
 
+/// <summary>
+/// Com va un stream (fase 2, pas 7e), per a la interfície: el que sona o el que s'espera que torni (D-180).
+/// <paramref name="State"/>: <c>live</c> (en directe), <c>silent</c> (connectat, però arriba en silenci), <c>cut</c> (tallat:
+/// es reconnecta), <c>down</c> (ha caigut i sona música mentre es prova de reconnectar) o <c>returning</c> (ja torna: és la
+/// següent). <paramref name="Elapsed"/> i <paramref name="Remaining"/>: des de l'inici previst i fins a l'hora prevista de
+/// final (on comença la resta). <paramref name="Probe"/>, amb <c>down</c>: <c>trying</c> (no connecta), <c>receiving</c> (rep
+/// àudio, encara no fa prou estona) o <c>ready</c> (funciona: tornarà en acabar la cançó).
+/// </summary>
+public sealed record QueueStreamStatus(QueueItem Item, string State, string? Title, TimeSpan Elapsed, TimeSpan Remaining,
+    bool Reconnects, bool ReturnAfterSong, int Cuts, TimeSpan? DownFor, string? Probe);
+
 public sealed record QueuePosition(Guid ItemId, TimeSpan Elapsed, TimeSpan Remaining, TimeSpan UntilMix, TimeSpan Duration)
 {
     /// <summary>La pista està en pausa (D-103): la posició no avança.</summary>
@@ -140,6 +151,7 @@ public sealed class QueuePlayer : IDisposable
     private readonly List<Playing> _ending = [];
     private readonly List<MixerVoice> _toRelease = []; // veus aturades que s'alliberaran quan el fil d'àudio les doni per acabades
     private readonly Dictionary<Guid, Playing> _reserved = []; // primeres pistes de talls, obertes per endavant
+    private string _streamSignature = ""; // l'últim estat dels streams que s'ha avisat (fase 2, pas 7e)
     private Playing? _current;
     private Playing? _next;
     private PendingCut? _cut;  // tall programat que encara no s'ha pogut aplicar (la següent ja començava abans)
@@ -1195,6 +1207,14 @@ public sealed class QueuePlayer : IDisposable
 
             // 6. Pistes d'emergència (fase 5, pas 4; D-159)
             TickEmergency(now, events);
+
+            // 7. L'estat dels streams ha canviat (connectat, tallat, en silenci, el títol…): la interfície ho ha de saber
+            string signature = StreamSignature(now);
+            if (signature != _streamSignature)
+            {
+                _streamSignature = signature;
+                events.Add(() => Changed?.Invoke());
+            }
         }
         Raise(events);
     }
@@ -1268,8 +1288,15 @@ public sealed class QueuePlayer : IDisposable
     {
         long startMs = item.StartMs ?? 0;
         long endMs = item.EndMs ?? QueueItem.DefaultStreamMs;
-        long mixMs = Math.Clamp(item.MixMs ?? endMs, startMs, endMs);
-        return EnterHold(item, startFrame + FramesFromMs(mixMs - startMs), startFrame + FramesFromMs(endMs - startMs), now, message, events);
+        return EnterHold(item, startFrame + FramesFromMs(PlannedMixMs(item)), startFrame + FramesFromMs(endMs - startMs), now, message, events);
+    }
+
+    /// <summary>D'un stream, quant hi ha de l'inici al punt de mescla (on comença la resta), en mil·lisegons.</summary>
+    private static long PlannedMixMs(QueueItem item)
+    {
+        long startMs = item.StartMs ?? 0;
+        long endMs = item.EndMs ?? QueueItem.DefaultStreamMs;
+        return Math.Clamp(item.MixMs ?? endMs, startMs, endMs) - startMs;
     }
 
     /// <summary>
@@ -1291,7 +1318,7 @@ public sealed class QueuePlayer : IDisposable
         {
             if (!item.StreamReconnect || !IsNetStream(item, out _) || mixFrame - now < Frames(_settings.PrepareAhead + MinHold)) return false;
             FinishHold(now, events, reachedEnd: false); // un altre stream que s'esperava (no hauria de passar)
-            h = new StreamHold(item, mixFrame, endFrame) { Cuts = 1 };
+            h = new StreamHold(item, mixFrame - FramesFromMs(PlannedMixMs(item)), mixFrame, endFrame) { Cuts = 1 };
             _hold = h;
             first = true;
             if (item.StreamFallback is { } fallback)
@@ -1384,6 +1411,7 @@ public sealed class QueuePlayer : IDisposable
         _upcoming.RemoveAll(i => h.Fill.Contains(i.Id)); // la música que encara no ha sonat ja no cal
         probe.Returning = true;
         probe.ReturnNow = !h.Stream.StreamReturnAfterSong;
+        probe.EventStartFrame = h.StartFrame;
         _next = probe;
         h.Probe = null;
         h.Returning = true;
@@ -1452,6 +1480,83 @@ public sealed class QueuePlayer : IDisposable
             : $"Ja no s'espera que torni (un tall nou o l'operador l'ha saltat): {cuts}, {Span(FramesToTime(h.DownFrames))} sense senyal.";
         events.Add(() => StreamNotice?.Invoke(new QueueStreamNotice(item, "resum", text)));
         events.Add(() => Changed?.Invoke());
+    }
+
+    // --- Estat dels streams per a la interfície (fase 2, pas 7e) ---
+
+    /// <summary>Com va el stream que sona o el que s'espera que torni (D-180), o null si no n'hi ha cap.</summary>
+    public QueueStreamStatus? StreamStatus
+    {
+        get { lock (_sync) return StreamStatusLocked(_mixer.FramesRendered); }
+    }
+
+    /// <summary>
+    /// Els streams que esperen per sonar i ja s'estan connectant (el que es prepara i els dels talls oberts per endavant):
+    /// <c>connecting</c> o <c>ready</c>, per id de l'element de la cua.
+    /// </summary>
+    public IReadOnlyDictionary<Guid, string> UpcomingStreamStates
+    {
+        get { lock (_sync) return UpcomingStreamStatesLocked(); }
+    }
+
+    /// <summary>Un stream es dona per «en silenci» a la pantalla quan fa aquesta estona que no se sent res.</summary>
+    private static readonly TimeSpan ShowSilentAfter = TimeSpan.FromSeconds(3);
+
+    private QueueStreamStatus? StreamStatusLocked(long now)
+    {
+        if (_hold is { } h)
+        {
+            string state;
+            string? title = null, probe = null;
+            if (h.Down)
+            {
+                state = h.Returning ? "returning" : "down";
+                if (!h.Returning)
+                    probe = h.Probe?.Reader is not StreamVoiceReader { Connected: true } ? "trying"
+                        : h.StableSince >= 0 && now - h.StableSince >= Frames(_settings.StreamStableFor) ? "ready" : "receiving";
+            }
+            else if (_current is { Reader: StreamVoiceReader live } c && c.Item.Id == h.Stream.Id) (state, title) = LiveState(live);
+            else state = "live";
+            return new QueueStreamStatus(h.Stream, state, title, FramesToTime(Math.Max(0, now - h.StartFrame)),
+                FramesToTime(Math.Max(0, h.MixFrame - now)), Reconnects: true, h.Stream.StreamReturnAfterSong, h.Cuts,
+                h.Down ? FramesToTime(Math.Max(0, now - h.DownSince)) : null, probe);
+        }
+        if (_current is { Scheduled: true, Reader: StreamVoiceReader reader } current)
+        {
+            var (state, title) = LiveState(reader);
+            long start = current.EventStartFrame >= 0 ? current.EventStartFrame : current.StartFrame;
+            return new QueueStreamStatus(current.Item, state, title, FramesToTime(Math.Max(0, now - start)),
+                FramesToTime(Math.Max(0, current.MixFrame - now)), current.Item.StreamReconnect, current.Item.StreamReturnAfterSong,
+                Cuts: 0, DownFor: null, Probe: null);
+        }
+        return null;
+    }
+
+    /// <summary>Un stream que sona: en directe, tallat (es reconnecta) o en silenci; i el títol que envia.</summary>
+    private static (string State, string? Title) LiveState(StreamVoiceReader reader) =>
+        (!reader.Connected ? "cut" : reader.SilentFor >= ShowSilentAfter ? "silent" : "live", reader.Title);
+
+    private Dictionary<Guid, string> UpcomingStreamStatesLocked()
+    {
+        var states = new Dictionary<Guid, string>();
+        void Add(Playing? p)
+        {
+            if (p is { HasStarted: false, Reader: StreamVoiceReader reader })
+                states[p.Item.Id] = reader.State is ReaderState.Ready or ReaderState.Finished ? "ready" : "connecting";
+        }
+        Add(_next);
+        foreach (var reserved in _reserved.Values) Add(reserved);
+        return states;
+    }
+
+    /// <summary>Un resum de l'estat dels streams sense els temps, per saber quan ha canviat. Dins del bloqueig.</summary>
+    private string StreamSignature(long now)
+    {
+        if (_hold is null && _reserved.Count == 0 && _next?.Reader is not StreamVoiceReader && _current?.Reader is not StreamVoiceReader)
+            return "";
+        var s = StreamStatusLocked(now);
+        var upcoming = string.Join(",", UpcomingStreamStatesLocked().Select(kv => $"{kv.Key}={kv.Value}"));
+        return $"{s?.Item.Id}|{s?.State}|{s?.Probe}|{s?.Title}|{s?.Cuts}|{upcoming}";
     }
 
     /// <summary>«45 s», «7 min», «1 h 05 min».</summary>
@@ -1680,15 +1785,20 @@ public sealed class QueuePlayer : IDisposable
 
         /// <summary>Si no és null, el punt de mescla i el final fixos (el stream que torna acaba a l'hora prevista del principi).</summary>
         public (long Mix, long End)? Until { get; set; }
+
+        /// <summary>D'un stream que torna (D-031), on començava l'esdeveniment (per al temps que es mostra); si no, -1.</summary>
+        public long EventStartFrame { get; set; } = -1;
     }
 
     /// <summary>
     /// Un stream amb reconnexió que ha caigut (D-031, D-180): fins a <see cref="MixFrame"/> (on comença la resta, com si
     /// hagués sonat sencer) sona música de farciment i, en segon pla, es prova de connectar-s'hi (<see cref="Probe"/>).
     /// </summary>
-    private sealed class StreamHold(QueueItem stream, long mixFrame, long endFrame)
+    private sealed class StreamHold(QueueItem stream, long startFrame, long mixFrame, long endFrame)
     {
         public QueueItem Stream { get; } = stream;
+        /// <summary>On començava (o havia de començar) el stream: per al temps que es mostra (fase 2, pas 7e).</summary>
+        public long StartFrame { get; } = startFrame;
         public long MixFrame { get; } = mixFrame;
         public long EndFrame { get; } = endFrame;
         /// <summary>Les pistes de farciment (per treure les que no han sonat quan el stream torna o s'acaba).</summary>

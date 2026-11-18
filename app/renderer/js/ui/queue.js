@@ -175,6 +175,14 @@ export class QueueView {
       step.title = 'Cap pas de la rotació no tenia pistes disponibles: l\'AutoDJ l\'ha triada de la reserva';
       text.append(step);
     }
+    // Un stream que ja s'està connectant (fase 2, pas 7e)
+    if (item.streamState) {
+      const ready = item.streamState === 'ready';
+      const stream = el('div', `queue-stream ${ready ? 'text-success' : 'text-info'}`);
+      stream.append(icon(ready ? 'bi-broadcast' : 'bi-hourglass-split'), ' ',
+        el('span', '', ready ? 'Connectat: a punt per sonar' : 'Connectant…'));
+      text.append(stream);
+    }
     // Trepitjador (fase 3, pas 5b; D-084): el sweeper que sonarà a sobre de l'inici
     if (item.sweeper) {
       const sweeper = el('div', 'queue-sweeper');

@@ -336,6 +336,7 @@ $('tab-notes').addEventListener('click', () => showSideTab('notes'));
 function showQueue(queue) {
   nowPlaying.setCurrent(queue.current);
   nowPlaying.setPaused(queue.paused ?? null);
+  nowPlaying.setStream(queue.stream ?? null);
   lastQueue = queue;
   queueView.render(queue, upcoming.events);
   /** @type {HTMLButtonElement} */ ($('btn-skip')).disabled = !queue.current;
