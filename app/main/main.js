@@ -17,9 +17,12 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 
 // Carpeta de dades (D-044): la carpeta «dades» de l'aplicació. En desenvolupament, la del repositori;
 // empaquetada, la del costat de l'executable. Res a %APPDATA%: també la memòria cau d'Electron va aquí.
-const DATA_DIR = app.isPackaged
-  ? path.join(path.dirname(process.execPath), 'dades')
-  : path.join(REPO_ROOT, 'dades');
+// ONABAGES_DATA_DIR: una altra carpeta (les eines de captures del manual, amb dades de mostra; com a Play). Sense, la de sempre.
+const DATA_DIR = process.env.ONABAGES_DATA_DIR
+  ? path.resolve(process.env.ONABAGES_DATA_DIR)
+  : app.isPackaged
+    ? path.join(path.dirname(process.execPath), 'dades')
+    : path.join(REPO_ROOT, 'dades');
 app.setPath('userData', path.join(DATA_DIR, 'electron')); // abans de res més
 const RUNTIME_FILE = path.join(DATA_DIR, 'engine.json');
 
