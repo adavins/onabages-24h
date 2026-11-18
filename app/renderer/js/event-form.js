@@ -201,6 +201,11 @@ export function quickCheck(ev) {
   if ((ev.actions ?? []).length === 0) return "Cal afegir alguna acció (què ha de fer l'esdeveniment).";
   const stream = (ev.actions ?? []).find((/** @type {any} */ a) => a.type === 'STREAM' && !(a.params?.durada_seg > 0));
   if (stream) return `Cal posar la durada del stream «${stream.label ?? 'Stream'}» (si no, no s'acabaria mai).`;
+  // Entrades de línia (D-185): quina entrada i la durada
+  const input = (ev.actions ?? []).find((/** @type {any} */ a) => a.type === 'ENTRADA' && !a.params?.dispositiuId && !a.params?.dispositiu);
+  if (input) return "Cal triar l'entrada de línia de l'acció «Entrada».";
+  const inputDuration = (ev.actions ?? []).find((/** @type {any} */ a) => a.type === 'ENTRADA' && !(a.params?.durada_seg > 0));
+  if (inputDuration) return `Cal posar la durada de l'entrada «${inputDuration.params?.dispositiu ?? 'Entrada'}» (si no, no s'acabaria mai).`;
   return null;
 }
 

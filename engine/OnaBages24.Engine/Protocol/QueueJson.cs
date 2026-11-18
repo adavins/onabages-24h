@@ -69,6 +69,7 @@ public static class QueueJson
     {
         ["itemId"] = status.Item.Id.ToString(),
         ["name"] = status.Item.ToString(),
+        ["input"] = status.Item.IsInput, // una entrada de línia (D-185), no un stream
         ["state"] = status.State,
         ["title"] = status.Title,
         ["startedAt"] = (now - status.Elapsed).ToString("O"),

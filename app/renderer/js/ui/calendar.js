@@ -621,7 +621,7 @@ export class CalendarView {
     const list = el('ol', 'cal-content-list');
     items.forEach((item, i) => {
       const li = el('li', `cal-content-item${item.isTrack ? ' is-track' : ''}`);
-      li.append(el('span', 'cal-content-time', starts[i] ?? (item.type === 'PISTA' || item.type === 'STREAM' ? '?' : '')));
+      li.append(el('span', 'cal-content-time', starts[i] ?? (item.type === 'PISTA' || item.type === 'STREAM' || item.type === 'ENTRADA' ? '?' : '')));
       const text = el('div', 'cal-content-text');
       text.append(el('div', 'cal-content-label', item.label));
       if (item.detail) text.append(el('div', 'form-text m-0', item.detail));

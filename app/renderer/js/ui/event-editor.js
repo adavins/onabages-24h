@@ -659,8 +659,14 @@ export class EventEditor {
         }, { inputmode: 'decimal' }, 'Des de l\'hora de l\'esdeveniment, BUTT envia aquest text i no els títols del que sona (d\'1 minut a 24 hores). Després torna sol el títol del que sona.'),
       );
     }
-    if (action.type === 'STREAM') {
-      if (p.songId == null) {
+    if (action.type === 'STREAM' || action.type === 'ENTRADA') {
+      // Una entrada de línia (D-185) sona com un stream: les mateixes opcions, sense les que només són de la xarxa
+      const isInput = action.type === 'ENTRADA';
+      if (isInput) {
+        li.append(this.#inputSelect(action, p), el('div', 'form-text',
+          'Ha de ser una entrada on arribi el programa de fora (un receptor, un altre ordinador…), no la que va a BUTT: aquella ja porta el so d\'aquest ordinador i faria un bucle.'));
+      }
+      if (!isInput && p.songId == null) {
         // Esdeveniments d'abans (D-108): l'adreça escrita a mà. Els nous trien el stream de la biblioteca
         li.append(this.#textField('Adreça del stream', p.url ?? '', (v) => { p.url = v.trim(); action.label = p.url; }, { placeholder: 'http://…' }));
       }
@@ -677,18 +683,22 @@ export class EventEditor {
         if (v.trim() === '' || !Number.isFinite(n)) delete p[name];
         else p[name] = Math.round(n * factor);
       };
-      li.append(this.#check('Comença pel directe', p.directe !== false, (on) => {
-        if (on) delete p.directe;
-        else p.directe = false;
-      }), el('div', 'form-text', 'Sense els segons que el servidor envia de cop en connectar-s\'hi: sona el més recent, amb el mínim retard.'));
+      if (!isInput) {
+        li.append(this.#check('Comença pel directe', p.directe !== false, (on) => {
+          if (on) delete p.directe;
+          else p.directe = false;
+        }), el('div', 'form-text', 'Sense els segons que el servidor envia de cop en connectar-s\'hi: sona el més recent, amb el mínim retard.'));
+      }
       li.append(this.#textField('Fos final (s)', p.fade_ms == null ? '' : String(p.fade_ms / 1000).replace('.', ','), (v) => setNumber('fade_ms', v, 1000),
         { inputmode: 'decimal', placeholder: '2' }, 'Buit: 2 s.'));
       li.append(this.#textField('S\'acaba si arriba en silenci (s)', p.silenci_seg == null ? '' : String(p.silenci_seg), (v) => setNumber('silenci_seg', v),
         { inputmode: 'numeric', placeholder: 'no' }, 'Per als butlletins que acaben abans d\'hora o que arriben en silenci. Buit: no s\'acaba per silenci (hi ha programes amb pauses llargues).'));
-      li.append(this.#textField('Retard de connexió (s)', p.retard_seg == null ? '' : String(p.retard_seg), (v) => setNumber('retard_seg', v),
-        { inputmode: 'numeric', placeholder: '0' }, ev.mode === 'TALLA'
-          ? 'El tall es fa aquests segons més tard, perquè el que sona quadri amb l\'origen (que arriba amb retard).'
-          : 'Només en un esdeveniment TALLA (a l\'hora exacta).'));
+      if (!isInput) {
+        li.append(this.#textField('Retard de connexió (s)', p.retard_seg == null ? '' : String(p.retard_seg), (v) => setNumber('retard_seg', v),
+          { inputmode: 'numeric', placeholder: '0' }, ev.mode === 'TALLA'
+            ? 'El tall es fa aquests segons més tard, perquè el que sona quadri amb l\'origen (que arriba amb retard).'
+            : 'Només en un esdeveniment TALLA (a l\'hora exacta).'));
+      }
       // Reconnexió durant tota la durada (D-031, D-180): per als programes llargs
       li.append(this.#check('Si cau, es reconnecta (programes llargs)', p.reconnecta === true, (on) => {
         if (on) p.reconnecta = true;
@@ -698,7 +708,9 @@ export class EventEditor {
         }
         this.#restructured();
       }), el('div', 'form-text', p.reconnecta === true
-        ? 'Si cau o no connecta a l\'hora, sona música de la rotació mentre es prova de reconnectar; el stream torna quan funciona. La resta de l\'esdeveniment espera a l\'hora prevista de final.'
+        ? (isInput
+          ? 'Si es desconnecta o no s\'obre a l\'hora, sona música de la rotació mentre es prova de tornar-la a obrir; l\'entrada torna quan funciona. La resta de l\'esdeveniment espera a l\'hora prevista de final.'
+          : 'Si cau o no connecta a l\'hora, sona música de la rotació mentre es prova de reconnectar; el stream torna quan funciona. La resta de l\'esdeveniment espera a l\'hora prevista de final.')
         : 'Si cau i no es recupera en uns segons, passa a la resta de l\'esdeveniment (per als butlletins curts).'));
       if (p.reconnecta === true) {
         li.append(this.#select('Quan torna', [['seguida', 'De seguida (la música baixa amb un fos)'], ['canco', 'En acabar la cançó que sona']],
@@ -708,10 +720,12 @@ export class EventEditor {
           }));
       }
       // Títol per a BUTT (D-182): el que envia el servidor del stream, mentre sona
-      li.append(this.#check('Envia el títol del stream a BUTT', p.titol === true, (on) => {
-        if (on) p.titol = true;
-        else delete p.titol;
-      }), el('div', 'form-text', 'Mentre sona, el títol que envia el servidor va a NowPlaying.txt. No l\'activis en un stream que retransmet la mateixa emissió d\'Ona Bages: el títol seria el que ja hi ha escrit.'));
+      if (!isInput) {
+        li.append(this.#check('Envia el títol del stream a BUTT', p.titol === true, (on) => {
+          if (on) p.titol = true;
+          else delete p.titol;
+        }), el('div', 'form-text', 'Mentre sona, el títol que envia el servidor va a NowPlaying.txt. No l\'activis en un stream que retransmet la mateixa emissió d\'Ona Bages: el títol seria el que ja hi ha escrit.'));
+      }
       // Pista de reserva: si el stream no connecta, sona aquesta en el seu lloc (si no n'hi ha, se salta)
       const reserveName = action.reserveLabel ?? (/reserva «(.+?)»/.exec(action.detail ?? '')?.[1]) ?? (p.reserva_songId != null ? `Pista ${p.reserva_songId}` : null);
       const reserve = el('div', 'ee-reserve');
@@ -724,8 +738,8 @@ export class EventEditor {
         this.#restructured();
       }));
       reserve.append(el('span', 'form-label mb-0', reserveName ? `Pista de reserva: «${reserveName}»` : p.reconnecta === true
-        ? 'Sense pista de reserva: si no connecta, sona música de la rotació.'
-        : 'Sense pista de reserva: si no connecta, se salta.'), choose);
+        ? `Sense pista de reserva: si no ${isInput ? 's\'obre' : 'connecta'}, sona música de la rotació.`
+        : `Sense pista de reserva: si no ${isInput ? 's\'obre' : 'connecta'}, se salta.`), choose);
       if (reserveName) {
         const remove = /** @type {HTMLButtonElement} */ (el('button', 'btn btn-sm btn-link'));
         remove.type = 'button';
@@ -749,6 +763,48 @@ export class EventEditor {
       }));
       if (limited) li.append(this.#days('', action.daysMask, (mask) => { action.daysMask = mask; }, ev.daysMask));
     }
+  }
+
+  /** Les entrades de Windows (devices.list), demanades una sola vegada mentre l'editor és obert. @type {Promise<any[]> | null} */
+  #inputs = null;
+
+  /**
+   * El desplegable de l'entrada d'una acció ENTRADA (D-185): les entrades actives de Windows (les desactivades o sense res
+   * connectat, també, però sense poder-les triar). Si la desada ja no hi és, es manté i es diu.
+   * @param {any} action  @param {any} p  els paràmetres de l'acció
+   */
+  #inputSelect(action, p) {
+    const select = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
+    select.append(option('', 'Carregant les entrades…'));
+    select.disabled = true;
+    this.#inputs ??= this.#send('devices.list', { kind: 'input', includeInactive: true })
+      .then((/** @type {any} */ r) => r.devices ?? [])
+      .catch(() => { this.#inputs = null; return []; });
+    this.#inputs.then((devices) => {
+      const saved = p.dispositiuId ?? p.dispositiu ?? '';
+      const chosen = devices.find((d) => d.id === p.dispositiuId) ?? devices.find((d) => d.name === p.dispositiu);
+      const items = [option('', devices.length ? 'Tria l\'entrada…' : 'Windows no té cap entrada')];
+      for (const d of devices) {
+        const o = option(d.id, d.status === 'active' ? d.name : `${d.name} (${d.status === 'disabled' ? 'desactivada' : 'sense res connectat'})`);
+        o.disabled = d.status !== 'active' && d !== chosen;
+        items.push(o);
+      }
+      if (saved && !chosen) items.push(option(saved, `${p.dispositiu ?? saved} (no hi és ara)`));
+      select.replaceChildren(...items);
+      select.value = chosen?.id ?? saved;
+      select.disabled = false;
+    });
+    select.addEventListener('change', async () => {
+      const devices = await (this.#inputs ?? Promise.resolve([]));
+      const d = devices.find((x) => x.id === select.value);
+      if (!d) return;
+      p.dispositiuId = d.id;
+      p.dispositiu = d.name;
+      action.label = `Entrada «${d.name}»`;
+      action.missing = false;
+      this.#changed();
+    });
+    return this.#labelled('Entrada', select);
   }
 
   /** Per afegir una acció: un desplegable amb el tipus i el botó «Afegeix». @param {any} ev */
@@ -809,6 +865,10 @@ export class EventEditor {
       }
       case 'AUTODJ':
         push({ type, params: { actiu: true }, label: 'Activa l\'AutoDJ' });
+        break;
+      case 'ENTRADA':
+        // L'entrada es tria al desplegable de l'acció (D-185)
+        push({ type, params: { durada_seg: 3600 }, label: 'Entrada (tria-la)', detail: 'Entrada · 1 h 00 min', missing: true });
         break;
       case 'TITOL':
         push({ type, params: { text: '', durada_seg: 3600 }, label: 'Títol per a BUTT', detail: '1 h 00 min' });
@@ -1305,7 +1365,7 @@ function campaignDetail(c) {
 /** El desplegable «Afegeix» de les accions. */
 const ADD_TYPES = [
   ['PISTA', 'Pista'], ['CAMPANYA', 'Campanya'], ['AUXILIAR', 'Auxiliar'], ['ROTACIO', 'Rotació'], ['AUTODJ', 'AutoDJ'],
-  ['SWEEPERS', 'Sweepers'], ['BOSSA', 'Bossa'], ['TITOL', 'Títol per a BUTT'], // els streams, com a pista (D-109)
+  ['SWEEPERS', 'Sweepers'], ['BOSSA', 'Bossa'], ['TITOL', 'Títol per a BUTT'], ['ENTRADA', 'Entrada de línia'], // els streams, com a pista (D-109)
 ];
 
 /** Què fa cada tipus d'acció, en una frase (a sota del desplegable). */
@@ -1317,12 +1377,13 @@ const ADD_HELP = {
   AUTODJ: 'Activa o atura l\'AutoDJ.',
   SWEEPERS: 'Canvia la categoria de sweepers del trepitjador (sonen a sobre de l\'inici de les cançons).',
   BOSSA: 'Canvia la subcategoria d\'una bossa amb nom (p. ex. el dia 1 de cada mes).',
+  ENTRADA: 'Una entrada de línia de Windows (un receptor, un altre ordinador…) com a font del programa: sona com un stream, amb la durada.',
   TITOL: 'Un text fix per a BUTT durant una estona (p. ex. el nom d\'un directe que no surt de la cua). Normalment, en un esdeveniment SISTEMA.',
 };
 
 const ACTION_NAMES = {
   PISTA: 'Pista', AUXILIAR: 'Auxiliar', ROTACIO: 'Rotació', AUTODJ: 'AutoDJ', STREAM: 'Stream', SWEEPERS: 'Sweepers', BOSSA: 'Bossa',
-  CAMPANYA: 'Campanya', TITOL: 'Títol per a BUTT', PLANTILLA: 'Plantilla', ESPERA: 'Espera', ATURA: 'Atura', ENTRADA: 'Entrada', EXECUTA: 'Executa', REPRODUEIX: 'Reprodueix',
+  CAMPANYA: 'Campanya', TITOL: 'Títol per a BUTT', ENTRADA: 'Entrada', PLANTILLA: 'Plantilla', ESPERA: 'Espera', ATURA: 'Atura', ENTRADA: 'Entrada', EXECUTA: 'Executa', REPRODUEIX: 'Reprodueix',
 };
 
 /** @param {string} value @param {string} text */

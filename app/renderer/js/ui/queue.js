@@ -180,7 +180,9 @@ export class QueueView {
       const ready = item.streamState === 'ready';
       const stream = el('div', `queue-stream ${ready ? 'text-success' : 'text-info'}`);
       stream.append(icon(ready ? 'bi-broadcast' : 'bi-hourglass-split'), ' ',
-        el('span', '', ready ? 'Connectat: a punt per sonar' : 'Connectant…'));
+        el('span', '', item.input
+          ? (ready ? 'Entrada oberta: a punt per sonar' : 'Obrint l\'entrada…')
+          : (ready ? 'Connectat: a punt per sonar' : 'Connectant…')));
       text.append(stream);
     }
     // Trepitjador (fase 3, pas 5b; D-084): el sweeper que sonarà a sobre de l'inici

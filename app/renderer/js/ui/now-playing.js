@@ -109,30 +109,33 @@ export class NowPlaying {
     const now = Date.now();
     const clock = (/** @type {string} */ iso) => new Date(iso).toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit' });
     const cuts = s.cuts > 1 ? ` · ${s.cuts} talls` : '';
+    // Una entrada de línia (D-185) té els mateixos estats que un stream
+    const noun = s.input ? 'ENTRADA' : 'STREAM';
     /** @type {[string, string, string]} classe, icona, text */
     let look;
     switch (s.state) {
       case 'silent':
-        look = ['is-warning', 'bi-volume-mute-fill', 'STREAM EN SILENCI · connectat, però no se sent res'];
+        look = ['is-warning', 'bi-volume-mute-fill', `${noun} EN SILENCI · ${s.input ? 'oberta' : 'connectat'}, però no se sent res`];
         break;
       case 'cut':
-        look = ['is-warning', 'bi-exclamation-triangle-fill', 'STREAM TALLAT · es reconnecta'];
+        look = ['is-warning', 'bi-exclamation-triangle-fill', s.input ? 'ENTRADA TALLADA · es torna a obrir' : 'STREAM TALLAT · es reconnecta'];
         break;
       case 'down': {
         const since = s.downSince ? formatDuration(Math.max(0, now - Date.parse(s.downSince))) : '';
         const probe = s.probe === 'ready'
           ? (s.returnAfterSong ? 'ja funciona: tornarà en acabar la cançó' : 'ja funciona: torna ara')
-          : s.probe === 'receiving' ? 'torna a rebre àudio, es comprova' : 'es prova de reconnectar';
-        look = ['is-down', 'bi-wifi-off',
-          `STREAM «${s.name}» CAIGUT fa ${since} · sona música · ${probe} · fins a les ${clock(s.endsAt)}${cuts}`];
+          : s.probe === 'receiving' ? 'torna a rebre àudio, es comprova' : s.input ? 'es prova de tornar-la a obrir' : 'es prova de reconnectar';
+        look = ['is-down', s.input ? 'bi-plug' : 'bi-wifi-off',
+          `${noun} «${s.name}» ${s.input ? 'CAIGUDA' : 'CAIGUT'} fa ${since} · sona música · ${probe} · fins a les ${clock(s.endsAt)}${cuts}`];
         break;
       }
       case 'returning':
         look = ['is-returning', 'bi-arrow-repeat',
-          `STREAM «${s.name}» A PUNT · ${s.returnAfterSong ? 'torna en acabar la cançó' : 'torna ara'}`];
+          `${noun} «${s.name}» A PUNT · ${s.returnAfterSong ? 'torna en acabar la cançó' : 'torna ara'}`];
         break;
       default:
-        look = ['is-live', 'bi-broadcast', `EN DIRECTE${s.title ? ` · ${s.title}` : ''}${s.reconnects ? ' · si cau, es reconnecta' : ''}${cuts}`];
+        look = ['is-live', s.input ? 'bi-box-arrow-in-right' : 'bi-broadcast',
+          `EN DIRECTE${s.input ? ` · entrada «${s.name}»` : ''}${s.title ? ` · ${s.title}` : ''}${s.reconnects ? ' · si cau, es reconnecta' : ''}${cuts}`];
     }
     const [kind, iconName, text] = look;
     if (label.dataset.text === text && label.dataset.kind === kind) return; // només es toca la pàgina si canvia (D-069)

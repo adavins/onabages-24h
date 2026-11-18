@@ -79,7 +79,7 @@ export function trackOnlyRows(rows) {
 }
 
 /** Les accions que ocupen temps a l'emissió (les altres, com ROTACIO o AUXILIAR, no endarrereixen la següent). */
-const TIMED = new Set(['PISTA', 'STREAM', 'CAMPANYA']); // CAMPANYA: la durada de la falca més llarga
+const TIMED = new Set(['PISTA', 'STREAM', 'ENTRADA', 'CAMPANYA']); // CAMPANYA: la durada de la falca més llarga
 
 /**
  * L'hora prevista de cada element del contingut d'un esdeveniment (calendar.content; fase 4, pas 2c): l'hora de
