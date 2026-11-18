@@ -25,3 +25,26 @@ public interface IVoiceReader : IDisposable
     /// <summary>Torna a llegir després de <see cref="PauseReading"/>.</summary>
     void ResumeReading();
 }
+
+/// <summary>
+/// Una font en directe que omple una veu: un stream de ràdio (<see cref="StreamVoiceReader"/>) o una entrada de línia
+/// (<see cref="InputVoiceReader"/>, D-185). La cua les tracta igual: es poden tallar i recuperar, poden arribar en silenci i
+/// tenen la reconnexió durant tota la durada (D-031).
+/// </summary>
+public interface ILiveVoiceReader : IVoiceReader
+{
+    /// <summary>Quant fa que arriba en silenci, seguit.</summary>
+    TimeSpan SilentFor { get; }
+
+    /// <summary>El títol que envia la font (el d'un stream), o null.</summary>
+    string? Title { get; }
+
+    /// <summary>Si ara està connectada i rebent so.</summary>
+    bool Connected { get; }
+
+    /// <summary>Per què ha fallat l'últim intent de connexió, o null.</summary>
+    string? LastError { get; }
+
+    /// <summary>Els talls i les recuperacions des de l'última vegada (per a les incidències).</summary>
+    IReadOnlyList<StreamNotice> TakeNotices();
+}

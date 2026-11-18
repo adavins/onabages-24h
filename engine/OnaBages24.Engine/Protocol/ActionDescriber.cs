@@ -32,6 +32,7 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations, Camp
                 EventActionType.Auxiliary => TrackInfo(Long(p, "songId"),
                     $"reproductor auxiliar {Long(p, "player") ?? 1}" + (Double(p, "duckingDb") is { } db ? $" · música a {db:0.#} dB" : "")),
                 EventActionType.Stream => StreamInfo(p),
+                EventActionType.Input => InputInfo(p),
                 EventActionType.Rotation => new ActionInfo(RotationName(Long(p, "rotacioId")), "Rotació de l'AutoDJ", false, null),
                 EventActionType.Sweepers => new ActionInfo(
                     Long(p, "subcategoriaId") is { } sub ? library?.SubcategoryName(sub) ?? $"Subcategoria {sub}" : "Sense subcategoria",
@@ -139,6 +140,28 @@ public sealed class ActionDescriber(Library? library, Rotations? rotations, Camp
             return new ActionInfo(label, string.Join(" · ", parts), false, seconds * 1000);
         }
         return new ActionInfo(String(p, "url") ?? "Stream sense adreça", string.Join(" · ", parts), String(p, "url") is null, seconds * 1000);
+    }
+
+    /// <summary>
+    /// Una acció ENTRADA (D-185): «Entrada «Línia 2»», amb el detall com el del stream: «Entrada · 1 h 00 min · s'acaba si
+    /// arriba en silenci 8 s · es reconnecta si cau (torna de seguida)».
+    /// </summary>
+    private ActionInfo InputInfo(JsonElement p)
+    {
+        long? seconds = Long(p, "durada_seg");
+        var parts = new List<string> { "Entrada", seconds is { } s ? Duration(s * 1000) : "sense durada" };
+        if (Long(p, "silenci_seg") is { } silence and > 0) parts.Add($"s'acaba si arriba en silenci {silence} s");
+        if (Long(p, "fade_ms") is { } fade && fade != Playback.QueueItem.StreamFadeMs) parts.Add($"fos final {fade / 1000.0:0.#} s");
+        if (Bool(p, "reconnecta") == true)
+            parts.Add(String(p, "tornada") == "canco" ? "es reconnecta si cau (torna en acabar la cançó)" : "es reconnecta si cau (torna de seguida)");
+        if (Long(p, "reserva_songId") is { } reserveId)
+        {
+            var reserve = library?.GetTrack(reserveId);
+            parts.Add(reserve is null ? $"reserva {reserveId} (no existeix)" : $"reserva «{Scheduling.ValidityWarnings.TrackName(reserve)}»");
+        }
+        string? name = String(p, "dispositiu");
+        return new ActionInfo(name is null ? "Entrada sense triar" : $"Entrada «{name}»", string.Join(" · ", parts), name is null && String(p, "dispositiuId") is null,
+            seconds * 1000);
     }
 
     private string RotationName(long? id)

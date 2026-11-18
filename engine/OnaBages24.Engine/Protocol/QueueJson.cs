@@ -18,6 +18,8 @@ public static class QueueJson
         ["origin"] = Origin(item.Origin),
         ["eventName"] = item.EventName,
         ["durationMs"] = item.PlannedMs,
+        // Una entrada de línia (D-185): sona com un stream (type "stream"), però és una entrada de Windows
+        ["input"] = item.IsInput,
         // Trepitjador (fase 3, pas 5): el sweeper que sonarà a sobre de l'inici, o null
         ["sweeper"] = item.Sweeper is { } sweeper ? Item(sweeper) : null,
         // D'on l'ha triada l'AutoDJ (D-097): la rotació i el pas (des de 0), o null (per al diagnòstic)

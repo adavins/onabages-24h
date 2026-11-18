@@ -503,8 +503,8 @@ public static class EngineServer
         queue.Failed += e => _ = Task.Run(() => incidents.Report(e.Item.IsStream ? IncidentKind.Stream : IncidentKind.File, $"fitxer:{e.Item.Path}",
             IncidentSeverity.Warning, e.Item.IsStream
                 ? e.Fallback is { } fallback
-                    ? $"No s'ha pogut connectar al stream «{e.Item}»: {e.Sentence} Ha sonat la pista de reserva, «{fallback}»."
-                    : $"No s'ha pogut connectar al stream «{e.Item}» i s'ha saltat (sona la pista següent): {e.Message}"
+                    ? $"No s'ha pogut {(e.Item.IsInput ? "obrir l'entrada" : "connectar al stream")} «{e.Item}»: {e.Sentence} Ha sonat la pista de reserva, «{fallback}»."
+                    : $"No s'ha pogut {(e.Item.IsInput ? "obrir l'entrada" : "connectar al stream")} «{e.Item}» i s'ha saltat (sona la pista següent): {e.Message}"
                 : $"No s'ha pogut fer sonar «{e.Item}» i s'ha saltat: {e.Message}", e.Item.Path, recovered: true));
         // Streams (fase 2, pas 7b; D-030): talls (oberta fins que es recupera o se salta), recuperacions i final per silenci
         queue.StreamNotice += e => _ = Task.Run(() =>
@@ -513,18 +513,18 @@ public static class EngineServer
             switch (e.Kind)
             {
                 case "tall":
-                    incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, $"El stream «{e.Item}» s'ha tallat: {e.Message} Es prova de reconnectar.", e.Item.Path);
+                    incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, $"{e.Item.SourceName()} s'ha tallat: {e.Message} Es prova de reconnectar.", e.Item.Path);
                     break;
                 case "recuperat":
                     incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, null);
                     break;
                 // Reconnexió durant tota la durada (D-031, D-180): oberta mentre és caigut; el resum, al final
                 case "caigut":
-                    incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, $"El stream «{e.Item}» ha caigut: {e.Message}", e.Item.Path);
+                    incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, $"{e.Item.SourceName()} ha caigut: {e.Message}", e.Item.Path);
                     break;
                 case "tornat":
                     incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, null);
-                    incidents.Report(IncidentKind.Stream, key + ":tornat", IncidentSeverity.Info, $"El stream «{e.Item}»: {e.Message}", e.Item.Path, recovered: true);
+                    incidents.Report(IncidentKind.Stream, key + ":tornat", IncidentSeverity.Info, $"{e.Item.SourceName()}: {e.Message}", e.Item.Path, recovered: true);
                     break;
                 case "prova":
                     // Com va la connexió de prova (D-180): només al registre, per saber per què no ha tornat
@@ -532,10 +532,10 @@ public static class EngineServer
                     break;
                 case "resum":
                     incidents.Set(IncidentKind.Stream, key, IncidentSeverity.Warning, null);
-                    incidents.Report(IncidentKind.Stream, key + ":resum", IncidentSeverity.Info, $"El stream «{e.Item}» s'ha acabat. {e.Message}", e.Item.Path, recovered: true);
+                    incidents.Report(IncidentKind.Stream, key + ":resum", IncidentSeverity.Info, $"{e.Item.SourceName()} s'ha acabat. {e.Message}", e.Item.Path, recovered: true);
                     break;
                 default:
-                    incidents.Report(IncidentKind.Stream, key + ":silenci", IncidentSeverity.Warning, $"El stream «{e.Item}» s'ha acabat abans d'hora. {e.Message}", e.Item.Path, recovered: true);
+                    incidents.Report(IncidentKind.Stream, key + ":silenci", IncidentSeverity.Warning, $"{e.Item.SourceName()} s'ha acabat abans d'hora. {e.Message}", e.Item.Path, recovered: true);
                     break;
             }
         });
@@ -556,7 +556,7 @@ public static class EngineServer
             // Un stream tallat que no s'ha recuperat a temps: s'ha passat a la següent (el tall queda tancat amb aquest text)
             incidents.Set(IncidentKind.Stream, $"stream:{e.Item.Path}", IncidentSeverity.Warning, null);
             incidents.Report(IncidentKind.Stream, $"stream:{e.Item.Path}:saltat", IncidentSeverity.Warning,
-                $"El stream «{e.Item}» s'ha tallat al minut {(int)e.Position.TotalMinutes}:{e.Position.Seconds:00} i no s'ha recuperat a temps: ha passat a la pista següent.", e.Item.Path, recovered: true);
+                $"{e.Item.SourceName()} s'ha tallat al minut {(int)e.Position.TotalMinutes}:{e.Position.Seconds:00} i no s'ha recuperat a temps: ha passat a la pista següent.", e.Item.Path, recovered: true);
         });
         queue.Ended += e =>
         {

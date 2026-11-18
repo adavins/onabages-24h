@@ -924,7 +924,7 @@ public sealed class QueuePlayer : IDisposable
             }
             // - un stream que ja hauria de sonar (l'hora del tall, o el punt de mescla de la que sona) i encara no és a punt es
             //   dona per perdut de seguida: la reserva (o la següent) entra a l'hora, sense esperar que acabi de provar-ho.
-            if (_next is { HasStarted: false, Scheduled: false, Reader: StreamVoiceReader { State: ReaderState.Opening } late } waiting && StreamDue(now))
+            if (_next is { HasStarted: false, Scheduled: false, Reader: ILiveVoiceReader { State: ReaderState.Opening } late } waiting && StreamDue(now))
             {
                 var item = waiting.Item;
                 string message = late.LastError is { } why ? $"A l'hora de començar encara no s'hi havia pogut connectar: {why}"
@@ -1061,14 +1061,14 @@ public sealed class QueuePlayer : IDisposable
             // 4c. Streams (fase 2, pas 7b; D-030): els talls i les recuperacions, i el final per silenci
             foreach (var p in new[] { _current, _next })
             {
-                if (p?.Reader is not StreamVoiceReader stream) continue;
+                if (p?.Reader is not ILiveVoiceReader stream) continue;
                 foreach (var notice in stream.TakeNotices())
                 {
                     var item = p.Item;
                     events.Add(() => StreamNotice?.Invoke(new QueueStreamNotice(item, notice.Cut ? "tall" : "recuperat", notice.Message)));
                 }
             }
-            if (_current is { Scheduled: true, HasStarted: true, Stuck: false, Reader: StreamVoiceReader live } quiet
+            if (_current is { Scheduled: true, HasStarted: true, Stuck: false, Reader: ILiveVoiceReader live } quiet
                 && quiet.Item.StreamSilenceSeconds is int silenceSeconds and > 0 && now < quiet.MixFrame
                 && live.SilentFor >= TimeSpan.FromSeconds(silenceSeconds))
             {
@@ -1316,7 +1316,7 @@ public sealed class QueuePlayer : IDisposable
         }
         else
         {
-            if (!item.StreamReconnect || !IsNetStream(item, out _) || mixFrame - now < Frames(_settings.PrepareAhead + MinHold)) return false;
+            if (!item.StreamReconnect || !IsLive(item) || mixFrame - now < Frames(_settings.PrepareAhead + MinHold)) return false;
             FinishHold(now, events, reachedEnd: false); // un altre stream que s'esperava (no hauria de passar)
             h = new StreamHold(item, mixFrame - FramesFromMs(PlannedMixMs(item)), mixFrame, endFrame) { Cuts = 1 };
             _hold = h;
@@ -1366,7 +1366,7 @@ public sealed class QueuePlayer : IDisposable
             return;
         }
         var probe = h.Probe;
-        if (probe.Reader.State == ReaderState.Failed || probe.Reader is not StreamVoiceReader reader)
+        if (probe.Reader.State == ReaderState.Failed || probe.Reader is not ILiveVoiceReader reader)
         {
             ProbeSays(h, $"La connexió de prova no s'ha pogut connectar: {Sentence(probe.Reader.Error ?? "sense motiu")} Es torna a provar cada {_settings.StreamRetryEvery.TotalSeconds:0} s.", events);
             Retire(probe);
@@ -1512,16 +1512,16 @@ public sealed class QueuePlayer : IDisposable
             {
                 state = h.Returning ? "returning" : "down";
                 if (!h.Returning)
-                    probe = h.Probe?.Reader is not StreamVoiceReader { Connected: true } ? "trying"
+                    probe = h.Probe?.Reader is not ILiveVoiceReader { Connected: true } ? "trying"
                         : h.StableSince >= 0 && now - h.StableSince >= Frames(_settings.StreamStableFor) ? "ready" : "receiving";
             }
-            else if (_current is { Reader: StreamVoiceReader live } c && c.Item.Id == h.Stream.Id) (state, title) = LiveState(live);
+            else if (_current is { Reader: ILiveVoiceReader live } c && c.Item.Id == h.Stream.Id) (state, title) = LiveState(live);
             else state = "live";
             return new QueueStreamStatus(h.Stream, state, title, FramesToTime(Math.Max(0, now - h.StartFrame)),
                 FramesToTime(Math.Max(0, h.MixFrame - now)), Reconnects: true, h.Stream.StreamReturnAfterSong, h.Cuts,
                 h.Down ? FramesToTime(Math.Max(0, now - h.DownSince)) : null, probe);
         }
-        if (_current is { Scheduled: true, Reader: StreamVoiceReader reader } current)
+        if (_current is { Scheduled: true, Reader: ILiveVoiceReader reader } current)
         {
             var (state, title) = LiveState(reader);
             long start = current.EventStartFrame >= 0 ? current.EventStartFrame : current.StartFrame;
@@ -1533,7 +1533,7 @@ public sealed class QueuePlayer : IDisposable
     }
 
     /// <summary>Un stream que sona: en directe, tallat (es reconnecta) o en silenci; i el títol que envia.</summary>
-    private static (string State, string? Title) LiveState(StreamVoiceReader reader) =>
+    private static (string State, string? Title) LiveState(ILiveVoiceReader reader) =>
         (!reader.Connected ? "cut" : reader.SilentFor >= ShowSilentAfter ? "silent" : "live", reader.Title);
 
     private Dictionary<Guid, string> UpcomingStreamStatesLocked()
@@ -1541,7 +1541,7 @@ public sealed class QueuePlayer : IDisposable
         var states = new Dictionary<Guid, string>();
         void Add(Playing? p)
         {
-            if (p is { HasStarted: false, Reader: StreamVoiceReader reader })
+            if (p is { HasStarted: false, Reader: ILiveVoiceReader reader })
                 states[p.Item.Id] = reader.State is ReaderState.Ready or ReaderState.Finished ? "ready" : "connecting";
         }
         Add(_next);
@@ -1552,7 +1552,7 @@ public sealed class QueuePlayer : IDisposable
     /// <summary>Un resum de l'estat dels streams sense els temps, per saber quan ha canviat. Dins del bloqueig.</summary>
     private string StreamSignature(long now)
     {
-        if (_hold is null && _reserved.Count == 0 && _next?.Reader is not StreamVoiceReader && _current?.Reader is not StreamVoiceReader)
+        if (_hold is null && _reserved.Count == 0 && _next?.Reader is not ILiveVoiceReader && _current?.Reader is not ILiveVoiceReader)
             return "";
         var s = StreamStatusLocked(now);
         var upcoming = string.Join(",", UpcomingStreamStatesLocked().Select(kv => $"{kv.Key}={kv.Value}"));
@@ -1582,11 +1582,33 @@ public sealed class QueuePlayer : IDisposable
         var voice = _mixer.AcquireVoice();
         if (voice is null) return null;
         bool hold = HoldOpeningForTests?.Invoke(item.Path) == true;
-        IVoiceReader reader = IsNetStream(item, out var url)
+        IVoiceReader reader = item.IsInput
+            ? new InputVoiceReader(voice, () => OpenInput(item), _mixer.SampleRate, InputOptionsFor(item), () => _mixer.FramesRendered)
+            : IsNetStream(item, out var url)
             ? new StreamVoiceReader(voice, url, _mixer.SampleRate, StreamOptionsFor(item), () => _mixer.FramesRendered)
             : new VoiceReader(voice, item.Path, _mixer.SampleRate, Ms(item.StartMs ?? 0), item.EndMs is { } end ? Ms(end) : null, hold);
         return new Playing(item, voice, reader) { OpenedFrame = _mixer.FramesRendered };
     }
+
+    /// <summary>
+    /// Obre l'entrada de línia d'un element de la cua (D-185): per l'identificador de Windows o, si no hi és, pel nom. Les
+    /// proves hi posen una entrada falsa (<see cref="InputOpener"/>).
+    /// </summary>
+    private IAudioInput OpenInput(QueueItem item) =>
+        InputOpener?.Invoke(item) ?? LineInputReader.OpenDevice(item.InputDeviceId, item.Title);
+
+    /// <summary>Per a les proves: obre una entrada falsa en lloc de la de Windows (null = la de Windows).</summary>
+    public Func<QueueItem, IAudioInput?>? InputOpener { get; set; }
+
+    /// <summary>Com ha de sonar una entrada de la cua (D-185).</summary>
+    private InputOptions InputOptionsFor(QueueItem item) => new()
+    {
+        Duration = Ms(item.EndMs ?? QueueItem.DefaultStreamMs),
+        ConnectFor = _settings.StreamConnectFor,
+    };
+
+    /// <summary>Una font en directe que pot caure i tornar (D-031): un stream per internet o una entrada de línia (D-185).</summary>
+    private static bool IsLive(QueueItem item) => item.IsInput || IsNetStream(item, out _);
 
     /// <summary>Un stream per internet (http o https): s'obre amb el lector de streams.</summary>
     private static bool IsNetStream(QueueItem item, out Uri url)

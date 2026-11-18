@@ -155,7 +155,7 @@ CREATE TABLE registre_execucio (
 | `AUTODJ` | `{actiu}` | `Assisted Enable!` / `Assisted Disable!` (només quan es vol de veritat, no com a pegat) |
 | `ESPERA` | `{segons}` | `Seconds To Wait` |
 | `ATURA` | `{fadeMs?}` | `Stop!` |
-| `ENTRADA` | `{silencia}` | Silenciar / treure el silenci de l'entrada. Més endavant es reconvertirà en una font programable com els streams (fase 7, D-036; context operatiu, 2.10) |
+| `ENTRADA` | `{dispositiuId, dispositiu, durada_seg, fade_ms?, silenci_seg?, reconnecta?, tornada?, reserva_songId?}` | Una entrada de línia de Windows com a font del programa (D-185; s'ha reconvertit: abans era `{silencia}` i no feia res). Sona com un `STREAM`: a la cua, amb la durada (obligatòria), el fos final, el final per silenci, la pista de reserva si no s'obre i la reconnexió durant tota la durada si es desconnecta o arriba en silenci (D-031). L'entrada es busca per l'identificador de Windows (`dispositiuId`) i, si no hi és, pel nom (`dispositiu`). Ha de ser una entrada separada de la que alimenta BUTT. RadioDJ no ho tenia |
 | `EXECUTA` | `{ruta, args}` | `Run Application` |
 | `REPRODUEIX` | `{}` | `Play!`: avançada, per a casos especials. Normalment la implica el mode. (`Clear Playlist!` passa a ser l'opció «Esborra la cua» de l'esdeveniment, D-022.) |
 

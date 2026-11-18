@@ -4,6 +4,7 @@ using OnaBages.Audio;
 namespace OnaBages24.Tests.Audio;
 
 /// <summary>Lector d'entrades de línia (D-185): conversió a estèreo i a la freqüència de sortida, silenci, errors i rellotge.</summary>
+[Collection(SoloRealTime.Name)]
 public class LineInputReaderTests
 {
     private const int Rate = 48000;

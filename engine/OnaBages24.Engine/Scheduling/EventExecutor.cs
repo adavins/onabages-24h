@@ -116,8 +116,14 @@ public sealed class EventExecutor
         var items = new List<QueueItem>();
         var warnings = new List<string>();
         var campaignsDone = new HashSet<long>();
-        foreach (var action in actions.Where(a => a.Type is EventActionType.Track or EventActionType.Campaign or EventActionType.Stream))
+        foreach (var action in actions.Where(a => a.Type is EventActionType.Track or EventActionType.Campaign or EventActionType.Stream or EventActionType.Input))
         {
+            if (action.Type == EventActionType.Input)
+            {
+                // ENTRADA (D-185): l'entrada de línia al seu lloc dins del contingut, com un stream
+                if (PrepareInput(occurrence, action, warnings) is { } input) items.Add(input);
+                continue;
+            }
             if (action.Type == EventActionType.Stream)
             {
                 // STREAM (fase 2, pas 7c; D-010, D-030, D-178): el stream al seu lloc dins del contingut
@@ -254,6 +260,48 @@ public sealed class EventExecutor
             StreamReconnect = ReadBool(action, "reconnecta") ?? false,
             StreamReturnAfterSong = ReadString(action, "tornada") == "canco",
             StreamTitleForButt = ReadBool(action, "titol") ?? false,
+        };
+    }
+
+    /// <summary>
+    /// Acció ENTRADA (D-185): una entrada de línia de Windows a la cua, com un stream: la durada (obligatòria), el fos, el
+    /// silenci, la pista de reserva i la reconnexió. L'entrada es busca per l'identificador i, si no hi és, pel nom.
+    /// </summary>
+    private QueueItem? PrepareInput(Occurrence occurrence, EventAction action, List<string> warnings)
+    {
+        var ev = occurrence.Event;
+        if (ReadLong(action, "durada_seg") is not { } seconds || seconds <= 0)
+        {
+            warnings.Add("Una acció ENTRADA no diu quant ha de durar (durada_seg).");
+            return null;
+        }
+        string? id = ReadString(action, "dispositiuId");
+        string? name = ReadString(action, "dispositiu");
+        if (string.IsNullOrWhiteSpace(id) && string.IsNullOrWhiteSpace(name))
+        {
+            warnings.Add("Una acció ENTRADA no diu quina entrada (dispositiu).");
+            return null;
+        }
+        var item = QueueItem.FromInput(string.IsNullOrWhiteSpace(id) ? null : id, string.IsNullOrWhiteSpace(name) ? "Entrada" : name.Trim(), QueueOrigin.Event, ev.Name);
+
+        long fade = Math.Clamp(ReadLong(action, "fade_ms") ?? QueueItem.StreamFadeMs, 0, MaxStreamFadeMs);
+        int? silence = ReadLong(action, "silenci_seg") is { } s and > 0 ? (int)Math.Min(s, MaxStreamSilenceSeconds) : null;
+        QueueItem? fallback = null;
+        if (ReadLong(action, "reserva_songId") is { } reserveId)
+        {
+            var reserve = library.GetTrack(reserveId);
+            if (reserve is null) warnings.Add($"La pista de reserva de l'entrada ({reserveId}) no existeix: si l'entrada no s'obre, se saltarà.");
+            else if (!reserve.Enabled || !reserve.ValidOn(occurrence.Date)) warnings.Add($"La pista de reserva de l'entrada, «{ValidityWarnings.TrackName(reserve)}», no pot sonar avui: si l'entrada no s'obre, se saltarà.");
+            else fallback = QueueItem.FromTrack(reserve, QueueOrigin.Event, ev.Name) with { EventId = ev.Id, EventAt = occurrence.At };
+        }
+        return item.AsStream(seconds * 1000, fade) with
+        {
+            EventId = ev.Id,
+            EventAt = occurrence.At,
+            StreamSilenceSeconds = silence,
+            StreamFallback = fallback,
+            StreamReconnect = ReadBool(action, "reconnecta") ?? false,
+            StreamReturnAfterSong = ReadString(action, "tornada") == "canco",
         };
     }
 
@@ -427,6 +475,7 @@ public sealed class EventExecutor
             {
                 EventActionType.Track => (true, ""), // ja fet
                 EventActionType.Stream => (true, ""), // ja fet (va a la cua com les pistes)
+                EventActionType.Input => (true, ""), // ja fet (va a la cua com els streams)
                 EventActionType.Campaign => (true, ""), // ja fet (i els avisos, a la preparació)
                 EventActionType.Auxiliary => (true, ""), // ja fet (i els avisos, a la preparació)
                 EventActionType.Rotation => ChangeRotation(action),
@@ -436,7 +485,7 @@ public sealed class EventExecutor
                 EventActionType.Title => SetTitle(action, occurrence),
                 _ => (false, $"L'acció {Events.ActionTypeText(action.Type)} encara no està disponible: no s'ha fet."),
             };
-            if (action.Type is EventActionType.Track or EventActionType.Auxiliary or EventActionType.Campaign or EventActionType.Stream) continue;
+            if (action.Type is EventActionType.Track or EventActionType.Auxiliary or EventActionType.Campaign or EventActionType.Stream or EventActionType.Input) continue;
             if (ok) done++;
             else failed++;
             notes.Add(note);

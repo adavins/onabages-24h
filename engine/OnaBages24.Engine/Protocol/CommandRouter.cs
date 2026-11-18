@@ -2263,6 +2263,23 @@ public sealed partial class CommandRouter
             if (p?["durada_seg"] is not JsonValue d || !d.TryGetValue(out long seconds) || seconds < 60 || seconds > MaxFixedTitle.TotalSeconds)
                 throw new ArgumentException("El títol per a BUTT ha de durar d'1 minut a 24 hores.");
         }
+        // Entrades de línia (D-185): quina entrada i la durada; les opcions, com les del stream
+        foreach (var action in ev.Actions.Where(a => a.Type == EventActionType.Input))
+        {
+            var p = JsonNode.Parse(action.Params) as JsonObject;
+            static string? Text(JsonObject? o, string name) => o?[name] is JsonValue t && t.TryGetValue(out string? s) && !string.IsNullOrWhiteSpace(s) ? s : null;
+            if (Text(p, "dispositiuId") is null && Text(p, "dispositiu") is null)
+                throw new ArgumentException("Una entrada no diu quina entrada és: tria-la de la llista.");
+            if (p?["durada_seg"] is not JsonValue v || !v.TryGetValue(out long seconds) || seconds <= 0)
+                throw new ArgumentException("Cal posar la durada de l'entrada (si no, no s'acabaria mai).");
+            static long? Number(JsonObject? o, string name) => o?[name] is JsonValue n && n.TryGetValue(out long x) ? x : null;
+            if (Number(p, "fade_ms") is { } fade && fade is < 0 or > Scheduling.EventExecutor.MaxStreamFadeMs)
+                throw new ArgumentException($"El fos final de l'entrada ha de ser de 0 a {Scheduling.EventExecutor.MaxStreamFadeMs / 1000} s.");
+            if (Number(p, "silenci_seg") is { } silence && silence is < 1 or > Scheduling.EventExecutor.MaxStreamSilenceSeconds)
+                throw new ArgumentException($"El silenci que acaba l'entrada ha de ser d'1 a {Scheduling.EventExecutor.MaxStreamSilenceSeconds} s.");
+            if (p?["tornada"] is JsonValue back && (!back.TryGetValue(out string? backText) || backText is not ("seguida" or "canco")))
+                throw new ArgumentException("La tornada de l'entrada ha de ser «seguida» o «canco».");
+        }
         foreach (var action in ev.Actions.Where(a => a.Type == EventActionType.Stream))
         {
             var p = JsonNode.Parse(action.Params) as JsonObject;

@@ -52,7 +52,7 @@ public sealed record StreamNotice(bool Cut, string Message, TimeSpan Gap);
 ///   decideix quan es dona per perdut és la cua (pista encallada).
 /// - No s'acaba sol: l'acaba la cua (durada, silenci o «Següent»).
 /// </summary>
-public sealed class StreamVoiceReader : IVoiceReader
+public sealed class StreamVoiceReader : ILiveVoiceReader
 {
     /// <summary>Quant abans de l'hora d'inici es comença a omplir la veu.</summary>
     public static readonly TimeSpan FillBefore = TimeSpan.FromMilliseconds(500);

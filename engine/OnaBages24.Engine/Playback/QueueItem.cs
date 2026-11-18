@@ -27,8 +27,33 @@ public sealed record QueueItem
     /// <summary>El fos de sortida d'un stream quan arriba a la durada (la següent entra a sobre del fos).</summary>
     public const long StreamFadeMs = 2000;
 
-    /// <summary>Un stream de ràdio per internet (la pista és de tipus Stream o la ruta és una adreça).</summary>
+    /// <summary>
+    /// Una font en directe: un stream de ràdio per internet (la pista és de tipus Stream o la ruta és una adreça) o una entrada
+    /// de línia (<see cref="IsInput"/>). Sonen igual a la cua.
+    /// </summary>
     public bool IsStream => Type == TrackType.Stream || Path.Contains("://", StringComparison.Ordinal);
+
+    // --- Entrades de línia (D-185) ---
+
+    /// <summary>Com comença la ruta d'una entrada de línia: <c>entrada://</c> i el nom de l'entrada (es veu així a l'historial).</summary>
+    public const string InputScheme = "entrada://";
+
+    /// <summary>Una entrada de línia de Windows (acció ENTRADA, D-185): sona com un stream.</summary>
+    public bool IsInput => Path.StartsWith(InputScheme, StringComparison.Ordinal);
+
+    /// <summary>L'identificador de Windows de l'entrada (si no hi és, es busca pel nom, <see cref="Title"/>).</summary>
+    public string? InputDeviceId { get; init; }
+
+    /// <summary>Una entrada de línia de Windows a la cua: amb el seu identificador i el seu nom (per si l'identificador canvia).</summary>
+    public static QueueItem FromInput(string? deviceId, string deviceName, QueueOrigin origin, string? eventName = null) => new()
+    {
+        Path = InputScheme + deviceName,
+        Title = deviceName,
+        Type = TrackType.Stream,
+        InputDeviceId = deviceId,
+        Origin = origin,
+        EventName = eventName,
+    };
 
     /// <summary>Si arriba en silenci aquests segons seguits, s'acaba i passa a la següent (D-030). Null = no (per defecte).</summary>
     public int? StreamSilenceSeconds { get; init; }
@@ -117,6 +142,9 @@ public sealed record QueueItem
         long duration = Math.Max(fadeMs + 1000, durationMs);
         return this with { StartMs = 0, EndMs = duration, MixMs = duration - fadeMs, FileDurationMs = duration };
     }
+
+    /// <summary>Per als textos: «El stream «…»» o «L'entrada «…»» (D-185).</summary>
+    public string SourceName() => IsInput ? $"L'entrada «{this}»" : $"El stream «{this}»";
 
     public override string ToString() => string.IsNullOrEmpty(Artist) ? Title : $"{Artist} - {Title}";
 }

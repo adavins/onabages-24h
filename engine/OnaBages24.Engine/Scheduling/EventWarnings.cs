@@ -191,7 +191,7 @@ public static class EventWarnings
             if (action.Type == EventActionType.Track && SongId(action) is { } id && track(id) is { DurationMs: { } ms } facts
                 && facts.ValidOn(o.Date) && !facts.Disabled) // fora de les seves dates (D-110) o desactivada (D-146), no sona
                 total += ms;
-            if (action.Type == EventActionType.Stream && Long(action, "durada_seg") is { } seconds)
+            if (action.Type is EventActionType.Stream or EventActionType.Input && Long(action, "durada_seg") is { } seconds)
                 total += seconds * 1000;
         }
         return total;
