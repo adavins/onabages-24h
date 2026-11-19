@@ -1199,31 +1199,150 @@
   <p>Abans de restaurar, es fa una còpia de com està tot («Abans de restaurar»), per poder-ho desfer. L'emissió no s'atura.</p>
 
   <h2 id="que-fer-si">Què fer si…</h2>
-  <p class="pending">Pendent: les situacions que es poden trobar i com actuar.</p>
+  <p>L'aplicació està feta perquè la ràdio no es quedi mai en silenci: quan alguna cosa falla, normalment se'n surt sola i
+    ho anota al <a href="#el-registre">registre</a>. Aquí hi ha què mirar en els casos més habituals. Primer de tot, sempre:
+    la barra d'estat (a baix) i els seus avisos.</p>
 
   <h3 id="no-se-sent-res">No se sent res</h3>
-  <p class="pending">Pendent.</p>
+  <ol>
+    <li><strong>Mira els mesuradors de la sortida</strong>, a dalt de la pantalla d'emissió.
+      <ul>
+        <li>Si <strong>es mouen</strong>, l'aplicació emet: el problema és després de l'ordinador (el cable, la taula, el
+          canal de la taula, el volum dels altaveus…). Si és a internet on no se sent, mira BUTT.</li>
+        <li>Si <strong>no es mouen</strong>, continua amb els passos següents.</li>
+      </ul></li>
+    <li><strong>Mira si diu «EN PAUSA»</strong>: prem <strong>Continua</strong>.</li>
+    <li><strong>Mira la sortida d'àudio</strong> (la icona de l'esquerra de la barra d'estat). Si és vermella, s'emet per la
+      sortida d'emergència o no n'hi ha cap: vegeu <a href="#s-emet-per-la-sortida-d-emergencia">a sota</a>.</li>
+    <li><strong>Si a dalt surt «No hi ha connexió amb el motor»</strong>, la finestra no sap què passa. Espera uns segons (s'hi
+      torna a connectar sola). Si no torna, prem <strong>Arrenca el motor</strong>.</li>
+  </ol>
+  <p>Si el so es queda en silenci uns segons, l'aplicació salta sola a la pista següent i ho anota (vegeu
+    <a href="#silenci-i-pistes-d-emergencia">Silenci</a>). Si després de saltar unes quantes pistes continua el silenci, és una
+    incidència greu: el problema no és la pista, sinó la sortida o el cable.</p>
 
   <h3 id="s-emet-per-la-sortida-d-emergencia">S'emet per la sortida d'emergència</h3>
-  <p class="pending">Pendent.</p>
+  <p>La icona de la sortida (a l'esquerra de la barra d'estat) és vermella, i a la configuració de la sortida diu «Ara
+    (emergència)». Vol dir que la targeta de so configurada no hi és o ha deixat de funcionar, i l'aplicació emet per una
+    altra perquè no hi hagi silenci. Normalment, aquesta altra no va a la taula.</p>
+  <ol>
+    <li>Comprova la targeta configurada: si és d'USB, que estigui ben connectada; si s'ha desconnectat i tornat a connectar,
+      l'aplicació hi torna sola en uns segons.</li>
+    <li>Si no torna, obre <strong>Més → Configuració → Sortida</strong> (també fent clic a la icona) i mira si surt a la
+      llista. Si hi és, tria-la i <strong>Canvia la sortida</strong>.</li>
+    <li>Si no hi és ni marcant «Mostra també les desactivades i les desconnectades», Windows no la veu: cal mirar-ho a
+      l'ordinador (el tauler de so de Windows, el cable) o avisar qui en té cura.</li>
+  </ol>
 
   <h3 id="un-stream-o-una-entrada-ha-caigut">Un stream o una entrada ha caigut</h3>
-  <p class="pending">Pendent.</p>
+  <p>Mentre sona un stream o una entrada de línia, l'etiqueta de «Sona ara» diu com arriba (vegeu
+    <a href="#streams-i-entrades-en-directe">Streams i entrades en directe</a>):</p>
+  <ul>
+    <li><strong>TALLAT</strong> o <strong>EN SILENCI</strong> durant uns segons: no cal fer res. L'aplicació s'hi torna a
+      connectar sola.</li>
+    <li><strong>CAIGUT</strong>: sona música de la rotació mentre es prova de reconnectar, fins a l'hora de final prevista.
+      Quan torni, passarà a <strong>A PUNT</strong> i entrarà sol.</li>
+    <li>Si un butlletí curt no connecta, sona la seva pista de reserva o se salta, i l'esdeveniment continua.</li>
+  </ul>
+  <p>Si un stream cau sovint, mira al <a href="#el-registre">registre</a> quan i quant ha durat, i avisa qui en té cura: pot
+    ser la xarxa de l'emissora o el servidor de l'altra banda. Si el que cau és una entrada de línia, mira el cable i
+    l'aparell que hi envia el so.</p>
 
   <h3 id="un-esdeveniment-no-ha-sonat">Un esdeveniment no ha sonat</h3>
-  <p class="pending">Pendent.</p>
+  <ol>
+    <li>Al <a href="#el-registre">registre</a>, marca l'origen <strong>Esdeveniments</strong> i busca el nom. El resultat diu
+      per què (vegeu <a href="#registre-d-execucio-dels-esdeveniments">Registre d'execució</a>): omès perquè el motor hi va
+      arribar tard, perquè n'hi havia un altre a la mateixa hora amb més prioritat, perquè els esdeveniments estaven aturats,
+      tret de la cua per un Talla posterior…</li>
+    <li>Si no hi surt, obre l'esdeveniment al <a href="#el-planificador">planificador</a> i mira:
+      <ul>
+        <li>si està <strong>Activat</strong>;</li>
+        <li>les dates (<strong>Des del dia</strong> i <strong>Fins al dia</strong>) i els dies que no s'emet;</li>
+        <li><strong>Pròximes emissions</strong>: si l'esdeveniment hi surt el dia i a l'hora que esperaves;</li>
+        <li>els <a href="#els-avisos-de-l-editor">avisos de l'editor</a> i les accions marcades amb «No sonarà» (el fitxer
+          falta, la pista és fora de dates…).</li>
+      </ul></li>
+    <li>Mira si a la barra d'estat diu que els esdeveniments estan aturats.</li>
+  </ol>
+  <p>Si era una falca, el <a href="#el-certificat-d-emissio">certificat</a> amb «Compara amb el previst» també diu el
+    motiu.</p>
 
   <h3 id="una-pista-s-ha-saltat-o-s-ha-encallat">Una pista s'ha saltat o s'ha encallat</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li><strong>S'ha saltat</strong> (incidència «Fitxer que no sona»): el fitxer no es troba o no es pot llegir. A la
+      biblioteca, la pista surt amb «Falta el fitxer». Si s'ha mogut, obre'n la fitxa i <strong>Més → Canvia el
+      fitxer…</strong>; si són moltes (una carpeta que ha canviat de lloc), <strong>Canvia l'arrel de les rutes…</strong>
+      (vegeu <a href="#la-biblioteca">La biblioteca</a>).</li>
+    <li><strong>S'ha encallat</strong> (incidència «Pista encallada»): el fitxer ha deixat de llegir-se a mitja pista, sovint
+      perquè la unitat de xarxa no respon. Al cap de 5 segons sense so, l'aplicació passa a la següent. Si passa sovint amb
+      fitxers de la mateixa unitat, avisa qui en té cura.</li>
+    <li><strong>Talls de so</strong>: la pista ha sonat però s'ha quedat uns moments sense dades (la xarxa va lenta).</li>
+    <li>Si un fitxer tarda a obrir-se, sona una <a href="#silenci-i-pistes-d-emergencia">pista d'emergència</a> mentre
+      s'acaba d'obrir.</li>
+  </ul>
 
   <h3 id="el-motor-s-ha-reiniciat">El motor s'ha reiniciat</h3>
-  <p class="pending">Pendent.</p>
+  <p>Cada vegada que el motor arrenca, al registre hi ha una incidència <strong>Reinici</strong> que diu per què s'havia
+    aturat, quan i quanta estona: un administrador el va aturar, es va reiniciar l'ordinador (o Windows Update), es va anar
+    el corrent… Si s'ha aturat sense que ningú ho demanés, és greu.</p>
+  <ul>
+    <li>Normalment no cal fer res: en arrencar, el motor torna a sonar sol i continua la programació. Els esdeveniments que
+      havien de sonar mentre estava aturat no sonen, excepte si arrenca dins de la seva tolerància.</li>
+    <li>Si es repeteix, avisa qui en té cura, amb l'hora i el text de les incidències.</li>
+  </ul>
 
   <h3 id="s-ha-oblidat-la-contrasenya">S'ha oblidat la contrasenya</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li><strong>D'un operador o un programador</strong>: un administrador li'n posa una de nova a <strong>Configuració →
+      Usuaris → Edita…</strong>.</li>
+    <li><strong>De l'administrador</strong> (i no n'hi ha cap altre): cal fer-ho a l'ordinador de la ràdio, amb l'aplicació
+      aturada. L'ordre <code>restableix-administrador</code> hi posa una contrasenya provisional, que s'haurà de canviar en
+      entrar. Com es fa, a la documentació tècnica.</li>
+  </ul>
 
   <h2 id="glossari">Glossari</h2>
-  <p class="pending">Pendent: les paraules de ràdio i de l'aplicació (punt de mescla, trepitjador, LUFS…).</p>
+  <table>
+    <tr><th>Paraula</th><th>Què vol dir</th></tr>
+    <tr><td>Atenuació</td><td>Quant baixa la música mentre sona una altra cosa per sobre (un senyal horari, un sweeper), en
+      dB.</td></tr>
+    <tr><td>AutoDJ</td><td>La part de l'aplicació que tria la música entre esdeveniments, seguint la rotació.</td></tr>
+    <tr><td>Auxiliar (reproductor)</td><td>Un dels tres reproductors que sonen per sobre del que soni, sense tocar la cua
+      (senyals horaris).</td></tr>
+    <tr><td>Bloc de falques</td><td>Un esdeveniment Encua on van les falques d'una hora. El calendari en crea i n'esborra
+      sol.</td></tr>
+    <tr><td>Bossa</td><td>Un nom («Generalista A») que apunta a una subcategoria. Per canviar la música sense tocar les
+      rotacions.</td></tr>
+    <tr><td>BUTT</td><td>El programa que envia l'emissió a internet. Ona Bages 24h li passa el títol del que sona.</td></tr>
+    <tr><td>Categoria, subcategoria</td><td>Com s'ordena la biblioteca (p. ex. Música → Pop).</td></tr>
+    <tr><td>Certificat d'emissió</td><td>El document que diu quan ha sonat cada falca d'una campanya, a partir de
+      l'historial.</td></tr>
+    <tr><td>Cua</td><td>El que sonarà, en ordre.</td></tr>
+    <tr><td>dB, LUFS</td><td>Mesures de volum. Com més a prop de 0, més fort: −10 dB és més fort que −30 dB. LUFS és el volum tal
+      com l'oïda el percep (la música d'Ona Bages és a uns −13 LUFS).</td></tr>
+    <tr><td>Durada variable</td><td>Una pista el fitxer de la qual se substitueix de tant en tant (programes, promos).</td></tr>
+    <tr><td>Entrada de línia</td><td>Un so que arriba a l'ordinador per un cable (d'un receptor, d'un altre estudi).</td></tr>
+    <tr><td>Esdeveniment</td><td>El que ha de passar a una hora exacta: un programa, un senyal horari, un canvi de
+      rotació…</td></tr>
+    <tr><td>Falca</td><td>Un anunci.</td></tr>
+    <tr><td>Fos</td><td>Una baixada (o pujada) de volum gradual, en lloc d'un tall sec.</td></tr>
+    <tr><td>Incidència</td><td>Un problema de l'emissió que queda anotat al registre.</td></tr>
+    <tr><td>Mode</td><td>Què fa un esdeveniment amb el que sona: Talla, Encua, Superposa o Sistema.</td></tr>
+    <tr><td>Motor</td><td>La part de l'aplicació que fa sonar la ràdio, sense finestra. Continua encara que la finestra es tanqui
+      o es pengi.</td></tr>
+    <tr><td>Passi</td><td>Cada vegada que sona (o ha de sonar) una falca o una campanya.</td></tr>
+    <tr><td>Pista</td><td>Qualsevol cosa de la biblioteca que pot sonar: una cançó, una falca, un programa, un stream…</td></tr>
+    <tr><td>Pista d'emergència</td><td>Una cançó d'una carpeta local que sona si un fitxer no s'obre a temps.</td></tr>
+    <tr><td>Processador</td><td>El compressor que iguala el volum de tot el que surt.</td></tr>
+    <tr><td>Punts (inici, mescla, final)</td><td>On comença a sonar una pista, on entra la següent i on s'acaba.</td></tr>
+    <tr><td>Reserva</td><td>El que tria l'AutoDJ si cap pas de la rotació no troba música.</td></tr>
+    <tr><td>Rotació</td><td>La llista de passos que segueix l'AutoDJ per triar la música.</td></tr>
+    <tr><td>Sortida (d'emergència)</td><td>La targeta de so per on surt l'emissió. La d'emergència és la que es fa servir si la
+      configurada falla.</td></tr>
+    <tr><td>Stream</td><td>Una emissió per internet que es retransmet (p. ex. un butlletí).</td></tr>
+    <tr><td>Sweeper</td><td>Un indicatiu curt de l'emissora.</td></tr>
+    <tr><td>Tolerància</td><td>Quant pot arribar tard el motor a un esdeveniment perquè encara soni.</td></tr>
+    <tr><td>Trepitjador</td><td>Un sweeper que sona a sobre de l'inici d'una cançó.</td></tr>
+  </table>
 
 </main>
 <script>
