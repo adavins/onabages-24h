@@ -37,11 +37,18 @@ echo [2/4] Empaquetant la interficie...
 rem Icona de l'executable, feta cada vegada a partir del logotip: si es canvia el logotip, la icona el segueix.
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\crea-icona.ps1 app\renderer\img\logo.png build\icona.ico
 if errorlevel 1 goto :error
+rem La documentacio (D-193): els dos manuals, que s'obren des del menu "Mes" (resources\docs)
+mkdir build\docs
+copy /y docs\manual-usuari.html build\docs\ >nul
+if errorlevel 1 goto :error
+copy /y docs\documentacio-tecnica.html build\docs\ >nul
+if errorlevel 1 goto :error
 cd app
 if not exist node_modules call npm install
 rem Nomes el que necessita l'aplicacio: fora les proves.
 call npx electron-packager . OnaBages24 --platform=win32 --arch=x64 --out=..\build --overwrite ^
     --extra-resource=..\build\engine ^
+    --extra-resource=..\build\docs ^
     --icon=..\build\icona.ico ^
     --ignore="^/tests" ^
     --app-version=%VERSION% ^

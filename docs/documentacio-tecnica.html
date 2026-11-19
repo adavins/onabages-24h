@@ -166,6 +166,7 @@
     <tr><td>El motor</td><td><code>resources\engine\OnaBages24.Engine.exe</code> (amb el .NET)</td></tr>
     <tr><td>Aturar-ho tot</td><td><code>Atura Ona Bages 24h.cmd</code>, a l'arrel (només un administrador)</td></tr>
     <tr><td>Les instruccions</td><td><code>LLEGEIX-ME.txt</code>, a l'arrel</td></tr>
+    <tr><td>Els manuals</td><td><code>resources\docs\</code> (s'obren des del menú «Més» de l'aplicació)</td></tr>
     <tr><td>Totes les dades</td><td><code>dades\</code>, marcada amb el seu <code>LLEGEIX-ME.txt</code> (el motor la troba
       per aquest fitxer)</td></tr>
   </table>
@@ -300,7 +301,8 @@
       dels mòduls de <code>js/</code>, que no toquen la pàgina.</li>
     <li><strong>Empaquetar</strong> (<code>tools/empaquetar.cmd</code>, opció de la consola): publica el motor amb el .NET
       inclòs, empaqueta la interfície amb <code>@electron/packager</code> (amb la icona feta del logotip), hi afegeix la carpeta
-      <code>dades\</code> buida, el <code>LLEGEIX-ME.txt</code> i <code>Atura Ona Bages 24h.cmd</code>, i en fa un zip:
+      <code>dades\</code> buida, el <code>LLEGEIX-ME.txt</code>, <code>Atura Ona Bages 24h.cmd</code> i els dos manuals
+      (<code>resources\docs\</code>), i en fa un zip:
       <code>build\OnaBages24\</code> i <code>build\OnaBages24-VERSIÓ.zip</code>. La versió és la de
       <code>app/package.json</code>.</li>
     <li><strong><code>OnaBages.ToneCheck</code></strong>, per a les proves de l'àudio: generar un to de prova i buscar-hi

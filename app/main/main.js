@@ -10,6 +10,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
+const url = require('node:url');
 
 const DEFAULT_PORT = 47824;
 const ENGINE_START_TIMEOUT_MS = 60_000; // «dotnet run» pot trigar la primera vegada
@@ -113,6 +114,8 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    // Sense la finestra principal, les de la documentació també es tanquen (si no, l'aplicació no acabaria)
+    for (const win of docWindows.values()) if (!win.isDestroyed()) win.close();
   });
 }
 
@@ -220,6 +223,53 @@ ipcMain.handle('engine:find', () => findEngine());
 ipcMain.handle('app:close', () => {
   allowClose = true;
   mainWindow?.close();
+});
+
+// ---------------------------------------------------------------------------
+// Documentació (D-193)
+// ---------------------------------------------------------------------------
+
+// Els dos manuals són un sol fitxer HTML cadascun (amb les imatges a dins): es fan servir sense internet. En
+// desenvolupament, els de docs/ del repositori; empaquetada, els de resources\docs (els hi posa empaquetar.cmd).
+const DOCS = { usuari: 'manual-usuari.html', tecnica: 'documentacio-tecnica.html' };
+/** Les finestres de la documentació obertes, per manual: si ja n'hi ha una, es porta al davant. @type {Map<string, BrowserWindow>} */
+const docWindows = new Map();
+
+/** @param {string} file */
+function docPath(file) {
+  return app.isPackaged ? path.join(process.resourcesPath, 'docs', file) : path.join(REPO_ROOT, 'docs', file);
+}
+
+ipcMain.handle('docs:open', (_event, which) => {
+  const file = Object.hasOwn(DOCS, which) ? DOCS[which] : null;
+  if (!file) return false;
+  const open = docWindows.get(which);
+  if (open && !open.isDestroyed()) {
+    if (open.isMinimized()) open.restore();
+    open.focus();
+    return true;
+  }
+  const full = docPath(file);
+  if (!fs.existsSync(full)) return false;
+  const win = new BrowserWindow({
+    width: 1200,
+    height: 850,
+    icon: path.join(__dirname, '..', 'renderer', 'img', 'logo.png'),
+    autoHideMenuBar: true,
+    // Una pàgina sense res de l'aplicació: ni el preload ni accés al sistema
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  win.removeMenu();
+  // Només aquest document (l'índex lateral són enllaços dins de la mateixa pàgina): ni navegar enlloc més ni obrir finestres
+  const own = url.pathToFileURL(full).href;
+  win.webContents.on('will-navigate', (event, target) => {
+    if (target.split('#')[0] !== own) event.preventDefault();
+  });
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.on('closed', () => docWindows.delete(which));
+  docWindows.set(which, win);
+  win.loadFile(full);
+  return true;
 });
 
 // Gestor de pistes (fase 3, pas 7a): triar un fitxer d'àudio d'aquest ordinador (el motor comprova que existeix i es pot llegir).

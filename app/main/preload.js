@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld('onabages', {
   /** Tanca la finestra (el motor no s'atura si no se li ha demanat abans). */
   closeWindow: () => ipcRenderer.invoke('app:close'),
 
+  /** Obre el manual d'usuari ('usuari') o la documentació tècnica ('tecnica') en una finestra pròpia (D-193). Retorna si s'ha obert. */
+  openDocs: (which) => ipcRenderer.invoke('docs:open', which),
+
   /** Zoom de la finestra (de 0,7 a 1,5; js/ui/zoom.js). */
   setZoom: (factor) => ipcRenderer.invoke('ui:set-zoom', factor),
 

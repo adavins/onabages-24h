@@ -191,7 +191,7 @@ Afegit després (durant la fase 4): ✔ pausa i anar a un altre punt de la pista
 
 ## Millores anotades (sense fase assignada)
 
-- **Manuals** (D-190; en curs): manual d'usuari i documentació tècnica en HTML amb índex lateral, i captures amb dades de mostra (`tools/captures-manual`). **Accés a la documentació des de l'aplicació** (petició del desenvolupador, 2026-11-18): lloc per decidir.
+- ✔ **Manuals** (D-190): manual d'usuari i documentació tècnica en HTML amb índex lateral, i captures amb dades de mostra (`tools/captures-manual`). Fets el 2026-11-19. ✔ **Accés a la documentació des de l'aplicació** (D-193): menú «Més» → «Manual d'usuari» i «Documentació tècnica», cada un en una finestra pròpia.
 
 - ✔ **Títol fix per a BUTT** (petició del desenvolupador, 2026-11-17; fet el 2026-11-18, D-184: acció `TITOL` i, a mà, des de la barra d'estat): durant un directe que no surt de la cua (p. ex. «Esport i Punt», que es fa des de Ràdio Sant Fruitós i es distribueix per l'stream «Ona Bages directe»), `NowPlaying.txt` ha de mostrar un text fix i no els títols de la fórmula musical. Proposta: una **acció nova del planificador «Títol per a BUTT»** (`{ text, durada_seg }`, p. ex. en un esdeveniment SISTEMA) que, mentre dura, escriu aquest text sigui quina sigui la cua i després torna sola als títols de la cua (i es recupera si el motor es reinicia a mig programa); i el mateix **a mà**, des de la barra d'estat («Títol fix…» amb el text i fins a quina hora, visible mentre dura i amb manera de treure'l). BUTT no canvia (continua llegint el mateix fitxer).
 

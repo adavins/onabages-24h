@@ -43,6 +43,7 @@ import { HistorySearchView } from './ui/history-search.js';
  *   findEngine: () => Promise<{ port: number, token: string } | null>,
  *   onCloseRequested: (callback: () => void) => void,
  *   closeWindow: () => Promise<void>,
+ *   openDocs: (which: 'usuari' | 'tecnica') => Promise<boolean>,
  *   chooseAudioFile: (defaultPath?: string) => Promise<string | null>,
  *   chooseAudioFiles: (defaultPath?: string) => Promise<string[] | null>,
  *   chooseFolder:(defaultPath?: string) => Promise<string | null>,
@@ -454,6 +455,15 @@ moreMenu.addEventListener('click', (e) => {
   if (item.dataset.view) showView(/** @type {keyof typeof TOP_TAB} */ (item.dataset.view));
 });
 $('menu-settings').addEventListener('click', () => openStation());
+// La documentació (D-193): l'obre el procés principal en una finestra pròpia (si ja és oberta, la porta al davant)
+for (const [id, which] of /** @type {const} */ ([['menu-doc-user', 'usuari'], ['menu-doc-tech', 'tecnica']])) {
+  $(id).addEventListener('click', async () => {
+    const opened = await bridge.openDocs(which).catch(() => false);
+    if (!opened) {
+      await confirmAction({ title: 'No s\'ha pogut obrir', message: 'No es troba el fitxer de la documentació.', confirm: 'D\'acord', info: true });
+    }
+  });
+}
 document.addEventListener('pointerdown', (e) => {
   if (!moreMenu.classList.contains('d-none') && !/** @type {HTMLElement} */ (e.target).closest('.more-wrap')) setMoreOpen(false);
 });
