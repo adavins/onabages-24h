@@ -102,31 +102,130 @@
   </ul>
 
   <h2 id="preparar-l-ordinador">Preparar l'ordinador</h2>
-  <p class="pending">Pendent: Windows, els dispositius de so, l'escriptori remot i BUTT.</p>
+  <p>Ona Bages 24h funciona a l'ordinador de continuïtat (el «PC 24h»), dedicat només a això. La sortida d'àudio va per cable
+    directe a un canal de la taula; l'entrada de línia rep la sortida d'emissió de la taula, que és el que BUTT envia a
+    internet.</p>
 
   <h3 id="windows">Windows</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li><strong>Windows 10 o 11 de 64 bits.</strong> No cal instal·lar .NET: la versió portable el porta a dins. Windows 10
+      ja no rep actualitzacions de seguretat sense l'ampliació ESU: convé planificar el pas a Windows 11.</li>
+    <li><strong>Windows «N»</strong> (sense multimèdia): cal instal·lar el Media Feature Pack perquè sonin els MP3.</li>
+    <li><strong>Que no s'adormi mai</strong>: a les opcions d'energia, ni suspensió ni hibernació, i la pantalla es pot
+      apagar però l'ordinador no. Amb un SAI, millor.</li>
+    <li><strong>Que arrenqui sol</strong>: l'Inicialitzador (vegeu <a href="#el-vigilant">El vigilant</a>) obre l'aplicació
+      en iniciar la sessió de Windows. Per això cal que la sessió s'iniciï sola després d'un reinici.</li>
+    <li><strong>Les unitats de música</strong> (de xarxa o del Google Drive) han d'estar connectades amb la mateixa lletra
+      que es va fer servir en importar la biblioteca. Si canvien, es corregeix amb el canvi d'arrel (vegeu el manual
+      d'usuari, «La biblioteca»). Les carpetes del Drive que tinguin programes o falques, millor «Disponible sense
+      connexió», perquè els fitxers ja siguin a l'ordinador a l'hora de sonar.</li>
+    <li><strong>L'hora</strong>: els esdeveniments sonen amb el rellotge de l'ordinador. Ha d'estar sincronitzat (el servei
+      d'hora de Windows, que ve activat).</li>
+  </ul>
 
   <h3 id="dispositius-de-so">Dispositius de so</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li>L'aplicació fa servir WASAPI en mode compartit (no exclusiu): altres programes poden fer servir la mateixa targeta,
+      però el que sona per la sortida d'emissió surt per antena. No hi ha d'haver cap altre programa que hi faci sonar res
+      (avisos de Windows, el navegador…): convé posar una altra sortida com a predeterminada de Windows, o silenciar els sons
+      del sistema.</li>
+    <li>La sortida d'emissió es tria a l'aplicació (Configuració → Sortida) i es desa per l'identificador de Windows i, com a
+      alternativa, pel nom. Mai no es fa servir el «dispositiu predeterminat» de Windows.</li>
+    <li>Si la sortida triada desapareix, l'aplicació passa a una <strong>sortida d'emergència</strong> (la primera que
+      funciona, primer les analògiques, després S/PDIF i HDMI), avisa, i hi torna sola quan la triada torna. Si una sortida
+      s'encalla (Windows no demana so i no dona cap error), la torna a obrir tres vegades i després passa a la
+      d'emergència.</li>
+    <li><strong>L'entrada de línia</strong> que va a BUTT no s'ha de fer servir mai en una acció «Entrada de línia»: ja porta
+      el so d'aquest ordinador, i faria un bucle. Si hi ha programes que arriben per cable, han d'entrar per una altra
+      entrada.</li>
+    <li>Per triar el guany d'una entrada de línia, vegeu <a href="#ordres-de-diagnostic">prova-entrada</a>.</li>
+  </ul>
 
   <h3 id="escriptori-remot">Escriptori remot</h3>
-  <p class="pending">Pendent.</p>
+  <p>L'ordinador s'administra amb l'escriptori remot de Windows. La interfície no fa servir l'acceleració gràfica, i el motor
+    és un procés a part que no depèn de la finestra ni de la sessió remota.</p>
+  <p class="note"><strong>Important:</strong> a la connexió d'escriptori remot, a <strong>Recursos locals → So de l'equip
+    remot</strong>, tria <strong>Reprodueix-lo a l'equip remot</strong> (o «No el reprodueixis»). Amb «Reprodueix-lo en
+    aquest equip», Windows pot redirigir l'àudio de la sessió cap a l'ordinador des d'on et connectes, i la sortida d'emissió
+    podria deixar d'estar disponible per a l'aplicació. Comprova-ho a l'ordinador de proves abans de fer-ho al PC 24h.</p>
+  <p>Des de fora de l'emissora, només amb VPN: el port del motor no s'ha d'obrir mai a internet (de fet, només escolta a
+    l'ordinador mateix, 127.0.0.1).</p>
 
   <h3 id="butt">BUTT</h3>
-  <p class="pending">Pendent.</p>
+  <p>BUTT envia l'emissió a internet. Capta l'<strong>entrada de línia</strong> (la sortida de la taula, que inclou els
+    directes), no la sortida d'Ona Bages 24h. Del que fa aquesta aplicació, només en llegeix el títol del fitxer
+    <code>NowPlaying.txt</code> (vegeu <a href="#butt-i-nowplaying-txt">BUTT i NowPlaying.txt</a>). A BUTT, activa
+    l'actualització del títol des d'un fitxer i posa-hi la ruta del fitxer.</p>
 
   <h2 id="l-aplicacio-portable">L'aplicació portable</h2>
-  <p class="pending">Pendent: sense instal·lador: la carpeta, les dades i com actualitzar-la.</p>
+  <p>No hi ha instal·lador. L'aplicació és una carpeta (o un <code>.zip</code>) que es copia on es vulgui i es fa servir des
+    d'allà. No escriu res al registre de Windows ni a <code>%APPDATA%</code>.</p>
+  <ol>
+    <li>Si el zip ve d'internet o d'un correu, abans de descomprimir-lo: botó dret → Propietats → «Desbloqueja».</li>
+    <li>Descomprimeix-lo en una carpeta on es pugui escriure, per exemple <code>D:\OnaBages24</code>. No a «Program Files»:
+      Windows no hi deixa escriure.</li>
+    <li>Obre <code>OnaBages24.exe</code>. Arrenca el motor i comença a sonar. La primera vegada, Windows pot avisar que
+      l'aplicació no és coneguda: «Més informació» → «Executa igualment».</li>
+    <li>Tria la sortida d'àudio (Configuració → Sortida), importa la biblioteca (vegeu
+      <a href="#migracio-des-de-radiodj">Migració des de RadioDJ</a>) i crea l'usuari administrador (Configuració →
+      Usuaris).</li>
+  </ol>
 
   <h3 id="la-carpeta-i-les-dades">La carpeta i les dades</h3>
-  <p class="pending">Pendent.</p>
+  <table>
+    <tr><th>Què</th><th>On</th></tr>
+    <tr><td>La interfície</td><td><code>OnaBages24.exe</code> i la resta de fitxers d'Electron, a l'arrel</td></tr>
+    <tr><td>El motor</td><td><code>resources\engine\OnaBages24.Engine.exe</code> (amb el .NET)</td></tr>
+    <tr><td>Aturar-ho tot</td><td><code>Atura Ona Bages 24h.cmd</code>, a l'arrel (només un administrador)</td></tr>
+    <tr><td>Les instruccions</td><td><code>LLEGEIX-ME.txt</code>, a l'arrel</td></tr>
+    <tr><td>Totes les dades</td><td><code>dades\</code>, marcada amb el seu <code>LLEGEIX-ME.txt</code> (el motor la troba
+      per aquest fitxer)</td></tr>
+  </table>
+  <p>A <code>dades\</code>:</p>
+  <ul>
+    <li><code>onabages24.db</code>: la base de dades (biblioteca, programació, campanyes, historial, configuració, usuaris i
+      registre). Els fitxers d'àudio no s'hi copien mai: només se'n desen les rutes.</li>
+    <li><code>copies\</code>: les còpies de seguretat automàtiques (una al dia; es guarden les dels últims 14 dies i una de
+      cada mes de l'últim any).</li>
+    <li><code>logs\</code>: el registre tècnic del motor, un fitxer per dia (<code>motor-AAAA-MM-DD.log</code>), que es
+      conserva 30 dies.</li>
+    <li><code>emergencia\</code>: la carpeta de pistes d'emergència per defecte (cal posar-hi unes quantes cançons).</li>
+    <li><code>NowPlaying.txt</code>: el títol per a BUTT.</li>
+    <li><code>engine.json</code>: el port, el testimoni i el número de procés del motor mentre funciona. El fan servir la
+      interfície i les ordres com <code>atura</code> per trobar-lo.</li>
+    <li><code>motor-en-marxa.json</code>: la marca que el motor deixa mentre funciona i el motiu quan s'atura; en tornar a
+      arrencar, en surt la incidència «Reinici».</li>
+    <li><code>electron\</code>: les dades d'Electron, entre altres la mida i la posició de la finestra
+      (<code>finestra.json</code>).</li>
+  </ul>
+  <p>Per passar l'aplicació a un altre ordinador n'hi ha prou de copiar la carpeta sencera, amb l'aplicació aturada. Cada
+    ordinador té la seva base de dades: si la música és en una altra lletra, cal un canvi d'arrel.</p>
 
   <h3 id="actualitzar">Actualitzar</h3>
-  <p class="pending">Pendent.</p>
+  <ol>
+    <li>Atura l'aplicació amb <code>Atura Ona Bages 24h.cmd</code> (si l'Inicialitzador la vigila, pausa'l abans).</li>
+    <li>Descomprimeix la versió nova en una carpeta a part.</li>
+    <li>Copia-hi la carpeta <code>dades\</code> de la versió antiga (substituint la que porta, que és buida).</li>
+    <li>Obre la nova. Si la base de dades és d'una versió anterior, el motor la posa al dia sol en arrencar (les
+      migracions).</li>
+    <li>Quan comprovis que funciona, esborra la carpeta antiga.</li>
+  </ol>
+  <p>No obris mai dues còpies alhora: farien servir el mateix port (47824) i la mateixa sortida.</p>
 
   <h3 id="el-vigilant">El vigilant</h3>
-  <p class="pending">Pendent.</p>
+  <p>A l'emissora, l'<strong>Inicialitzador</strong> obre els programes en iniciar Windows i torna a obrir els que es tanquen
+    (mira si el procés existeix, cada minut). Ona Bages 24h s'hi afegeix com un programa més: <code>OnaBages24.exe</code>.
+    Si la finestra es tanca o es penja, l'Inicialitzador la torna a obrir, i la finestra arrenca el motor si no hi és.</p>
+  <ul>
+    <li>El motor no depèn de la finestra: si ella cau, l'emissió continua. A l'emissora, la X de la finestra només la
+      minimitza.</li>
+    <li>Per a un manteniment, l'administrador pausa l'Inicialitzador («Pausa monitorització») i, si cal aturar-ho tot, fa
+      servir <code>Atura Ona Bages 24h.cmd</code>. Per reiniciar l'ordinador n'hi ha prou de pausar l'Inicialitzador:
+      Windows tanca el motor, i la incidència «Reinici» ho anotarà.</li>
+    <li>El motor té una adreça de salut, <code>http://127.0.0.1:47824/health</code> (només des de l'ordinador mateix), que
+      respon «ok» si el so surt i el fil de control funciona, i un error (503) si fa 2 segons que la sortida no demana so o 5
+      que el fil de control no respon. Un vigilant futur la podrà fer servir per reiniciar el motor si es penja.</li>
+  </ul>
 
   <h2 id="arquitectura">Arquitectura</h2>
   <p class="pending">Pendent: motor, interfície i vigilant, i per què l'emissió no depèn de la finestra.</p>
@@ -183,13 +282,86 @@
   <p class="pending">Pendent.</p>
 
   <h2 id="migracio-des-de-radiodj">Migració des de RadioDJ</h2>
-  <p class="pending">Pendent: importar la biblioteca i els esdeveniments.</p>
+  <p>La biblioteca, les rotacions i els esdeveniments del Programador es porten d'un backup de la base de dades de RadioDJ
+    (un fitxer <code>.sql</code> de MySQL). Es fa amb l'aplicació aturada, des d'una consola a la carpeta de
+    l'aplicació:</p>
+  <pre><code>resources\engine\OnaBages24.Engine.exe importa-radiodj backup.sql</code></pre>
+  <ul>
+    <li>S'importen les categories, les subcategories, els gèneres, les pistes (amb els punts de RadioDJ), les rotacions i
+      els esdeveniments del Programador.</li>
+    <li><code>--arrel DE A</code>: si la música és en una altra unitat o carpeta que a l'ordinador de RadioDJ (p. ex.
+      <code>--arrel O:\musica M:\musica</code>). Es pot repetir, i es recorda per a les importacions següents
+      (<code>--sense-arrel</code> l'oblida).</li>
+    <li><code>--esdeveniments-desactivats</code>: importa els esdeveniments desactivats, en un ordinador on encara no hi ha
+      els fitxers dels programes (p. ex. el de proves). <code>--sense-esdeveniments</code>: no els importa.</li>
+    <li><code>--sense-fitxers</code>: no comprova si els fitxers existeixen.</li>
+    <li>Es pot tornar a fer: les pistes ja importades s'actualitzen, i les rotacions i els esdeveniments importats abans se
+      substitueixen. Els esdeveniments creats a mà a Ona Bages 24h no es toquen.</li>
+  </ul>
+  <p>Altres ordres per a la biblioteca:</p>
+  <ul>
+    <li><code>importa-carpeta CARPETA --categoria NOM --subcategoria NOM</code>: importa una carpeta des de la consola (el
+      mateix que «Importa una carpeta…» de la biblioteca).</li>
+    <li><code>desfes-importacio CARPETA [--inclou-sonades] [--aplica]</code>: esborra de la biblioteca les pistes d'una
+      carpeta que s'hi han afegit i encara no han servit de res. Sense <code>--aplica</code>, només diu quines esborraria.
+      Els fitxers no es toquen.</li>
+    <li><code>compara-punts CARPETA</code>: compara els punts de RadioDJ amb els que calcula l'analitzador. No canvia res.</li>
+  </ul>
+  <p class="note">El backup de RadioDJ i els fitxers d'àudio tenen dades reals de l'emissora: no es posen mai al repositori
+    del codi.</p>
 
   <h2 id="ordres-de-diagnostic">Ordres de diagnòstic</h2>
-  <p class="pending">Pendent: prova-stream, prova-entrada, comprova-emissio, retard i les altres.</p>
+  <p>El motor té unes quantes ordres que es fan des d'una consola a la carpeta de l'aplicació:
+    <code>resources\engine\OnaBages24.Engine.exe ORDRE</code>. <code>ajuda</code> les llista totes. Les de diagnòstic es
+    poden fer amb l'aplicació oberta i no fan sonar res.</p>
+  <table>
+    <tr><th>Ordre</th><th>Què fa</th></tr>
+    <tr><td><code>prova-stream ADREÇA [--segons N]</code></td><td>Es connecta a un stream uns segons (10 per defecte) i diu si
+      funciona, el format, el títol, el nivell i quants segons envia el servidor de cop en connectar-s'hi (el retard que hi
+      afegeix).</td></tr>
+    <tr><td><code>prova-entrada</code></td><td>Llista les entrades d'àudio de Windows, numerades.</td></tr>
+    <tr><td><code>prova-entrada NÚMERO|NOM [--segons N] [--objectiu LUFS]</code></td><td>Escolta una entrada uns segons i diu
+      si funciona, el format, el nivell, el silenci, a quina velocitat va el seu rellotge respecte del de l'ordinador, i la
+      sonoritat amb el <strong>guany recomanat</strong> per arribar a l'objectiu (−13 LUFS per defecte, el de la música). Cal
+      fer-ho amb la font sonant com sempre; avisa si és massa fluixa.</td></tr>
+    <tr><td><code>comprova-emissio [--des DATA] [--fins DATA] [--forat SEGONS]</code></td><td>Per a una prova llarga: els forats
+      de més d'un segon entre pistes a l'historial, les pistes que sonaven si el motor es va aturar de cop, les arrencades del
+      motor i els avisos del registre. Per defecte, les últimes 72 hores. Al final, CORRECTE o ATENCIÓ.</td></tr>
+    <tr><td><code>atura</code></td><td>Atura l'aplicació sencera (interfície i motor). Demana l'usuari i la contrasenya d'un
+      administrador i confirmació. És el que fa <code>Atura Ona Bages 24h.cmd</code>.</td></tr>
+    <tr><td><code>restableix-administrador</code></td><td>Si s'ha oblidat la contrasenya de l'administrador (vegeu a
+      sota).</td></tr>
+  </table>
+  <p><strong>Si s'ha oblidat la contrasenya de l'administrador:</strong></p>
+  <ol>
+    <li>Pausa l'Inicialitzador.</li>
+    <li>Atura l'aplicació. Sense la contrasenya, <code>Atura Ona Bages 24h.cmd</code> no ho pot fer: tanca
+      <code>OnaBages24.Engine.exe</code> i <code>OnaBages24.exe</code> des de l'Administrador de tasques.</li>
+    <li><code>resources\engine\OnaBages24.Engine.exe restableix-administrador</code>: posa una contrasenya provisional a
+      l'administrador (o crea l'usuari «admin» si no n'hi ha cap d'actiu) i la mostra.</li>
+    <li>Obre l'aplicació, entra amb aquesta contrasenya i canvia-la (mentre és provisional no es pot fer res més). Reactiva
+      l'Inicialitzador.</li>
+  </ol>
+  <p>Hi ha més eines per a les proves, que no van a la versió portable (vegeu
+    <a href="#compilar-provar-i-empaquetar">Compilar, provar i empaquetar</a>).</p>
 
   <h2 id="butt-i-nowplaying-txt">BUTT i NowPlaying.txt</h2>
-  <p class="pending">Pendent: el títol que s'envia a internet.</p>
+  <p>El motor escriu el títol del que sona a <code>dades\NowPlaying.txt</code>, i BUTT el llegeix per enviar-lo als oients
+    d'internet.</p>
+  <ul>
+    <li>Normalment, «Artista - Títol» de la cançó que sona. Si falta l'artista o el títol, es treu el guió.</li>
+    <li>Només la música i els programes canvien el títol: amb les falques, els sweepers, els indicatius i les hores, es manté
+      el de la pista d'abans.</li>
+    <li>Un <strong>títol fix</strong> (a mà, o amb l'acció «Títol per a BUTT» d'un esdeveniment) hi mana per sobre fins a
+      l'hora de final.</li>
+    <li>Una <strong>entrada de línia</strong> pot tenir el seu títol mentre sona, i un <strong>stream</strong> pot enviar el
+      títol que dona el seu servidor (opcions de l'acció).</li>
+    <li>El fitxer és d'una línia, en UTF-8 sense BOM i sense salt de línia al final. S'escriu en un fil propi, substituint
+      el fitxer sencer. Si no es pot escriure (BUTT el té bloquejat, la carpeta no hi és), l'emissió no se'n ressent: queda
+      una incidència i es torna a provar cada 5 segons.</li>
+    <li>La ruta i la plantilla (<code>$artist$ - $title$</code>) es poden canviar amb l'ordre <code>nowplaying.set</code> del
+      protocol; a la interfície no hi ha cap control per fer-ho.</li>
+  </ul>
 
   <h2 id="el-protocol">El protocol</h2>
   <p class="pending">Pendent: ordres i esdeveniments entre la interfície i el motor.</p>
