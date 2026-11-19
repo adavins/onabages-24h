@@ -13,6 +13,8 @@ const IMAGES = {
   planificador: 'El planificador amb la graella de la setmana',
   'planificador-editor': "L'editor d'un esdeveniment",
   biblioteca: 'La biblioteca de pistes',
+  'biblioteca-fitxa': "La fitxa d'una pista",
+  punts: "L'editor de punts",
   historial: "L'historial del que ha sonat",
   rotacions: 'La pantalla de rotacions',
   campanyes: 'La pantalla de campanyes',

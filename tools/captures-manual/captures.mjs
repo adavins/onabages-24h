@@ -186,6 +186,9 @@ await save({ name: 'Programa de fora', mode: 'TALLA', startTime: '12:00:00', rec
   actions: [{ type: 'ENTRADA', params: { dispositiu: 'Línia 2', durada_seg: 3600, titol_butt: 'Programa de fora', reconnecta: true } }] });
 await save({ name: 'Canvi de bossa', mode: 'SISTEMA', startTime: '00:00:00', recurrence: 'DIES_MES', monthDays: [1],
   actions: [{ type: 'BOSSA', params: { bossaId: bagA, subcategoriaId: catala } }] });
+// Uns punts de cançó de debò per a la captura de l'editor de punts: els àudios de mostra són fluixos (−30 dB) i
+// l'analitzador, que mira volums absoluts (−25, −15 i −30 dB), no els hi troba
+await send('library.setCues', { trackId: await track('Cançó del matí'), startMs: 450, mixMs: 178_200, endMs: 185_400 });
 await send('notes.set', { text: 'Recordatori: divendres hi ha retransmissió especial a les 19 h.' });
 
 // Una incidència de debò per al registre: una pista el fitxer de la qual s'ha esborrat, a la cua (se saltarà)
@@ -283,6 +286,24 @@ await run(`(() => {
   return true;
 })()`);
 await shot('biblioteca');
+// La fitxa d'una pista i el seu editor de punts
+await run(`(() => {
+  const row = [...document.querySelectorAll('#tm-list .tm-row')].find((r) => r.textContent.includes('Cançó del matí'));
+  row?.click();
+  return !!row;
+})()`);
+await shot('biblioteca-fitxa');
+await run(`(() => {
+  [...document.querySelectorAll('#tm-detail .ee-menu-item')].find((b) => b.textContent.includes('Punts'))?.click();
+  return true;
+})()`);
+await sleep(2500); // la forma d'ona la calcula el motor
+await shot('punts');
+await run(`(() => {
+  document.querySelector('#cue-dialog')?.close();
+  [...document.querySelectorAll('#tm-detail button')].find((b) => b.textContent.trim() === 'Tanca')?.click();
+  return true;
+})()`);
 await click('#sub-historial');
 await shot('historial');
 const openItem = (/** @type {string} */ view, /** @type {string} */ text) => run(`(() => {
