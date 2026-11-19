@@ -96,6 +96,8 @@ public static class Permissions
         ["savedCalendars.delete"] = Programmer("Ha esborrat el calendari desat"),
         ["savedCalendars.apply"] = Programmer("Ha aplicat un calendari desat"),
         ["validity.removeFromEvents"] = Programmer("Ha tret dels esdeveniments una pista o campanya caducada"),
+        // Manteniment de la programació (D-194): l'anàlisi, només per a qui la pot aplicar (no s'anota: només llegeix)
+        ["maintenance.scan"] = new(UserRole.Programmer, null),
         ["season.set"] = Programmer("Ha canviat les dates de la temporada"),
         ["reserve.set"] = Programmer("Ha canviat la reserva de l'AutoDJ"),
         ["scheduler.save"] = Programmer("Ha desat l'esdeveniment"),

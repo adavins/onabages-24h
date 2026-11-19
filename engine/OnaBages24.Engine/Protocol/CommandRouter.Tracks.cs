@@ -209,7 +209,20 @@ public sealed partial class CommandRouter
         var library = LibraryOrError();
         long id = RequiredId(msg, "subcategoryId");
         if (library.GetSubcategory(id) is null) throw new BadParamsException($"No existeix la subcategoria {id}.");
-        var reasons = library.SubcategoryBlockers(id).ToList();
+        var reasons = SubcategoryDeleteReasons(id);
+        if (reasons.Count > 0) throw new BadParamsException("No es pot esborrar la subcategoria: " + string.Join("; ", reasons) + ".");
+        library.DeleteSubcategory(id);
+        LibraryChanged?.Invoke(null);
+        return new JsonObject { ["deleted"] = id };
+    }
+
+    /// <summary>
+    /// Per què no es pot esborrar una subcategoria (buit = es pot): el que mira la biblioteca i, a més, la categoria de
+    /// sweepers, la reserva i les accions SWEEPERS o BOSSA dels esdeveniments. També el fa servir el manteniment (D-194).
+    /// </summary>
+    private List<string> SubcategoryDeleteReasons(long id)
+    {
+        var reasons = LibraryOrError().SubcategoryBlockers(id).ToList();
         if (_autoDj?.SweepersSubcategoryId == id) reasons.Add("és la categoria de sweepers de l'AutoDJ");
         if (ReadReserve(_library).ExcludedSubcategoryIds.Contains(id)) reasons.Add("és a les subcategories excloses de la reserva");
         var events = _events?.List()
@@ -217,10 +230,7 @@ public sealed partial class CommandRouter
                 && JsonNode.Parse(a.Params)?["subcategoriaId"] is JsonValue v && v.TryGetValue(out long s) && s == id))
             .Select(e => $"«{e.Name}»").ToList() ?? [];
         if (events.Count > 0) reasons.Add($"la fan servir els esdeveniments {string.Join(", ", events)}");
-        if (reasons.Count > 0) throw new BadParamsException("No es pot esborrar la subcategoria: " + string.Join("; ", reasons) + ".");
-        library.DeleteSubcategory(id);
-        LibraryChanged?.Invoke(null);
-        return new JsonObject { ["deleted"] = id };
+        return reasons;
     }
 
     // --- Gestor d'etiquetes ---

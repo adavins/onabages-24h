@@ -237,6 +237,7 @@ public sealed partial class CommandRouter
                 "backups.restore" => BackupsRestore(msg),
                 "validity.list" => ValidityList(),
                 "validity.removeFromEvents" => ValidityRemove(msg),
+                "maintenance.scan" => MaintenanceScan(),
                 "season.set" => SeasonSet(msg),
                 "station.get" => StationGet(),
                 "station.set" => StationSet(msg),

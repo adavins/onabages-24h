@@ -571,6 +571,31 @@ Una agenda canvia soles les subcategories d'unes bosses amb nom el **dia 1 de ca
 
 Permisos: `agendas.list` i `agendas.preview`, tothom; `agendas.save` i `agendas.delete`, programador. Les subcategories d'una agenda no es poden esborrar (`subcategory.delete` ho diu).
 
+### 4.17. Manteniment de la programació (D-194)
+
+Detecta el que s'ha anat acumulant i ja no sonarà, i proposa què fer-ne. **No fa res sol**: l'anàlisi només llegeix.
+
+| Ordre | Paràmetres | Resultat |
+|---|---|---|
+| `maintenance.scan` | — | `{ findings: [ { key, case, subject, id, name, reason, action } ] }`, en l'ordre dels casos i per nom. `key` identifica la proposta per aplicar-la (p. ex. `event:12`, `actions:12`, `exceptions:12`, `campaign-events:5`, `track-events:7`, `track:7`, `subcategory:3`). `subject`: `event`, `track`, `campaign` o `subcategory`. `reason`: el motiu, en català |
+
+Casos (`case`), amb l'acció que es proposa (`action`). Cada esdeveniment surt com a molt una vegada, pel primer motiu; les plantilles, mai:
+
+| `case` | Què és | `action` |
+|---|---|---|
+| `ESDEVENIMENT_ACABAT` | La data de fi ja ha passat, o totes les dates soltes | `ESBORRA_ESDEVENIMENT` |
+| `ESDEVENIMENT_DESACTIVAT` | Desactivat i sense cap canvi des de fa més de 90 dies | `ESBORRA_ESDEVENIMENT` |
+| `ESDEVENIMENT_DUPLICAT` | Un altre fa exactament el mateix (mode, hora, dies, dates, opcions i accions; els paràmetres JSON es comparen normalitzats). Es queda el d'id més baix | `ESBORRA_ESDEVENIMENT` |
+| `ESDEVENIMENT_NO_GUANYA` | Talla o Encua activat que, cada vegada que sonaria els pròxims 365 dies, coincideix amb un altre Talla o Encua que hi guanya (més prioritat, o la mateixa i un id més baix, com el planificador) | `ESBORRA_ESDEVENIMENT` |
+| `ESDEVENIMENT_SENSE_EFECTE` | Totes les seves accions són pistes que ja no existeixen o amb la data de fi passada, o campanyes que no existeixen o s'han acabat (una pista que falta o desactivada es pot arreglar: no compta) | `ESBORRA_ESDEVENIMENT` |
+| `ACCIONS_TRENCADES` | Accions que apunten a una rotació, una bossa, una subcategoria o una plantilla que ja no existeix. Si totes ho són, l'esdeveniment | `TREU_ACCIONS` o `ESBORRA_ESDEVENIMENT` |
+| `EXCEPCIONS_PASSADES` | Dies que no s'emet que ja han passat | `TREU_EXCEPCIONS` |
+| `ACABADA_ALS_ESDEVENIMENTS` | Una pista o una campanya acabada que encara és als esdeveniments que poden sonar (les mateixes que `validity.list` amb `canRemove`) | `TREU_DELS_ESDEVENIMENTS` |
+| `PISTA_CADUCADA` | Una pista amb la data de fi passada que no fa servir cap esdeveniment. Si és d'una campanya o ha sonat els últims 2 anys, es desactiva (els certificats, D-011); si ja ho està, no surt | `ESBORRA_PISTA` o `DESACTIVA_PISTA` |
+| `SUBCATEGORIA_BUIDA` | Una subcategoria sense pistes que es pot esborrar (els mateixos motius que `subcategory.delete`) | `ESBORRA_SUBCATEGORIA` |
+
+Permisos: programador.
+
 ## 5. Esdeveniments
 
 | Esdeveniment | Camps | Freqüència | Des de |
