@@ -157,6 +157,27 @@ public class OutputManagerTests
     }
 
     [Fact]
+    public void La_primera_vegada_es_pot_desar_la_d_emergencia_sense_tallar_el_so()
+    {
+        // Sense cap sortida desada, s'emet per la d'emergència
+        var mixer = new Mixer(48000);
+        var manager = Manager(mixer);
+        manager.Ensure();
+        var device = manager.Current!;
+        Assert.True(manager.IsEmergency);
+        var playing = _opened[device.Id];
+
+        // Es desa la mateixa: deixa de ser d'emergència i no es torna a obrir (el so no es talla)
+        manager.Configure(new ConfiguredOutput(device.Id, device.Name));
+        manager.Ensure();
+        Assert.Equal(device.Id, manager.Current?.Id);
+        Assert.False(manager.IsEmergency);
+        Assert.Null(manager.Problem);
+        Assert.Same(playing, _opened[device.Id]);
+        Assert.False(playing.Disposed);
+    }
+
+    [Fact]
     public void Si_la_sortida_falla_mentre_sona_passa_a_la_d_emergencia()
     {
         var mixer = new Mixer(48000);

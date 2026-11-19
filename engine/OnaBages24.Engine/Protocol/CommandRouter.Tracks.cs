@@ -217,6 +217,45 @@ public sealed partial class CommandRouter
     }
 
     /// <summary>
+    /// Afegeix un stream a la biblioteca (D-195): una pista de tipus Stream amb l'adreça (<c>url</c>, http o https) com a
+    /// ruta, el títol (<c>title</c>) i, si es vol, l'artista i la subcategoria. Després es fa servir com qualsevol stream
+    /// (a la cua o amb l'acció STREAM del planificador, que hi posa la durada). No es comprova si respon: per això hi ha
+    /// <c>prova-stream</c>.
+    /// </summary>
+    private JsonObject LibraryAddStream(JsonObject msg)
+    {
+        var library = LibraryOrError();
+        string url = StreamUrlOrError(ReadString(msg["url"]));
+        string title = (ReadString(msg["title"]) ?? "").Trim();
+        if (title.Length == 0) throw new BadParamsException("Cal posar-li un nom (el títol del stream).");
+        if (title.Length > 500) throw new BadParamsException("El nom és massa llarg (com a molt 500 caràcters).");
+        long? subcategoryId = msg["subcategoryId"] is JsonValue sv && sv.TryGetValue(out long sub) ? sub : null;
+        if (subcategoryId is { } s && library.GetSubcategory(s) is null) throw new BadParamsException($"No existeix la subcategoria {s}.");
+        if (library.FindByPath(url) is { } existing) throw new BadParamsException($"Ja hi ha una pista amb aquesta adreça: «{existing.Title}».");
+
+        long id = library.AddTrack(new Track
+        {
+            Path = url,
+            Type = TrackType.Stream,
+            Title = title,
+            Artist = (ReadString(msg["artist"]) ?? "").Trim(),
+            SubcategoryId = subcategoryId,
+            FileState = FileState.Ok,
+        });
+        LibraryChanged?.Invoke(id);
+        return TrackDetail(library, TrackOrError(library, id));
+    }
+
+    /// <summary>Una adreça de stream vàlida (http o https, absoluta), o un error en català.</summary>
+    private static string StreamUrlOrError(string? text)
+    {
+        string url = (text ?? "").Trim();
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            throw new BadParamsException("L'adreça del stream ha de començar per http:// o https:// (p. ex. http://servidor:8000/directe).");
+        return url;
+    }
+
+    /// <summary>
     /// Per què no es pot esborrar una subcategoria (buit = es pot): el que mira la biblioteca i, a més, la categoria de
     /// sweepers, la reserva i les accions SWEEPERS o BOSSA dels esdeveniments. També el fa servir el manteniment (D-194).
     /// </summary>

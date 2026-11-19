@@ -170,6 +170,7 @@ public sealed partial class CommandRouter
                 "library.get" => LibraryGet(msg),
                 "library.update" => LibraryUpdate(msg),
                 "library.relink" => LibraryRelink(msg),
+                "library.addStream" => LibraryAddStream(msg),
                 "library.delete" => LibraryDelete(msg),
                 "library.ids" => LibraryIds(msg),
                 "library.bulk" => LibraryBulk(msg),
@@ -661,6 +662,16 @@ public sealed partial class CommandRouter
         var library = LibraryOrError();
         var track = TrackOrError(library, RequiredId(msg, "trackId"));
         string path =(ReadString(msg["path"]) ?? "").Trim();
+        // Un stream: l'adreça nova (D-195). La fitxa, els títols i l'historial es conserven
+        if (track.Type == TrackType.Stream || track.Path.Contains("://", StringComparison.Ordinal))
+        {
+            string url = StreamUrlOrError(path);
+            if (library.FindByPath(url) is { } other && other.Id != track.Id)
+                throw new BadParamsException($"Ja hi ha una pista amb aquesta adreça: «{other.Title}».");
+            library.UpdateTrack(track with { Path = url, FileState = FileState.Ok });
+            LibraryChanged?.Invoke(track.Id);
+            return TrackDetail(library, TrackOrError(library, track.Id));
+        }
         if (path.Length == 0 || !Path.IsPathFullyQualified(path)) throw new BadParamsException("Falta 'path' (la ruta completa del fitxer).");
         if (!LibraryTools.FolderImporter.AudioExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
             throw new BadParamsException($"No és un fitxer d'àudio que es pugui fer servir ({string.Join(", ", LibraryTools.FolderImporter.AudioExtensions)}).");

@@ -59,6 +59,7 @@ public static class Permissions
         // Programador: la programació i la biblioteca
         ["library.update"] = Programmer("Ha desat la pista"),
         ["library.relink"] = Programmer("Ha canviat el fitxer de la pista"),
+        ["library.addStream"] = Programmer("Ha afegit un stream a la biblioteca"),
         ["library.delete"] = Programmer("Ha esborrat pistes"),
         ["library.bulk"] = Programmer("Ha canviat diverses pistes alhora"),
         ["library.setCues"] = Programmer("Ha desat els punts de la pista"),

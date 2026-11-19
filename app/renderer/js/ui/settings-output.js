@@ -46,6 +46,19 @@ export function outputPanel(send) {
   change.disabled = true;
   change.dataset.needs = 'operator';
 
+  /**
+   * Si cal fer alguna cosa amb la sortida triada: passar-hi (una altra que la d'ara) o desar-la (la d'ara, si no és la
+   * desada: p. ex. la primera vegada, que s'emet per la d'emergència perquè encara no n'hi ha cap de desada).
+   * @param {string | null} id
+   */
+  const needsAction = (id) => !!id && (id !== output?.current?.id || !!output?.emergency || output?.configured?.id !== id);
+  /** El text del botó: canviar-hi o, si ja sona per aquesta, desar-la. */
+  const syncButton = () => {
+    const same = chosen === output?.current?.id;
+    change.disabled = !needsAction(chosen);
+    change.replaceChildren(icon(same ? 'bi-floppy' : 'bi-arrow-left-right'), same ? ' Desa aquesta sortida' : ' Canvia la sortida');
+  };
+
   const fill = async () => {
     list.replaceChildren(el('div', 'text-body-secondary', 'Carregant…'));
     /** @type {any[]} */
@@ -58,12 +71,12 @@ export function outputPanel(send) {
       return;
     }
     chosen = output.current?.id ?? null;
-    change.disabled = true;
+    syncButton();
     warning.classList.toggle('d-none', !(output.emergency && output.problem));
     warning.replaceChildren(icon('bi-exclamation-triangle-fill'), ' ', el('span', '', output.problem ?? ''));
     list.replaceChildren(...devices.map((device) => deviceRow(device, output, chosen, (id) => {
       chosen = id;
-      change.disabled = id === output.current?.id;
+      syncButton();
     })));
     if (devices.length === 0) list.append(el('div', 'text-body-secondary', 'Windows no té cap sortida d\'àudio.'));
     // La configurada que no hi és (per això s'emet per la d'emergència)
@@ -76,13 +89,22 @@ export function outputPanel(send) {
   showAll.addEventListener('change', fill);
 
   change.addEventListener('click', async () => {
-    if (!chosen || chosen === output?.current?.id) return;
+    if (!chosen || !needsAction(chosen)) return;
     const name = /** @type {HTMLElement | null} */ (list.querySelector(`[data-id="${CSS.escape(chosen)}"]`))?.dataset.name ?? chosen;
-    const sure = await confirmAction({
-      title: 'Canviar la sortida d\'àudio?',
-      message: `L'emissió passarà a sortir per «${name}». El so es tallarà un instant mentre es canvia de targeta.`,
-      confirm: 'Canvia la sortida',
-    });
+    // Si ja sona per aquesta, només es desa (el so no es talla)
+    const same = chosen === output?.current?.id;
+    const sure = await confirmAction(same
+      ? {
+        title: 'Desar la sortida d\'àudio?',
+        message: `«${name}» quedarà desada com a sortida d'emissió: és la que es farà servir sempre, també després de reiniciar. Ja s'emet per aquesta: el so no es talla.`,
+        confirm: 'Desa aquesta sortida',
+        danger: false,
+      }
+      : {
+        title: 'Canviar la sortida d\'àudio?',
+        message: `L'emissió passarà a sortir per «${name}». El so es tallarà un instant mentre es canvia de targeta.`,
+        confirm: 'Canvia la sortida',
+      });
     if (!sure) return;
     try {
       await send('output.set', { deviceId: chosen });

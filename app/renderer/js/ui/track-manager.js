@@ -157,7 +157,64 @@ export class TrackManagerView {
     $('tm-folder').addEventListener('click', () => this.#folder());
     $('tm-empty').addEventListener('click', () => this.#empty());
     $('tm-tags').addEventListener('click', () => this.#manageTags());
+    $('tm-add-stream').addEventListener('click', () => this.#addStream());
     this.#renderDetail();
+  }
+
+  /**
+   * «Afegeix un stream…» (D-195): una pista de tipus Stream amb l'adreça com a ruta. Després es fa servir com qualsevol
+   * stream (a la cua, o amb l'acció «Pista» del planificador, on es converteix en STREAM i porta la durada).
+   */
+  async #addStream() {
+    const name = /** @type {HTMLInputElement} */ (el('input', 'form-control'));
+    name.type = 'text';
+    name.maxLength = 500;
+    name.placeholder = 'p. ex. Butlletí de La Xarxa';
+    const url = /** @type {HTMLInputElement} */ (el('input', 'form-control font-monospace'));
+    url.type = 'url';
+    url.placeholder = 'http://servidor:8000/directe';
+    const subcategory = /** @type {HTMLSelectElement} */ (el('select', 'form-select'));
+    subcategory.append(option('', '(sense subcategoria)'));
+    /** @type {any[]} */
+    const categories = this.#filters?.categories ?? [];
+    for (const c of categories) {
+      if (c.subcategories.length === 0) continue;
+      const group = document.createElement('optgroup');
+      group.label = c.name;
+      group.append(...c.subcategories.map((/** @type {any} */ s) => option(String(s.id), s.name)));
+      subcategory.append(group);
+    }
+    // Per defecte, la triada al requadre «Categories» o, si no, la primera on predominen els streams
+    const streams = categories.flatMap((c) => c.subcategories).find((/** @type {any} */ s) => s.mainType === 'stream');
+    subcategory.value = String(this.#boxSubcategory ?? streams?.id ?? '');
+    for (;;) {
+      const ok = await formDialog({
+        title: 'Afegir un stream', icon: 'bi-broadcast', confirm: 'Afegeix-lo',
+        message: 'Una emissió per internet (Shoutcast o Icecast) que es pot fer sonar a la cua o programar amb un esdeveniment. Per comprovar que l\'adreça funciona, hi ha l\'ordre prova-stream.',
+        body: [
+          dialogField('Nom', name, 'El que surt a la cua, a l\'historial i al planificador.'),
+          dialogField('Adreça', url, 'Ha de començar per http:// o https://.'),
+          dialogField('Subcategoria', subcategory),
+        ],
+      });
+      if (!ok) return;
+      const params = {
+        title: name.value.trim(), url: url.value.trim(),
+        ...(subcategory.value === '' ? {} : { subcategoryId: Number(subcategory.value) }),
+      };
+      const problem = !params.title ? 'Cal posar-li un nom.'
+        : !/^https?:\/\/\S+$/i.test(params.url) ? 'L\'adreça ha de començar per http:// o https://.' : '';
+      if (problem) {
+        await confirmAction({ title: 'Afegir un stream', message: problem, confirm: 'D\'acord', info: true });
+        continue;
+      }
+      const result = await this.#try('No s\'ha pogut afegir el stream', () => this.#send('library.addStream', params));
+      if (!result) continue;
+      await this.#loadFilters();
+      await this.#search();
+      await this.#select(result.track.id);
+      return;
+    }
   }
 
   /** La pantalla es mostra: la primera vegada, carrega-ho tot. */
@@ -1314,8 +1371,10 @@ export class TrackManagerView {
       cues.disabled = true;
       cues.title = 'Sense fitxer (o un stream) no hi ha forma d\'ona per editar';
     }
-    const relink = item('bi-file-earmark-music', 'Canvia el fitxer…',
-      'Fes que aquesta pista apunti a un altre fitxer (si s\'ha mogut o falta). Es conserven la fitxa i l\'historial.', () => this.#relink());
+    const relink = isStream
+      ? item('bi-broadcast', 'Canvia l\'adreça…', 'Una altra adreça per a aquest stream (si ha canviat). Es conserven la fitxa i l\'historial.', () => this.#relink())
+      : item('bi-file-earmark-music', 'Canvia el fitxer…',
+        'Fes que aquesta pista apunti a un altre fitxer (si s\'ha mogut o falta). Es conserven la fitxa i l\'historial.', () => this.#relink());
     if (t.fileState === 'missing') relink.classList.add('text-warning');
     const explorer = item('bi-folder2-open', 'Obre la carpeta…', 'Obre a l\'Explorador de Windows la carpeta del fitxer, amb el fitxer seleccionat', () => this.#openFolder(t.path));
     if (isStream) {
@@ -1519,9 +1578,14 @@ export class TrackManagerView {
       await confirmAction({ title: 'Canvis sense desar', message: 'Desa o descarta primer els canvis de la fitxa.', confirm: 'D\'acord', info: true });
       return;
     }
-    const path = await this.#chooseFile(t.path);
+    // Un stream no té fitxer: s'hi escriu l'adreça nova (D-195)
+    const isStream = t.type === 'stream' || String(t.path ?? '').includes('://');
+    const path = isStream
+      ? (await askText({ title: 'Canviar l\'adreça del stream', label: 'Adreça (http:// o https://)', confirm: 'Canvia-la', value: t.path }))?.trim()
+      : await this.#chooseFile(t.path);
     if (!path || path === t.path) return;
-    const result = await this.#try('No s\'ha pogut canviar el fitxer', () => this.#send('library.relink', { trackId: t.id, path }));
+    const result = await this.#try(isStream ? 'No s\'ha pogut canviar l\'adreça' : 'No s\'ha pogut canviar el fitxer',
+      () => this.#send('library.relink', { trackId: t.id, path }));
     if (!result) return;
     this.#track = result.track;
     this.#renderDetail();

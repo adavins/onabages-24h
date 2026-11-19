@@ -493,7 +493,8 @@
 
   <h3 id="streams">Streams</h3>
   <p>Un stream és una emissió per internet que es retransmet, com els butlletins de La Xarxa. Els streams són pistes de la
-    biblioteca de tipus Stream (amb l'adreça com a ruta). S'afegeixen amb l'acció <strong>Pista</strong>, en un esdeveniment
+    biblioteca de tipus Stream (amb l'adreça com a ruta), que s'hi afegeixen amb <a href="#importar-pistes">Afegeix un
+    stream…</a>. S'afegeixen amb l'acció <strong>Pista</strong>, en un esdeveniment
     Talla o Encua, i tenen aquestes opcions:</p>
   <ul>
     <li><strong>Durada</strong> (obligatòria): quant sona. En acabar, baixa amb un fos i continua la resta de
@@ -719,6 +720,9 @@
       són a la biblioteca.</li>
     <li><strong>Importa fitxers…</strong>: un o uns quants fitxers (amb Ctrl o Maj se'n trien diversos). Si només n'és un, en
       acabar se n'obre la fitxa.</li>
+    <li><strong>Afegeix un stream…</strong>: una emissió per internet (vegeu <a href="#streams">Streams</a>). Es posa el nom,
+      l'adreça (comença per <code>http://</code> o <code>https://</code>) i la subcategoria, i en acabar se n'obre la fitxa. Si
+      l'adreça canvia, a la fitxa hi ha <strong>Més → Canvia l'adreça…</strong>.</li>
   </ul>
   <p>Es tria la <strong>subcategoria</strong> de les pistes noves, el <strong>tipus</strong> (es proposa segons el nom de
     la categoria; es pot canviar), les <strong>etiquetes</strong> i si són de <strong>durada variable</strong>. En importar
@@ -1170,7 +1174,9 @@
   </figure>
   <p>La sortida és la targeta de so per on surt l'emissió cap a la taula. La llista mostra les sortides de Windows, amb el
     format i quina és la <strong>Configurada</strong> i quina sona <strong>Ara</strong>. Per canviar-la, tria'n una i
-    <strong>Canvia la sortida</strong>: demana confirmació, perquè el so es talla un instant mentre es canvia de targeta.
+    <strong>Canvia la sortida</strong>: demana confirmació, perquè el so es talla un instant mentre es canvia de targeta. La
+    primera vegada no n'hi ha cap de desada i s'emet per la d'emergència: si aquella ja és la bona, el botó diu
+    <strong>Desa aquesta sortida</strong> i la desa sense tallar el so.
     <strong>Mostra també les desactivades i les desconnectades</strong> fa veure les que ara no es poden fer servir.</p>
   <p class="note">Si la sortida configurada no hi és (s'ha desconnectat, Windows l'ha desactivada…), l'aplicació emet per una
     <strong>sortida d'emergència</strong> (la primera que funciona) i ho avisa a la barra d'estat, en vermell. Mai no es queda
