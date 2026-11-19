@@ -111,24 +111,16 @@
     <li><strong>Windows 10 o 11 de 64 bits.</strong> No cal instal·lar .NET: la versió portable el porta a dins. Windows 10
       ja no rep actualitzacions de seguretat sense l'ampliació ESU: convé planificar el pas a Windows 11.</li>
     <li><strong>Windows «N»</strong> (sense multimèdia): cal instal·lar el Media Feature Pack perquè sonin els MP3.</li>
-    <li><strong>Que no s'adormi mai</strong>: a les opcions d'energia, ni suspensió ni hibernació, i la pantalla es pot
-      apagar però l'ordinador no. Amb un SAI, millor.</li>
-    <li><strong>Que arrenqui sol</strong>: l'Inicialitzador (vegeu <a href="#el-vigilant">El vigilant</a>) obre l'aplicació
-      en iniciar la sessió de Windows. Per això cal que la sessió s'iniciï sola després d'un reinici.</li>
     <li><strong>Les unitats de música</strong> (de xarxa o del Google Drive) han d'estar connectades amb la mateixa lletra
       que es va fer servir en importar la biblioteca. Si canvien, es corregeix amb el canvi d'arrel (vegeu el manual
       d'usuari, «La biblioteca»). Les carpetes del Drive que tinguin programes o falques, millor «Disponible sense
       connexió», perquè els fitxers ja siguin a l'ordinador a l'hora de sonar.</li>
-    <li><strong>L'hora</strong>: els esdeveniments sonen amb el rellotge de l'ordinador. Ha d'estar sincronitzat (el servei
-      d'hora de Windows, que ve activat).</li>
   </ul>
 
   <h3 id="dispositius-de-so">Dispositius de so</h3>
   <ul>
     <li>L'aplicació fa servir WASAPI en mode compartit (no exclusiu): altres programes poden fer servir la mateixa targeta,
-      però el que sona per la sortida d'emissió surt per antena. No hi ha d'haver cap altre programa que hi faci sonar res
-      (avisos de Windows, el navegador…): convé posar una altra sortida com a predeterminada de Windows, o silenciar els sons
-      del sistema.</li>
+      però tot el que s'hi faci sonar surt per antena.</li>
     <li>La sortida d'emissió es tria a l'aplicació (Configuració → Sortida) i es desa per l'identificador de Windows i, com a
       alternativa, pel nom. Mai no es fa servir el «dispositiu predeterminat» de Windows.</li>
     <li>Si la sortida triada desapareix, l'aplicació passa a una <strong>sortida d'emergència</strong> (la primera que
@@ -142,14 +134,10 @@
   </ul>
 
   <h3 id="escriptori-remot">Escriptori remot</h3>
-  <p>L'ordinador s'administra amb l'escriptori remot de Windows. La interfície no fa servir l'acceleració gràfica, i el motor
-    és un procés a part que no depèn de la finestra ni de la sessió remota.</p>
-  <p class="note"><strong>Important:</strong> a la connexió d'escriptori remot, a <strong>Recursos locals → So de l'equip
-    remot</strong>, tria <strong>Reprodueix-lo a l'equip remot</strong> (o «No el reprodueixis»). Amb «Reprodueix-lo en
-    aquest equip», Windows pot redirigir l'àudio de la sessió cap a l'ordinador des d'on et connectes, i la sortida d'emissió
-    podria deixar d'estar disponible per a l'aplicació. Comprova-ho a l'ordinador de proves abans de fer-ho al PC 24h.</p>
-  <p>Des de fora de l'emissora, només amb VPN: el port del motor no s'ha d'obrir mai a internet (de fet, només escolta a
-    l'ordinador mateix, 127.0.0.1).</p>
+  <p>L'ordinador s'administra a distància (ara, amb Ammyy i AnyDesk). La interfície no fa servir l'acceleració gràfica, i el
+    motor és un procés a part que no depèn de la finestra ni de la sessió remota.</p>
+  <p class="note">Tingues en compte que el programa d'escriptori remot pot interferir amb el so de l'ordinador.</p>
+  <p>El motor només escolta a l'ordinador mateix (127.0.0.1): no s'ha d'obrir mai cap port a internet.</p>
 
   <h3 id="butt">BUTT</h3>
   <p>BUTT envia l'emissió a internet. Capta l'<strong>entrada de línia</strong> (la sortida de la taula, que inclou els
