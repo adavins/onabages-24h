@@ -36,6 +36,7 @@ import { openSettingsDialog } from './ui/settings-dialog.js';
 import { SessionController } from './session.js';
 import { openReport } from './ui/report-dialog.js';
 import { HistorySearchView } from './ui/history-search.js';
+import { MaintenanceView } from './ui/maintenance.js';
 
 /**
  * @typedef {{
@@ -270,6 +271,21 @@ const warnings = new WarningsView(send, {
     planner.openEvent(id, todayIso());
   },
 });
+// Manteniment de la programació (D-194): cada proposta es pot obrir on és
+const maintenanceView = new MaintenanceView(send, {
+  openEvent: (id) => {
+    showView('planificador');
+    planner.openEvent(id, todayIso());
+  },
+  openTrack: (id) => {
+    showView('biblioteca');
+    trackManager.openTrack(id);
+  },
+  openCampaign: (id) => {
+    showView('campanyes');
+    campaignsView.openById(id);
+  },
+});
 trackManager.validityBox = (subject, id) => warnings.box(subject, id);
 campaignsView.validityBox = (subject, id) => warnings.box(subject, id);
 // Paquet de campanya (D-150): els diàlegs de Windows per triar on es desa i quin s'obre
@@ -389,12 +405,13 @@ $('status-butt').addEventListener('click', async () => {
 /** A quina pestanya de dalt pertany cada pantalla (D-168): Pistes té la biblioteca i l'historial; «Més», la resta. */
 const TOP_TAB = /** @type {const} */ ({
   emissio: 'emissio', planificador: 'planificador', biblioteca: 'biblioteca', historial: 'biblioteca', calendari: 'biblioteca',
-  rotacions: 'mes', campanyes: 'mes', 'calendari-campanya': 'mes', registre: 'mes',
+  rotacions: 'mes', campanyes: 'mes', 'calendari-campanya': 'mes', registre: 'mes', manteniment: 'mes',
 });
 /** El nom i la icona del botó «Més» mentre es veu una de les seves pantalles. */
 const MORE_LABELS = /** @type {Record<string, [string, string]>} */ ({
   rotacions: ['Rotacions', 'bi-arrow-repeat'], campanyes: ['Campanyes', 'bi-megaphone'],
   'calendari-campanya': ['Campanyes', 'bi-megaphone'], registre: ['Registre', 'bi-journal-text'],
+  manteniment: ['Manteniment', 'bi-wrench-adjustable'],
 });
 
 /** @param {keyof typeof TOP_TAB} name */
@@ -432,6 +449,8 @@ function showView(name) {
   else historySearch.hide();
   if (name === 'registre') logView.show();
   else logView.hide();
+  if (name === 'manteniment') maintenanceView.show();
+  else maintenanceView.hide();
 }
 $('nav-emissio').addEventListener('click', () => showView('emissio'));
 $('nav-planificador').addEventListener('click', () => showView('planificador'));

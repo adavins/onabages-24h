@@ -21,6 +21,7 @@ const IMAGES = {
   'calendari-campanya': "El calendari d'una campanya",
   certificat: "El certificat d'emissió d'una campanya",
   registre: 'El registre',
+  manteniment: 'El manteniment de la programació',
   'configuracio-sortida': "La configuració de la sortida d'àudio",
 };
 

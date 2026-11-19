@@ -187,6 +187,13 @@ await save({ name: 'Programa de fora', mode: 'TALLA', startTime: '12:00:00', rec
   actions: [{ type: 'ENTRADA', params: { dispositiu: 'Línia 2', durada_seg: 3600, titol_butt: 'Programa de fora', reconnecta: true } }] });
 await save({ name: 'Canvi de bossa', mode: 'SISTEMA', startTime: '00:00:00', recurrence: 'DIES_MES', monthDays: [1],
   actions: [{ type: 'BOSSA', params: { bossaId: bagA, subcategoriaId: catala } }] });
+// Per al manteniment de la programació (D-194): un programa d'estiu ja acabat, un indicatiu caducat que no fa servir res
+// i una subcategoria buida
+await save({ name: "Programa d'estiu", mode: 'TALLA', startTime: '11:00:00', recurrence: 'SETMANAL', daysMask: 64, clearQueue: true,
+  endDate: day(-60), actions: [{ type: 'PISTA', params: { songId: await track('Magazín de Mostra') } }] });
+await send('library.update', { trackId: await track('Indicatiu 2'), validUntil: day(-90) });
+await subcategory('Nadal 2019', music);
+
 // Uns punts de cançó de debò per a la captura de l'editor de punts: els àudios de mostra són fluixos (−30 dB) i
 // l'analitzador, que mira volums absoluts (−25, −15 i −30 dB), no els hi troba
 await send('library.setCues', { trackId: await track('Cançó del matí'), startMs: 450, mixMs: 178_200, endMs: 185_400 });
@@ -362,6 +369,14 @@ await run(`(() => {
   return true;
 })()`);
 await shot('registre');
+// El manteniment de la programació: l'anàlisi, amb una proposta marcada
+await click('[data-view="manteniment"]');
+await sleep(2500);
+await run(`(() => {
+  document.querySelector('#view-manteniment .mt-item input')?.click();
+  return true;
+})()`);
+await shot('manteniment');
 // La configuració: la pestanya Sortida
 await click('#menu-settings');
 await sleep(1500);

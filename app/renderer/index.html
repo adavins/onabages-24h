@@ -25,6 +25,8 @@
           <button class="more-item" type="button" role="menuitem" data-view="rotacions"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> Rotacions</button>
           <button class="more-item" type="button" role="menuitem" data-view="campanyes"><i class="bi bi-megaphone" aria-hidden="true"></i> Campanyes</button>
           <button class="more-item" type="button" role="menuitem" data-view="registre"><i class="bi bi-journal-text" aria-hidden="true"></i> Registre</button>
+          <!-- Manteniment de la programació (D-194): només qui pot canviar la programació -->
+          <button class="more-item" type="button" role="menuitem" data-view="manteniment" data-needs="programmer"><i class="bi bi-wrench-adjustable" aria-hidden="true"></i> Manteniment</button>
           <div class="more-separator" role="separator"></div>
           <button id="menu-settings" class="more-item" type="button" role="menuitem" data-needs="operator"><i class="bi bi-gear" aria-hidden="true"></i> Configuració</button>
           <!-- La documentació (D-193): cada manual en una finestra pròpia, sense internet -->
@@ -526,6 +528,9 @@
 
   <!-- Registre (D-167): incidències, canvis, sessions i esdeveniments en una sola llista (js/ui/log-view.js) -->
   <div id="view-registre" class="view d-none"></div>
+
+  <!-- Manteniment de la programació (D-194; js/ui/maintenance.js) -->
+  <div id="view-manteniment" class="view d-none"></div>
 
   <footer class="statusbar">
     <!-- Sortida d'àudio (D-120, D-168): una icona amb color (el nom, en passar-hi el ratolí); el clic obre ⚙ → Sortida -->

@@ -4657,3 +4657,57 @@ body[data-access="programmer"] [data-needs="administrator"] {
   font-family: var(--ob-mono);
   font-size: 0.78rem;
 }
+
+/* --- Manteniment de la programació (D-194) --- */
+
+.mt-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+.mt-head .form-text { max-width: 60rem; }
+.mt-tools { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.mt-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.mt-group {
+  background: var(--ob-panel);
+  border: 1px solid var(--ob-border);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+}
+.mt-group-head { display: flex; align-items: center; gap: 0.5rem; }
+.mt-group-title { font-weight: 600; cursor: pointer; }
+.mt-group-count { color: var(--ob-muted); font-weight: 400; }
+.mt-group-help { margin: 0.1rem 0 0.4rem 1.6rem; }
+.mt-items { list-style: none; margin: 0; padding: 0; }
+.mt-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.35rem 0 0.35rem 1.6rem;
+  border-top: 1px solid var(--ob-border);
+}
+.mt-item .form-check-input { margin-top: 0.2rem; flex: none; }
+.mt-item-body { min-width: 0; }
+.mt-item-line { display: flex; align-items: center; flex-wrap: wrap; gap: 0.25rem 0.6rem; }
+.mt-item-name { font-weight: 500; cursor: pointer; }
+.mt-item-action { font-size: 0.85rem; }
+.mt-item-reason { color: var(--ob-muted); font-size: 0.88rem; }
+.mt-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--ob-border);
+}
+.mt-count { color: var(--ob-muted); }
