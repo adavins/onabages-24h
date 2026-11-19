@@ -18,6 +18,8 @@ const IMAGES = {
   historial: "L'historial del que ha sonat",
   rotacions: 'La pantalla de rotacions',
   campanyes: 'La pantalla de campanyes',
+  'calendari-campanya': "El calendari d'una campanya",
+  certificat: "El certificat d'emissió d'una campanya",
   registre: 'El registre',
 };
 

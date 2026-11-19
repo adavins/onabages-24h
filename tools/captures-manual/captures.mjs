@@ -160,12 +160,12 @@ const day = (/** @type {number} */ offset) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 const ferreteria = (await send('campaigns.save', {
-  name: 'Ferreteria Exemple', advertiser: 'Ferreteria Exemple', startDate: day(-5), endDate: day(25), state: 'ACTIVA',
-  contractedPerDay: 6, spots: [{ trackId: await track('Falca de tardor') }, { trackId: await track('Falca de Nadal') }],
+  name: 'Ferreteria Exemple', advertiser: 'Ferreteria Exemple', startDate: day(0), endDate: day(30), state: 'ACTIVA',
+  contractedPerDay: 5, spots: [{ trackId: await track('Falca de tardor'), endDate: day(14) }, { trackId: await track('Falca de Nadal'), startDate: day(15) }],
 })).campaign;
 const forn = (await send('campaigns.save', {
-  name: 'Forn de Mostra', advertiser: 'Forn de Mostra', startDate: day(-2), endDate: day(12), state: 'ACTIVA',
-  contractedPerDay: 4, spots: [{ trackId: await track('Forn de Mostra') }],
+  name: 'Forn de Mostra', advertiser: 'Forn de Mostra', startDate: day(0), endDate: day(12), state: 'ACTIVA',
+  contractedPerDay: 5, spots: [{ trackId: await track('Forn de Mostra') }],
 })).campaign;
 
 const weekdays = 31; // de dilluns a divendres
@@ -178,6 +178,7 @@ await save({ name: 'Informatiu', mode: 'TALLA', startTime: '13:00:00', recurrenc
   maxDurationSeconds: 1800,
   actions: [{ type: 'PISTA', params: { songId: await track('Informatiu') } }] });
 await save({ name: 'Bloc de falques', mode: 'ENCUA', startTime: '00:30:00', recurrence: 'SETMANAL', daysMask: 127, repeat: 'CADA_HORA',
+  hoursMask: (1 << 8) | (1 << 10) | (1 << 12) | (1 << 17) | (1 << 19),
   commercialBlock: true, actions: [{ type: 'CAMPANYA', params: { campanyaId: ferreteria.id } }, { type: 'CAMPANYA', params: { campanyaId: forn.id } }] });
 await save({ name: 'Indicatiu de les hores', mode: 'ENCUA', startTime: '00:00:00', recurrence: 'SETMANAL', daysMask: 127, repeat: 'CADA_HORA',
   actions: [{ type: 'PISTA', params: { songId: await track('Indicatiu 1') } }] });
@@ -200,6 +201,8 @@ await importFolder('../dades/perduda', catala, 'music');
 const lost = await track('Tarda de pluja');
 fs.rmSync(lostFile); // (és la mateixa carpeta, vista com a M:)
 await send('queue.insert', { items: [{ trackId: lost }], position: 'next' });
+await send('queue.insert', { items: [{ trackId: await track('Falca de tardor') }], position: 'next' });
+await send('player.next');
 
 // Un esdeveniment d'aquí a uns segons: al registre hi haurà la seva execució
 const soon = new Date(Date.now() + 40_000);
@@ -319,6 +322,36 @@ await click('[data-view="campanyes"]');
 await sleep(500);
 await openItem('campanyes', 'Ferreteria Exemple');
 await shot('campanyes');
+// El calendari de la campanya i el seu certificat d'emissió
+await run(`(() => {
+  [...document.querySelectorAll('#cp-editor button')].find((x) => x.textContent.trim() === 'Calendari…')?.click();
+  return true;
+})()`);
+await sleep(1000);
+await run(`(() => {
+  // La graella, cap a les 8 del matí (el primer bloc de falques)
+  const all = [...document.querySelectorAll('#view-calendari-campanya *')].filter((e) => e.scrollHeight > e.clientHeight + 10
+    && getComputedStyle(e).overflowY !== 'visible');
+  const grid = all.sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight))[0];
+  if (grid) grid.scrollTop = grid.scrollHeight * 7.8 / 24;
+  return true;
+})()`);
+await shot('calendari-campanya');
+await run(`(() => {
+  document.querySelector('#view-calendari-campanya .cal-back')?.click();
+  return true;
+})()`);
+await sleep(1000);
+await run(`(() => {
+  [...document.querySelectorAll('#cp-editor .ee-menu-item')].find((x) => x.textContent.includes('Certificat'))?.click();
+  return true;
+})()`);
+await sleep(2000);
+await shot('certificat');
+await run(`(() => {
+  for (const d of document.querySelectorAll('dialog[open]')) d.close();
+  return true;
+})()`);
 await click('[data-view="registre"]');
 await sleep(1000);
 // Sense els canvis (els de les dades de mostra) ni les sessions; amb les execucions dels esdeveniments
