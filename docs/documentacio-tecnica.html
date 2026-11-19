@@ -228,58 +228,266 @@
   </ul>
 
   <h2 id="arquitectura">Arquitectura</h2>
-  <p class="pending">Pendent: motor, interfície i vigilant, i per què l'emissió no depèn de la finestra.</p>
+  <p>L'aplicació són dos programes que es parlen per una connexió local:</p>
+  <pre><code>Interfície (Electron, app/)  ── WebSocket 127.0.0.1 + testimoni ──  Motor (.NET 10, engine/)
+  HTML + Bootstrap + JS pur                                         àudio · cua · AutoDJ · planificador · SQLite</code></pre>
+  <ul>
+    <li><strong>El motor</strong> (<code>OnaBages24.Engine.exe</code>, C# / .NET 10) ho fa tot: l'àudio, la cua, l'AutoDJ,
+      el planificador, la base de dades, la supervisió i els correus. És la <strong>font de veritat</strong>: tot l'estat és
+      seu.</li>
+    <li><strong>La interfície</strong> (<code>OnaBages24.exe</code>, Electron) només mostra l'estat i envia ordres. Mai no fa
+      sonar res, no processa àudio ni llegeix la base de dades.</li>
+    <li>Per això, <strong>l'emissió no depèn de la finestra</strong>: si la interfície es tanca, es penja o s'obre per
+      escriptori remot, el motor continua sonant i la programació es fa igual. La interfície pot tornar a connectar-se en
+      qualsevol moment.</li>
+  </ul>
 
   <h3 id="cicle-de-vida">Cicle de vida</h3>
-  <p class="pending">Pendent.</p>
+  <ol>
+    <li>En obrir <code>OnaBages24.exe</code>, el procés principal d'Electron mira <code>dades\engine.json</code>. Si hi ha un
+      motor viu (el procés existeix i respon), s'hi connecta.</li>
+    <li>Si no n'hi ha cap, arrenca el motor amb el port 47824, un <strong>testimoni</strong> aleatori
+      nou i la carpeta de dades (<code>--port</code>, <code>--token</code>, <code>--data-dir</code>). El motor escriu
+      <code>engine.json</code> i comença a sonar sol: no cal que ningú faci res.</li>
+    <li>La finestra es connecta al WebSocket (<code>ws://127.0.0.1:PORT/ws?token=…</code>). Si es perd la connexió, ho torna
+      a provar cada pocs segons, i torna a llegir <code>engine.json</code> per si el motor ha arrencat amb un altre
+      testimoni.</li>
+    <li>El motor es pot arrencar també sense la finestra (sense paràmetres): busca la carpeta <code>dades\</code> pujant des
+      de la seva carpeta, com fan les ordres de la consola.</li>
+  </ol>
 
   <h3 id="aturades-i-reinicis">Aturades i reinicis</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li><strong>El motor no s'atura mai voluntàriament des de la interfície</strong>: a l'emissora, la X minimitza la
+      finestra. L'única manera és l'ordre <code>engine.shutdown</code>, que només pot fer un administrador (amb
+      <code>Atura Ona Bages 24h.cmd</code>).</li>
+    <li>En aturar-se, el motor deixa el <strong>motiu</strong> a <code>motor-en-marxa.json</code>: l'ordre d'aturada, Ctrl+C,
+      la consola tancada o Windows que s'apaga. Si no ha pogut deixar res (ha petat, tall de corrent, tancat a la força) i
+      Windows ha arrencat després de l'última senyal de vida, mira el registre d'esdeveniments de Windows (1074: apagat o
+      reinici demanat, i per qui; 6008 o 41: no es va tancar bé).</li>
+    <li>En tornar a arrencar, tota aturada és una incidència <strong>Reinici</strong>: un avís si s'havia demanat, greu si
+      no, amb el motiu, quan i quanta estona ha estat aturat.</li>
+    <li>Les incidències obertes de l'execució anterior continuen, i es tanquen quan el motor comprova que el problema ja no
+      hi és.</li>
+  </ul>
 
   <h2 id="estructura-del-repositori">Estructura del repositori</h2>
-  <p class="pending">Pendent: què hi ha a cada carpeta.</p>
+  <table>
+    <tr><th>Carpeta</th><th>Què hi ha</th></tr>
+    <tr><td><code>engine/OnaBages24.Engine/</code></td><td>El motor: el servidor WebSocket i les ordres
+      (<code>Protocol/</code>), la cua, l'AutoDJ, la sortida i el processador (<code>Playback/</code>), el planificador i les
+      campanyes (<code>Scheduling/</code>), la biblioteca (<code>LibraryTools/</code>), la supervisió i els correus
+      (<code>Supervision/</code>), els usuaris (<code>Security/</code>) i les ordres de la consola
+      (<code>Program.cs</code>)</td></tr>
+    <tr><td><code>engine/OnaBages24.Data/</code></td><td>La base de dades SQLite, les migracions (<code>Migrations/</code>) i la
+      importació de RadioDJ (<code>RadioDj/</code>). L'únic codi que llegeix o escriu la base de dades</td></tr>
+    <tr><td><code>engine/OnaBages.Audio/</code></td><td>L'àudio: el mesclador, les veus, els lectors de fitxers, de streams i
+      d'entrades, l'analitzador de punts, els dispositius. Copiat una vegada d'Ona Bages Play (D-019) i ara propi</td></tr>
+    <tr><td><code>engine/OnaBages.ToneCheck/</code></td><td>Eina de proves de l'àudio (també copiada de Play)</td></tr>
+    <tr><td><code>engine/OnaBages24.Tests/</code></td><td>Les proves automàtiques del motor (xUnit)</td></tr>
+    <tr><td><code>app/main/</code></td><td>El procés principal d'Electron (<code>main.js</code>: arrencar el motor, la finestra,
+      els diàlegs de fitxers, els PDF) i el <code>preload.js</code></td></tr>
+    <tr><td><code>app/renderer/</code></td><td>La interfície: <code>index.html</code>, <code>css/</code> i <code>js/</code>
+      (els mòduls de cada pantalla a <code>js/ui/</code>; els càlculs sense pàgina, a <code>js/</code>)</td></tr>
+    <tr><td><code>app/tests/</code></td><td>Les proves de la interfície (<code>node --test</code>)</td></tr>
+    <tr><td><code>tools/</code></td><td>La consola de desenvolupament, els scripts d'arrencar i d'empaquetar, els fitxers de la
+      versió portable i l'eina de captures del manual</td></tr>
+    <tr><td><code>docs/</code></td><td>El pla de fases, les decisions, el protocol, l'especificació del planificador, el
+      context operatiu, les maquetes i aquests manuals</td></tr>
+    <tr><td><code>dades/</code></td><td>Les dades en desenvolupament. Fora de Git, excepte el <code>LLEGEIX-ME.txt</code></td></tr>
+  </table>
 
   <h2 id="compilar-provar-i-empaquetar">Compilar, provar i empaquetar</h2>
-  <p class="pending">Pendent: la consola de desenvolupament i les proves automàtiques.</p>
+  <p>Cal el SDK de .NET 10 i Node.js 22 o posterior. Tot es fa des de la <strong>consola de desenvolupament</strong>,
+    <code>consola.cmd</code> a l'arrel: un menú per arrencar-ho tot, arrencar només el motor (amb el registre a la vista),
+    aturar-ho, compilar, passar les proves, diagnosticar el motor, empaquetar i obrir la carpeta de dades. Per aturar-ho, si
+    hi ha usuaris, demana la contrasenya d'un administrador.</p>
+  <ul>
+    <li><strong>Mai dos motors alhora</strong>: farien servir el mateix port i la mateixa sortida. Si un motor funciona, no es
+      pot recompilar (els seus fitxers estan en ús).</li>
+    <li><strong>Les proves del motor</strong> (<code>dotnet test engine/OnaBages24.Tests</code>, més de 900): les regles de
+      la cua, el planificador, les recurrències, les campanyes, la base de dades, el protocol, els permisos… Les que depenen
+      del temps real van en una col·lecció que no corre en paral·lel. No fan sonar res.</li>
+    <li><strong>Les proves de la interfície</strong> (<code>npm test</code> a <code>app/</code>): els càlculs i els textos
+      dels mòduls de <code>js/</code>, que no toquen la pàgina.</li>
+    <li><strong>Empaquetar</strong> (<code>tools/empaquetar.cmd</code>, opció de la consola): publica el motor amb el .NET
+      inclòs, empaqueta la interfície amb <code>@electron/packager</code> (amb la icona feta del logotip), hi afegeix la carpeta
+      <code>dades\</code> buida, el <code>LLEGEIX-ME.txt</code> i <code>Atura Ona Bages 24h.cmd</code>, i en fa un zip:
+      <code>build\OnaBages24\</code> i <code>build\OnaBages24-VERSIÓ.zip</code>. La versió és la de
+      <code>app/package.json</code>.</li>
+    <li><strong><code>OnaBages.ToneCheck</code></strong>, per a les proves de l'àudio: generar un to de prova i buscar-hi
+      talls en un enregistrament, mesurar la sonoritat, passar un fitxer pel processador, enviar un to a un servidor
+      d'streaming i <code>retard</code>, que comprova amb el so de debò que el motor emet a l'hora prevista.
+      <code>retard</code> talla el que soni: <strong>mai en antena</strong>.</li>
+    <li><strong>Les captures dels manuals</strong> (<code>tools/captures-manual/</code>): obren l'aplicació amb dades de
+      mostra en una carpeta a part i fan les captures soles (vegeu el seu <code>LLEGEIX-ME.md</code>).</li>
+  </ul>
 
   <h2 id="el-motor">El motor</h2>
-  <p class="pending">Pendent: com treballa per dins.</p>
+  <p>Com treballa el motor per dins. El detall de cada peça és a <code>docs/disseny-motor.md</code> i a les decisions.</p>
 
   <h3 id="fils-i-regles-de-l-audio">Fils i regles de l'àudio</h3>
-  <p class="pending">Pendent.</p>
+  <table>
+    <tr><th>Fil</th><th>Què fa</th><th>Què no pot fer</th></tr>
+    <tr><td><strong>Àudio</strong> (de Windows, prioritat «Pro Audio»)</td><td>El mesclador: suma les veus, aplica guanys,
+      fosos i el processador, compta les mostres i mesura els nivells</td><td>Crear objectes, bloquejar, esperar el disc o la
+      xarxa, escriure registres</td></tr>
+    <tr><td><strong>Lectura</strong> (un per veu activa)</td><td>Descodifica el fitxer (o el stream, o l'entrada) i omple la
+      memòria intermèdia de la veu</td><td>Tocar l'estat de la cua</td></tr>
+    <tr><td><strong>Control</strong></td><td>La cua, l'AutoDJ, el planificador, preparar les pistes, les ordres del
+      protocol</td><td>Fer esperar el fil d'àudio</td></tr>
+    <tr><td><strong>Fons</strong> (prioritat baixa)</td><td>Analitzar punts, importar, vigilar carpetes i fitxers que canvien,
+      escriure <code>NowPlaying.txt</code>, enviar correus</td><td>Res que afecti l'emissió</td></tr>
+  </table>
+  <ul>
+    <li>Les veus es creen totes en arrencar i es reaprofiten. El fil de control els deixa les ordres en camps («comença al
+      fotograma F», «para al fotograma H»), i el mesclador les recull al bloc següent: com que tot va en
+      <strong>fotogrames</strong> (mostres), no importa si el fil de control arriba uns mil·lisegons tard.</li>
+    <li>Un error en una veu (fitxer il·legible, stream caigut) la deixa en error i genera un esdeveniment; les altres
+      continuen. Si una veu es queda sense dades, dona silenci i es compta com a tall: no s'espera mai.</li>
+    <li>Els fitxers s'obren sense bloquejar-los, perquè l'Automatitzador els pugui substituir. Les pistes de menys de 3 minuts
+      es llegeixen senceres a memòria en preparar-les.</li>
+    <li>Una sola sortida WASAPI en mode compartit, a la freqüència del dispositiu (normalment 48 kHz), estèreo.</li>
+  </ul>
 
   <h3 id="la-cua-i-l-encadenament">La cua i l'encadenament</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li>Cada pista té tres punts: <strong>inici</strong>, <strong>mescla</strong> i <strong>final</strong>. Quan una pista
+      comença, el motor calcula el fotograma de la seva mescla i hi programa la següent; durant el solapament sonen totes
+      dues.</li>
+    <li>Els punts es calculen en importar, amb llindars de −25, −15 i −30 dB (com RadioDJ); els de RadioDJ s'importen tal
+      qual, i els editats a mà no es toquen mai.</li>
+    <li>La pista següent es prepara uns 20 segons abans de la mescla. Si no es pot obrir, se salta i es prepara la
+      següent; si tarda més de 2 segons a obrir-se quan ja hauria de sonar, sona una pista d'emergència fins que és a
+      punt.</li>
+    <li>Cada element de la cua diu d'on ve (AutoDJ, a mà, esdeveniment, emergència), per a «Regenera la cua» i per a
+      l'historial.</li>
+    <li>Un fil de prioritat baixa mira cada 5 segons si els fitxers de la cua han canviat (els programes que substitueix
+      l'Automatitzador): si un ha canviat, en torna a llegir la durada i els punts. Si s'està copiant o no es pot llegir, es
+      queda la versió bona d'abans.</li>
+    <li>Una pista que deixa de llegir-se a mitja pista (una unitat de xarxa que no respon) es dona per encallada als 5 segons
+      sense so i se salta.</li>
+  </ul>
 
   <h3 id="el-planificador-i-la-puntualitat">El planificador i la puntualitat</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li>Les recurrències es calculen amb <strong>dates de calendari</strong> (<code>DateOnly</code>), no sumant hores, perquè
+      els canvis d'hora no facin saltar un dia. Una hora que no existeix (el canvi d'estiu) no sona; una que passa dues
+      vegades (el d'hivern), sona la primera.</li>
+    <li>Cada esdeveniment es <strong>prepara uns 30 segons abans</strong>: el contingut s'obre i se n'omple la memòria. A
+      l'hora, el motor el dispara amb el seu rellotge, mai amb un temporitzador de la interfície.</li>
+    <li>El <strong>rellotge de mostres</strong> relaciona les mostres que han sortit amb l'hora real (tenint en compte la
+      latència de la sortida i la deriva entre el rellotge de la targeta i el de l'ordinador). Un Talla comença a la mostra
+      exacta de l'hora; el criteri és menys de 50 ms.</li>
+    <li><strong>Esdeveniments atòmics</strong>: un esdeveniment que canvia la cua s'aplica sencer, sense que l'AutoDJ hi
+      pugui posar res a mig fer.</li>
+    <li>Si dos Talla o Encua coincideixen, guanya la prioritat més alta. Si el motor hi arriba més tard que la tolerància,
+      s'omet. Cada execució queda al registre d'execució.</li>
+    <li>Els avisos de l'editor els calcula el motor simulant els pròxims 14 dies amb les durades conegudes.</li>
+  </ul>
 
   <h3 id="l-autodj">L'AutoDJ</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li>Omple la cua fins a uns 30 minuts per davant (com a mínim 2 pistes, com a molt 20) seguint la rotació activa, pas a
+      pas.</li>
+    <li>Cada pas tria d'una bossa, una subcategoria o una categoria, amb una etiqueta opcional, i amb «la que fa més temps
+      que no sona», «la menys sonada» o «a l'atzar». Respecta les dates de les pistes i la separació (6 h per a la cançó i
+      1 h per a l'artista, per defecte), que s'afluixa per ordre si no hi ha prou cançons.</li>
+    <li>Si cap pas no troba res: la rotació de reserva; si tampoc, tota la biblioteca sense les subcategories «no de
+      reserva». Mai silenci.</li>
+    <li>Quan canvia la rotació, una bossa o la separació, les pistes de l'AutoDJ que encara no sonen es tornen a triar,
+      excepte la que ja s'està preparant.</li>
+    <li>La previsualització de les rotacions fa servir el mateix codi de tria.</li>
+  </ul>
 
   <h3 id="streams">Streams</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li>Un lector propi (<code>RadioStreamReader</code>) es connecta a Shoutcast i Icecast (també <code>https</code> i
+      redireccions), llegeix els títols ICY i descodifica l'MP3 amb NLayer.</li>
+    <li>Es connecta durant la preparació de l'esdeveniment, per sonar a l'hora. «Comença pel directe» llença la ràfega que el
+      servidor envia en connectar-s'hi.</li>
+    <li>Un tall es detecta en 2 segons sense dades (la connexió no es tanca: només deixen d'arribar). Amb «Si cau, es
+      reconnecta», sona música de la rotació i es prova de tornar cada pocs segons; el stream només torna quan fa uns
+      segons que arriba bé.</li>
+    <li>El retard que arriba de l'origen i com reduir-lo són a <code>docs/context-operatiu.md</code> (2.2).</li>
+  </ul>
 
   <h3 id="entrades-de-linia">Entrades de línia</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li>Es capten amb WASAPI (<code>LineInputReader</code>), es converteixen a estèreo i a la freqüència de la sortida i es
+      tracten com un stream: la mateixa veu en directe, les mateixes opcions de durada, silenci, reconnexió i reserva.</li>
+    <li>El rellotge de l'entrada i el de la sortida no van exactament igual (unes desenes de ppm). Un control de deriva
+      (<code>DriftControl</code>) manté la memòria intermèdia al nivell que toca, amb una correcció de com a molt el 0,2 %,
+      que no se sent.</li>
+    <li>El <strong>guany</strong> és fix (de −20 a +20 dB). L'<strong>AGC</strong> opcional fa servir l'anivellador
+      (<code>Leveler</code>), que mira 1 segon endavant: l'entrada sona 1 segon més tard que l'origen.</li>
+  </ul>
 
   <h3 id="el-processador-de-sortida">El processador de sortida</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li>Un compressor amb quatre preajustos (sense compressió, suau, mitjà, fort) i un volum, aplicats a tot el que surt.</li>
+    <li>A sobre, un <strong>limitador de seguretat</strong> sempre actiu: la sortida no passa mai d'un sostre, encara que se
+      solapin dues pistes fortes.</li>
+    <li>Corre al fil d'àudio, dins del mesclador, sense crear objectes. La reducció de guany es publica per a la barreta de la
+      interfície.</li>
+  </ul>
 
   <h3 id="supervisio-i-incidencies">Supervisió i incidències</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li>El motor és la font de veritat del que va malament. Les incidències es desen a la base de dades (taula
+      <code>incidencia</code>) i es conserven un any.</li>
+    <li><strong>Les que duren</strong> (sortida d'emergència, AutoDJ, títol per a BUTT, carpetes vigilades, silenci…) es
+      revisen cada 2 segons: n'hi ha una d'oberta per clau, i es tanquen soles. <strong>Les d'un moment</strong> (pista
+      saltada, esdeveniment omès o tard, reinici…) es desen ja tancades.</li>
+    <li><strong>Silenci a la sortida</strong>: es mesura el pic del que surt (després del processador). Si fa 15 s que és per
+      sota de −50 dB, es passa a la pista següent; si continua després de 3 pistes, o no sona res, incidència greu.</li>
+    <li><strong>Sortida encallada</strong>: si el mesclador fa 3 s que no avança, es torna a obrir la sortida (cada 10 s); al
+      cap de 3 intents, la d'emergència.</li>
+    <li><code>/health</code> respon 503 si la sortida no demana so o el fil de control no respon.</li>
+  </ul>
 
   <h3 id="avisos-per-correu">Avisos per correu</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li>Els envia el mateix motor per SMTP (<code>System.Net.Mail</code>), amb STARTTLS o sense xifratge (només dins de la
+      xarxa local). El port 465 (SSL directe) no és compatible.</li>
+    <li>La contrasenya es desa xifrada amb DPAPI (l'usuari de Windows d'aquest ordinador): no torna mai a la interfície, i en
+      una còpia restaurada en un altre ordinador cal tornar-la a escriure.</li>
+    <li>Agrupats: el primer, 2 minuts després de la primera incidència; després, com a molt un cada 10 minuts, excepte si
+      n'hi ha una de greu nova. També s'avisa quan es resolen. Si l'enviament falla, incidència «Avisos per correu» (que no
+      s'envia per correu).</li>
+  </ul>
 
   <h2 id="dades">Dades</h2>
-  <p class="pending">Pendent: la base de dades, les migracions, les còpies i la conservació.</p>
 
   <h3 id="la-base-de-dades">La base de dades</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li><strong>SQLite</strong> (<code>dades\onabages24.db</code>), amb <code>Microsoft.Data.Sqlite</code>, sense Entity
+      Framework. Una sola connexió amb bloqueig; mode WAL i <code>synchronous = NORMAL</code> (un tall de corrent no la
+      corromp); claus foranes actives.</li>
+    <li>Tot l'accés passa pel projecte <code>OnaBages24.Data</code>: cap altre codi llegeix o escriu la base de dades ni els
+      fitxers de configuració.</li>
+    <li><strong>Migracions</strong> numerades (<code>Migrations/001_inicial.sql</code>, <code>002_…</code>; ara n'hi ha 13),
+      incrustades al motor. En obrir la base de dades s'apliquen les que falten, cadascuna en una transacció, i la versió es
+      desa a <code>PRAGMA user_version</code>. Una base de dades d'una versió més nova que el motor no s'obre (cal actualitzar
+      l'aplicació). Cada canvi d'esquema porta una migració nova.</li>
+    <li>La configuració (la sortida, el processador, el correu, la separació, la temporada…) també és a la base de dades,
+      en una taula de claus i valors JSON.</li>
+    <li>Conservació: l'historial del que ha sonat i el registre de canvis, com a mínim dos anys (els certificats); les
+      incidències, un any.</li>
+  </ul>
 
   <h3 id="copies-de-seguretat-i-restauracio">Còpies de seguretat i restauració</h3>
-  <p class="pending">Pendent.</p>
+  <ul>
+    <li>El motor fa una còpia de la base de dades cada dia (la còpia en calent de SQLite, sense aturar res) a
+      <code>dades\copies\</code>, i en guarda les dels últims 14 dies i una de cada mes de l'últim any.</li>
+    <li><strong>Restaurar</strong> (des de la configuració): abans es mira què hi ha a la còpia, i es rebutja una còpia d'un
+      esquema més nou o un fitxer que no és d'Ona Bages 24h; una d'un esquema més antic es migra. Sempre es fa abans una còpia
+      «abans de restaurar», per poder desfer.</li>
+    <li>Es conserven els valors d'ara de la sortida d'àudio i de l'aturada dels esdeveniments (la còpia pot ser d'un altre
+      ordinador), els usuaris, el registre de canvis i les incidències. L'historial i el registre d'execució posteriors a la
+      còpia es tornen a afegir (opció marcada per defecte), perquè no es perdin emissions dels certificats.</li>
+    <li>L'emissió no s'atura mentre es restaura.</li>
+  </ul>
 
   <h2 id="migracio-des-de-radiodj">Migració des de RadioDJ</h2>
   <p>La biblioteca, les rotacions i els esdeveniments del Programador es porten d'un backup de la base de dades de RadioDJ
@@ -364,22 +572,113 @@
   </ul>
 
   <h2 id="el-protocol">El protocol</h2>
-  <p class="pending">Pendent: ordres i esdeveniments entre la interfície i el motor.</p>
+  <p>La interfície i el motor es parlen amb missatges JSON per un WebSocket a <code>ws://127.0.0.1:PORT/ws?token=…</code>. La
+    referència completa (totes les ordres, els paràmetres, els resultats i els esdeveniments) és a
+    <code>docs/protocol.md</code>, que es manté al dia en el mateix canvi que el codi.</p>
+  <ul>
+    <li>Tots els missatges porten <code>"v": 1</code>.</li>
+    <li>Una <strong>ordre</strong>: <code>{"v":1, "id":7, "cmd":"queue.insert", …paràmetres}</code>. La resposta porta el
+      mateix <code>id</code> i <code>"ok": true</code> amb <code>result</code>, o <code>"ok": false</code> amb
+      <code>error</code> (<code>code</code> i <code>message</code> en català).</li>
+    <li>Un <strong>esdeveniment</strong> del motor: <code>{"v":1, "ev":"queue.changed", …}</code>. La interfície hi reacciona
+      tornant a demanar el que ha canviat.</li>
+    <li>Sense el testimoni, el motor no accepta la connexió. Cada connexió té la seva sessió (vegeu
+      <a href="#usuaris-i-seguretat">Usuaris i seguretat</a>).</li>
+    <li>Els missatges són de com a molt 1 MB (hi cap el logotip de l'emissora).</li>
+  </ul>
+  <p>Per provar ordres des de la línia d'ordres hi ha <code>tools/prova-motor.mjs</code>, i la consola de desenvolupament té
+    «Enviar una ordre».</p>
 
   <h3 id="com-afegir-una-ordre">Com afegir una ordre</h3>
-  <p class="pending">Pendent.</p>
+  <ol>
+    <li>Al motor, una entrada nova al <code>switch</code> de <code>Protocol/CommandRouter.cs</code> (o al fitxer parcial de
+      l'àrea, <code>CommandRouter.*.cs</code>), que validi els paràmetres i torni un <code>JsonObject</code>. Els errors de
+      validació, amb un missatge en català.</li>
+    <li>Al fitxer de permisos, <code>Security/Permissions.cs</code>: quin rol la pot fer i el resum per al registre de canvis
+      (si canvia alguna cosa). Una ordre que no hi és només la pot fer l'administrador, i una prova comprova que hi són
+      totes.</li>
+    <li>Si canvia l'estat que veuen les finestres, que el motor enviï l'esdeveniment que toca.</li>
+    <li>A <code>docs/protocol.md</code>, l'ordre i els seus paràmetres, <strong>en el mateix canvi</strong>.</li>
+    <li>Les proves al projecte de proves, i a la interfície, la crida amb <code>send('nom.ordre', {…})</code>.</li>
+  </ol>
 
   <h2 id="la-interficie">La interfície</h2>
-  <p class="pending">Pendent: Electron, sense empaquetadors.</p>
+  <ul>
+    <li><strong>Electron</strong>, amb HTML, <strong>Bootstrap 5</strong> (tema fosc), Bootstrap Icons i
+      <strong>JavaScript pur</strong> amb mòduls ES: sense React, sense TypeScript i sense empaquetadors. Els fitxers es fan
+      servir tal com són. Hi ha comprovació de tipus opcional amb JSDoc i <code>// @ts-check</code>.</li>
+    <li><code>app/main/main.js</code> (el procés principal) arrenca o troba el motor, crea la finestra, desa la seva mida i
+      posició, fa els diàlegs de Windows (triar fitxers i carpetes, desar), els PDF dels informes (<code>printToPDF</code>) i
+      decideix què fa la X.</li>
+    <li><code>app/main/preload.js</code> és l'únic pont entre la pàgina i el sistema: una API petita
+      (<code>window.bridge</code>) amb el que la pàgina pot demanar.</li>
+    <li><code>app/renderer/js/engine-client.js</code> és el client del WebSocket (reconnexió, ordres amb <code>id</code>,
+      esdeveniments). Cada pantalla és un mòdul de <code>js/ui/</code>; els càlculs que no toquen la pàgina són a
+      <code>js/</code> i tenen proves.</li>
+    <li>Sense acceleració gràfica (per a l'escriptori remot), i tots els estats amb <strong>color + icona + text</strong>.</li>
+    <li>Les accions que interrompen l'emissió demanen confirmació. El que es pot fer depèn del rol: la interfície desactiva
+      els botons, però qui decideix és el motor.</li>
+  </ul>
 
   <h2 id="usuaris-i-seguretat">Usuaris i seguretat</h2>
-  <p class="pending">Pendent: sessions, rols, contrasenyes i el registre de canvis.</p>
+  <ul>
+    <li><strong>La connexió</strong>: el motor només escolta a <code>127.0.0.1</code> i demana el testimoni, aleatori i nou a
+      cada arrencada, que només és a <code>dades\engine.json</code>. No s'ha d'obrir mai cap port a internet.</li>
+    <li><strong>Electron</strong>: <code>contextIsolation</code> activat, <code>nodeIntegration</code> desactivat i
+      <code>sandbox</code>: la pàgina no pot tocar el sistema si no és pel <code>preload.js</code>.</li>
+    <li><strong>Rols</strong>: operador, programador i administrador, i sense sessió, mode de consulta. Qui decideix és el
+      <strong>motor</strong>: cada connexió té la seva sessió, i les ordres que no es poden fer responen
+      <code>not_logged_in</code> o <code>forbidden</code>. Mentre no hi ha cap usuari actiu, tot es pot fer (com en
+      desenvolupament).</li>
+    <li><strong>Contrasenyes</strong>: PBKDF2-SHA256 amb 600.000 iteracions i una sal per usuari, de .NET. Cinc intents
+      fallits bloquegen el nom 5 minuts. La sessió es tanca després de 30 minuts sense activitat (configurable).</li>
+    <li><strong>Registre de canvis</strong>: cada ordre que canvia alguna cosa queda anotada amb qui, quan, un resum i els
+      paràmetres (sense contrasenyes). Es conserva dos anys. Els usuaris i el registre són d'aquest ordinador: restaurar
+      una còpia no els toca.</li>
+    <li>Aturar el motor (<code>engine.shutdown</code>) només ho pot fer l'administrador.</li>
+  </ul>
 
   <h2 id="dependencies-i-llicencies">Dependències i llicències</h2>
-  <p class="pending">Pendent: les biblioteques que es fan servir i per què.</p>
+  <p>Totes permeten distribuir l'aplicació de franc. Cada dependència nova s'ha de justificar i anotar a
+    <code>docs/decisions.md</code>.</p>
+  <table>
+    <tr><th>Dependència</th><th>Per a què</th><th>Llicència</th></tr>
+    <tr><td>NAudio.Wasapi 3.3</td><td>Les sortides i les entrades de Windows (WASAPI)</td><td>MIT</td></tr>
+    <tr><td>NLayer (NLayer.NAudioSupport 3.0)</td><td>Descodificar MP3 (els streams)</td><td>MIT</td></tr>
+    <tr><td>TagLibSharp 2.3</td><td>Llegir les etiquetes dels fitxers en importar-los</td><td>LGPL 2.1 (enllaçada
+      dinàmicament)</td></tr>
+    <tr><td>Microsoft.Data.Sqlite 10</td><td>La base de dades</td><td>MIT</td></tr>
+    <tr><td>System.Security.Cryptography.ProtectedData 10</td><td>Xifrar la contrasenya del correu (DPAPI)</td><td>MIT</td></tr>
+    <tr><td>LAME (<code>libmp3lame.dll</code>)</td><td>Codificar MP3, a la biblioteca d'àudio copiada de Play</td><td>LGPL
+      (enllaçada dinàmicament; la llicència va a la versió portable)</td></tr>
+    <tr><td>Electron 45</td><td>La finestra de la interfície</td><td>MIT</td></tr>
+    <tr><td>Bootstrap 5.3 i Bootstrap Icons 1.13</td><td>L'estil i les icones de la interfície</td><td>MIT</td></tr>
+    <tr><td>@electron/packager 20 (només per empaquetar)</td><td>Fer la versió portable</td><td>BSD-2</td></tr>
+    <tr><td>xUnit (només per a les proves)</td><td>Les proves del motor</td><td>Apache 2.0</td></tr>
+  </table>
+  <p>El .NET 10 (MIT) va dins de la versió portable.</p>
 
   <h2 id="decisions-clau">Decisions clau</h2>
-  <p class="pending">Pendent: les decisions que més condicionen el projecte.</p>
+  <p>Totes les decisions són a <code>docs/decisions.md</code>, numerades. Les que més condicionen el projecte:</p>
+  <table>
+    <tr><th>Decisió</th><th>Què diu</th></tr>
+    <tr><td>Motor i interfície separats</td><td>El motor és un procés independent i la font de veritat; la interfície només
+      mostra i envia ordres. L'emissió no depèn de la finestra.</td></tr>
+    <tr><td>D-005</td><td>Una sola sortida amb un mesclador intern; el processador, a la sortida.</td></tr>
+    <tr><td>D-008</td><td>Puntualitat: cada esdeveniment es prepara uns 30 s abans i es dispara amb el rellotge del motor.</td></tr>
+    <tr><td>D-004, D-040</td><td>SQLite, amb un sol mòdul d'accés i migracions numerades.</td></tr>
+    <tr><td>D-019</td><td>El codi d'àudio es va copiar una sola vegada d'Ona Bages Play i aquí és propi. Els errors que també
+      poden afectar Play s'anoten al repositori de Play, sense tocar-ne res més.</td></tr>
+    <tr><td>D-021, D-022</td><td>Els quatre modes i «Esborra la cua» com a opció de l'esdeveniment.</td></tr>
+    <tr><td>D-038</td><td>Mai el dispositiu predeterminat de Windows; si la sortida falla, la d'emergència. Mai silenci.</td></tr>
+    <tr><td>D-044</td><td>Aplicació portable, sense instal·lador; totes les dades a <code>dades\</code>.</td></tr>
+    <tr><td>D-045</td><td>El vigilant és l'Inicialitzador que ja hi ha a l'emissora; els correus, del motor.</td></tr>
+    <tr><td>D-011, D-028</td><td>Campanyes amb certificat a partir de l'historial, que es conserva dos anys.</td></tr>
+    <tr><td>D-162, D-191, D-192</td><td>El motor no s'atura mai des de la interfície: la X minimitza, i només un
+      administrador l'atura, amb <code>Atura Ona Bages 24h.cmd</code>. Cada aturada queda com a incidència amb el
+      motiu.</td></tr>
+    <tr><td>D-164</td><td>Usuaris i rols; qui decideix és el motor.</td></tr>
+  </table>
 
 </main>
 <script>
