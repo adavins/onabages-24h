@@ -710,7 +710,7 @@ export class EventEditor {
       if (isInput) {
         const db = (/** @type {number | undefined} */ v) => (v == null ? '' : String(v).replace('.', ',').replace('-', '−'));
         li.append(this.#textField('Guany (dB)', db(p.guany_db), (v) => setNumber('guany_db', v),
-          { inputmode: 'decimal', placeholder: '0' }, 'Per apujar (+) o abaixar (−) l\'entrada, de −20 a +20 dB. El valor el pots mesurar amb prova-entrada (consola, Diagnòstic → b), amb la font sonant com sempre: diu el guany recomanat. Buit: tal com arriba.'));
+          { inputmode: 'decimal', placeholder: '0' }, 'Per apujar (+) o abaixar (−) l\'entrada, de −20 a +20 dB. El valor es mesura amb l\'ordre prova-entrada del motor, amb la font sonant com sempre: diu el guany recomanat (vegeu el LLEGEIX-ME de l\'aplicació). Buit: tal com arriba.'));
         li.append(this.#check('Anivella el volum (AGC)', p.agc === true, (on) => {
           if (on) p.agc = true;
           else {

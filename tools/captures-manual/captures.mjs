@@ -171,15 +171,18 @@ const forn = (await send('campaigns.save', {
 const weekdays = 31; // de dilluns a divendres
 const save = (/** @type {any} */ event) => send('scheduler.save', { event });
 await save({ name: 'El Magazín de Mostra', mode: 'TALLA', startTime: '10:00:00', recurrence: 'SETMANAL', daysMask: weekdays, clearQueue: true,
+  maxDurationSeconds: 10_800,
   actions: [{ type: 'PISTA', params: { songId: await track('Magazín de Mostra') } },
     { type: 'TITOL', params: { text: 'El Magazín de Mostra', durada_seg: 3600 } }] });
 await save({ name: 'Informatiu', mode: 'TALLA', startTime: '13:00:00', recurrence: 'SETMANAL', daysMask: weekdays, clearQueue: true,
+  maxDurationSeconds: 1800,
   actions: [{ type: 'PISTA', params: { songId: await track('Informatiu') } }] });
 await save({ name: 'Bloc de falques', mode: 'ENCUA', startTime: '00:30:00', recurrence: 'SETMANAL', daysMask: 127, repeat: 'CADA_HORA',
   commercialBlock: true, actions: [{ type: 'CAMPANYA', params: { campanyaId: ferreteria.id } }, { type: 'CAMPANYA', params: { campanyaId: forn.id } }] });
 await save({ name: 'Indicatiu de les hores', mode: 'ENCUA', startTime: '00:00:00', recurrence: 'SETMANAL', daysMask: 127, repeat: 'CADA_HORA',
   actions: [{ type: 'PISTA', params: { songId: await track('Indicatiu 1') } }] });
 await save({ name: 'Programa de fora', mode: 'TALLA', startTime: '12:00:00', recurrence: 'SETMANAL', daysMask: 32, clearQueue: true,
+  maxDurationSeconds: 3600,
   actions: [{ type: 'ENTRADA', params: { dispositiu: 'Línia 2', durada_seg: 3600, titol_butt: 'Programa de fora', reconnecta: true } }] });
 await save({ name: 'Canvi de bossa', mode: 'SISTEMA', startTime: '00:00:00', recurrence: 'DIES_MES', monthDays: [1],
   actions: [{ type: 'BOSSA', params: { bossaId: bagA, subcategoriaId: catala } }] });
@@ -198,8 +201,8 @@ await send('queue.insert', { items: [{ trackId: lost }], position: 'next' });
 // Un esdeveniment d'aquí a uns segons: al registre hi haurà la seva execució
 const soon = new Date(Date.now() + 40_000);
 const hhmmss = [soon.getHours(), soon.getMinutes(), soon.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
-await save({ name: 'Cortina de notícies', mode: 'ENCUA', startTime: hhmmss, recurrence: 'DATES', includedDates: [day(0)],
-  actions: [{ type: 'PISTA', params: { songId: await track('Cortina de notícies') } }] });
+const soonEvent = (await save({ name: 'Cortina de notícies', mode: 'ENCUA', startTime: hhmmss, recurrence: 'DATES', includedDates: [day(0)],
+  actions: [{ type: 'PISTA', params: { songId: await track('Cortina de notícies') } }] })).event;
 
 console.log(`Sonant ${PLAY_SECONDS} s perquè hi hagi historial…`);
 await sleep(PLAY_SECONDS * 1000);
@@ -208,6 +211,8 @@ for (let i = 0; i < 4; i++) {
   await send('player.next');
   await sleep(6000);
 }
+// La cortina ja ha sonat (el registre en conserva l'execució): fora de la graella, on seria a l'hora d'ara
+await send('scheduler.delete', { eventId: soonEvent.id });
 
 // --- La finestra (Chrome DevTools Protocol) ---
 let target;
@@ -259,6 +264,17 @@ await run(`(() => {
   return true;
 })()`);
 await shot('planificador');
+// L'editor d'un esdeveniment: el magazín de dilluns
+await run(`(() => {
+  const item = [...document.querySelectorAll('#view-planificador .pl-item')].find((b) => b.textContent.includes('El Magazín de Mostra'));
+  item?.click();
+  return !!item;
+})()`);
+await shot('planificador-editor');
+await run(`(() => {
+  [...document.querySelectorAll('#pl-detail button')].find((b) => b.textContent.trim() === 'Tanca')?.click();
+  return true;
+})()`);
 await click('#nav-biblioteca');
 await click('#sub-biblioteca');
 // Sense el resum de l'última importació (la de la pista perduda de mostra)

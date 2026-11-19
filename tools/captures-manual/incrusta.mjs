@@ -11,6 +11,7 @@ import { MANUAL, SHOTS } from './comu.mjs';
 const IMAGES = {
   emissio: "La pantalla d'emissió",
   planificador: 'El planificador amb la graella de la setmana',
+  'planificador-editor': "L'editor d'un esdeveniment",
   biblioteca: 'La biblioteca de pistes',
   historial: "L'historial del que ha sonat",
   rotacions: 'La pantalla de rotacions',
