@@ -479,6 +479,20 @@
     <li>L'emissió no s'atura mentre es restaura.</li>
   </ul>
 
+  <h3 id="manteniment-de-la-programacio">Manteniment de la programació</h3>
+  <ul>
+    <li>L'anàlisi (<code>maintenance.scan</code>) és un càlcul pur (<code>Scheduling/ProgrammingMaintenance.cs</code>): rep
+      els esdeveniments, les pistes, les campanyes i el que fa servir cada subcategoria, i torna les propostes amb el motiu.
+      No toca la base de dades. «No sona mai» fa servir la mateixa regla de prioritat que el planificador, un any
+      endavant.</li>
+    <li>Aplicar (<code>maintenance.apply</code>) fa primer una còpia «Abans del manteniment»
+      (<code>onabages24-abans-del-manteniment-…</code>, fora de la rotació, com la d'abans de restaurar), torna a analitzar i
+      només fa les propostes marcades que encara hi són. No és una sola transacció: cada canvi el fa la funció de dades de
+      sempre, un a un; si un falla, s'atura i ho diu. Cada canvi s'anota al registre de canvis.</li>
+    <li>Una pista que ha sonat els últims 2 anys o que és d'una campanya no s'esborra: es desactiva, perquè els certificats
+      per pista la necessiten.</li>
+  </ul>
+
   <h2 id="migracio-des-de-radiodj">Migració des de RadioDJ</h2>
   <p>La biblioteca, les rotacions i els esdeveniments del Programador es porten d'un backup de la base de dades de RadioDJ
     (un fitxer <code>.sql</code> de MySQL). Es fa amb l'aplicació aturada, des d'una consola a la carpeta de

@@ -182,7 +182,9 @@ await save({ name: 'Bloc de falques', mode: 'ENCUA', startTime: '00:30:00', recu
   commercialBlock: true, actions: [{ type: 'CAMPANYA', params: { campanyaId: ferreteria.id } }, { type: 'CAMPANYA', params: { campanyaId: forn.id } }] });
 await save({ name: 'Indicatiu de les hores', mode: 'ENCUA', startTime: '00:00:00', recurrence: 'SETMANAL', daysMask: 127, repeat: 'CADA_HORA',
   actions: [{ type: 'PISTA', params: { songId: await track('Indicatiu 1') } }] });
+// Prioritat 60: a les 12 en punt també hi ha l'indicatiu de les hores (Encua), i amb la mateixa prioritat guanyaria ell
 await save({ name: 'Programa de fora', mode: 'TALLA', startTime: '12:00:00', recurrence: 'SETMANAL', daysMask: 32, clearQueue: true,
+  priority: 60,
   maxDurationSeconds: 3600,
   actions: [{ type: 'ENTRADA', params: { dispositiu: 'Línia 2', durada_seg: 3600, titol_butt: 'Programa de fora', reconnecta: true } }] });
 await save({ name: 'Canvi de bossa', mode: 'SISTEMA', startTime: '00:00:00', recurrence: 'DIES_MES', monthDays: [1],
