@@ -30,6 +30,7 @@ public static class Program
                 "restableix-administrador" => ResetAdministrator(args[1..]),
                 "prova-stream" => StreamProbe.Run(args[1..]),
                 "prova-entrada" => InputProbe.Run(args[1..]),
+                "atura" => StopCommand.Run(args[1..]),
                 "ajuda" or "--help" or "-h" or "/?" => Help(),
                 _ => EngineServer.Run(args),
             };
@@ -98,6 +99,11 @@ public static class Program
                   sense fer sonar res, i diu si funciona, el format, el nivell, el silenci i a quina velocitat va el seu
                   rellotge respecte del de l'ordinador (D-185), i la sonoritat amb el guany recomanat per arribar a
                   l'objectiu (per defecte, −13 LUFS; D-188). Es pot fer amb el motor en marxa.
+
+              atura
+                  Atura Ona Bages 24h sencera: tanca la interfície i atura el motor (la ràdio es queda en silenci). Si hi ha
+                  usuaris, demana l'usuari i la contrasenya d'un administrador; després demana confirmació. L'aturada
+                  queda al registre. És el que fa «Atura Ona Bages 24h.cmd» de la versió portable (D-191).
             """);
         return 2;
     }

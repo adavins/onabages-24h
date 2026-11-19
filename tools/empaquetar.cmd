@@ -68,6 +68,9 @@ copy /y dades\LLEGEIX-ME.txt build\OnaBages24\dades\LLEGEIX-ME.txt >nul
 if errorlevel 1 goto :error
 copy /y tools\portable\LLEGEIX-ME.txt build\OnaBages24\LLEGEIX-ME.txt >nul
 if errorlevel 1 goto :error
+rem Per aturar-ho tot (nomes un administrador, D-191)
+copy /y "tools\portable\Atura Ona Bages 24h.cmd" "build\OnaBages24\Atura Ona Bages 24h.cmd" >nul
+if errorlevel 1 goto :error
 
 echo.
 echo [4/4] Comprimint...

@@ -26,12 +26,21 @@ Des d'una consola a la carpeta de l'aplicació (es pot fer amb l'aplicació ober
 Diu els forats de més d'1 s entre pistes, les pistes que sonaven si el motor es va aturar de cop,
 les vegades que s'ha arrencat el motor i els avisos del registre. Al final: CORRECTE o ATENCIÓ.
 
-TANCAR
-En tancar la finestra, l'aplicació pregunta:
-- "Tanca només la finestra": l'emissió continua (el motor segueix funcionant).
-- "Atura l'emissió i tanca": la ràdio es queda en silenci.
-Si l'Inicialitzador vigila l'aplicació, la tornarà a obrir: per aturar-la de debò, tanca
-l'Inicialitzador o fes servir "Pausa monitorització".
+TANCAR LA FINESTRA I ATURAR-HO TOT
+Tancar la finestra no atura l'emissió: el motor segueix funcionant i la ràdio continua sonant.
+Per aturar-ho tot (la ràdio es queda en silenci), un administrador fa doble clic a
+"Atura Ona Bages 24h.cmd": demana l'usuari i la contrasenya de l'administrador i confirmació,
+tanca la finestra i atura el motor. L'aturada queda al registre.
+Si l'Inicialitzador vigila l'aplicació, la tornarà a obrir: abans, tanca l'Inicialitzador o fes
+servir "Pausa monitorització".
+Per reiniciar l'ordinador no cal aturar-ho: n'hi ha prou de pausar l'Inicialitzador.
+
+EINES DE DIAGNÒSTIC
+Des d'una consola a la carpeta de l'aplicació (es poden fer amb l'aplicació oberta; no sonen):
+   resources\engine\OnaBages24.Engine.exe prova-stream <adreça>   prova un stream de ràdio
+   resources\engine\OnaBages24.Engine.exe prova-entrada            llista les entrades d'àudio
+   resources\engine\OnaBages24.Engine.exe prova-entrada <número>   escolta una entrada: nivell,
+                                                                   sonoritat i guany recomanat
 
 ON ES GUARDA TOT
 A la carpeta "dades": base de dades (biblioteca, rotacions, historial, configuració), còpies de

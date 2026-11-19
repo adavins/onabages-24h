@@ -256,8 +256,8 @@ async function main() {
   for (;;) {
     await header();
     const choice = await menu('Menú principal', [
-      ['1', 'Arrencar tot (compila el motor i obre la interfície)'],
-      ['2', 'Arrencar només el motor (amb el registre a la vista)'],
+      ['1', 'Arrencar tot (compila el motor)'],
+      ['2', 'Arrencar només motor (registre a la vista)'],
       ['3', 'Aturar-ho tot (interfície i motor)'],
       ['4', 'Aturar només el motor'],
       ['5', 'Compilar el motor'],
@@ -265,7 +265,7 @@ async function main() {
       ['7', 'Diagnòstic del motor…'],
       ['8', 'Empaquetar la versió portable'],
       ['9', 'Obrir la carpeta de dades'],
-      ['u', 'Restablir la contrasenya de l\'administrador'],
+      ['u', 'Restablir contrasenya administrador'],
       ['0', 'Sortir'],
     ]);
     switch (choice) {
@@ -330,41 +330,80 @@ async function stopAll() {
     await pause();
     return;
   }
-  const what = [ui.length > 0 ? 'tanca la interfície' : null, info ? 'atura el motor i l\'emissió' : null].filter(Boolean).join(' i ');
-  if (!(await confirm(color.yellow(`\nAixò ${what}. Segur?`)))) return;
-  if (ui.length > 0) {
-    // A la força: la X de la finestra preguntaria què fer. La interfície no té res per desar (D-162: tot és al motor).
-    spawnSync('taskkill.exe', ['/F', '/T', ...ui.flatMap((pid) => ['/PID', String(pid)])], { stdio: 'ignore' });
-    console.log(color.green('\nInterfície tancada.'));
+  if (!info) {
+    // Només la interfície: tancar-la no atura cap emissió
+    if (await confirm(color.yellow('\nEl motor ja és aturat. Tanco la interfície?'))) closeInterface(ui);
+    await pause();
+    return;
   }
-  if (info) await shutdownEngine();
+  // Primer l'administrador (D-191): si la contrasenya no és bona, no es toca res
+  await withEngine(async (engine) => {
+    if (!(await ensureAdmin(engine))) return;
+    const what = ui.length > 0 ? 'tanca la interfície i atura el motor i l\'emissió' : 'atura el motor i l\'emissió';
+    if (!(await confirm(color.yellow(`\nAixò ${what}. Segur?`)))) return;
+    closeInterface(ui);
+    await shutdownEngine(engine);
+  });
   await pause();
 }
 
+/** Tanca la interfície a la força: la X de la finestra preguntaria què fer. No té res per desar (D-162: tot és al motor). */
+function closeInterface(ui) {
+  if (ui.length === 0) return;
+  spawnSync('taskkill.exe', ['/F', '/T', ...ui.flatMap((pid) => ['/PID', String(pid)])], { stdio: 'ignore' });
+  console.log(color.green('\nInterfície tancada.'));
+}
+
 async function stopEngine() {
-  const info = runtimeInfo();
-  if (!info) {
+  if (!runtimeInfo()) {
     console.log(color.yellow('\nEl motor no està en marxa.'));
     await pause();
     return;
   }
-  if (!(await confirm(color.yellow('\nAturar el motor atura l\'emissió. Segur que el vols aturar?')))) return;
-  await shutdownEngine();
+  await withEngine(async (engine) => {
+    if (!(await ensureAdmin(engine))) return;
+    if (!(await confirm(color.yellow('\nAturar el motor atura l\'emissió. Segur que el vols aturar?')))) return;
+    await shutdownEngine(engine);
+  });
   await pause();
 }
 
+/**
+ * Aturar el motor és cosa de l'administrador (D-164, D-191): si hi ha usuaris i aquesta consola no hi ha entrat com a
+ * administrador, demana l'usuari i la contrasenya abans de fer res. Retorna si es pot continuar.
+ */
+async function ensureAdmin(engine) {
+  let state = await engine.send('session.get');
+  if (!state.usersExist) return true; // sense usuaris, tot es pot fer (com abans de D-164)
+  if (state.session?.role !== 'administrator') {
+    console.log(color.yellow('\nPer aturar el motor cal entrar com a administrador.'));
+    const user = await ask('Usuari (buit = no ho facis): ');
+    if (!user) return false;
+    const password = await askHidden('Contrasenya: ');
+    state = await engine.send('session.login', { user, password }); // si no és bona, l'error el diu withEngine
+    consoleSessionId = state.session?.id ?? null;
+  }
+  if (state.session?.mustChangePassword) {
+    console.log(color.red('\nAquesta contrasenya és provisional: canvia-la primer des de la interfície. No s\'ha aturat res.'));
+    return false;
+  }
+  if (state.session?.role !== 'administrator') {
+    console.log(color.red(`\nNomés un administrador pot aturar el motor (${state.session?.displayName} és ${state.session?.roleName?.toLowerCase()}). No s'ha aturat res.`));
+    return false;
+  }
+  return true;
+}
+
 /** Demana al motor que s'aturi (engine.shutdown: la vegada següent hi haurà l'avís «s'ha aturat amb l'ordre d'aturada»). */
-async function shutdownEngine() {
-  await withEngine(async (engine) => {
-    // El motor pot tancar la connexió abans de respondre: no és un error
-    await engine.send('engine.shutdown').then(
-      () => console.log(color.dim('\nEl motor ha rebut l\'ordre d\'aturada.')),
-      (error) => {
-        // Un error del motor (p. ex. la contrasenya no és bona) es diu; tancar la connexió abans de respondre, no
-        if (error.code) console.log(color.red(`\n${error.message}`));
-        else if (!/tancat la connexió/.test(error.message)) console.log(color.red(`\nNo s'ha pogut enviar l'ordre d'aturada: ${error.message}`));
-      });
-  });
+async function shutdownEngine(engine) {
+  // El motor pot tancar la connexió abans de respondre: no és un error
+  await engine.send('engine.shutdown').then(
+    () => console.log(color.dim('\nEl motor ha rebut l\'ordre d\'aturada.')),
+    (error) => {
+      // Un error del motor es diu; tancar la connexió abans de respondre, no
+      if (error.code) console.log(color.red(`\n${error.message}`));
+      else if (!/tancat la connexió/.test(error.message)) console.log(color.red(`\nNo s'ha pogut enviar l'ordre d'aturada: ${error.message}`));
+    });
   // Espera que el procés acabi (com a molt 10 s)
   for (let i = 0; i < 50 && runtimeInfo(); i++) await new Promise((resolve) => setTimeout(resolve, 200));
   console.log(runtimeInfo() ? color.red('\nEl motor encara no s\'ha aturat. Mira la seva finestra.') : color.green('\nMotor aturat.'));
