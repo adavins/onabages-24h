@@ -42,7 +42,6 @@ import { HistorySearchView } from './ui/history-search.js';
  *   startEngine: () => Promise<{ port: number, token: string }>,
  *   findEngine: () => Promise<{ port: number, token: string } | null>,
  *   onCloseRequested: (callback: () => void) => void,
- *   isDevelopment: () => Promise<boolean>,
  *   closeWindow: () => Promise<void>,
  *   chooseAudioFile: (defaultPath?: string) => Promise<string | null>,
  *   chooseAudioFiles: (defaultPath?: string) => Promise<string[] | null>,
@@ -529,31 +528,28 @@ $('btn-pause').addEventListener('click', async () => {
 // Triar la sortida d'àudio, en clicar-la a la barra de sota (D-120)
 $('status-output').addEventListener('click', () => openStation('output'));
 
-// En clicar la X (D-054, D-162): es tanca la finestra i l'emissió continua. El motor no s'atura mai des de la interfície
-// de l'emissora; només en desenvolupament hi ha «Atura el motor i tanca» (i, sense connexió amb el motor, no es pot triar).
+// En clicar la X, només en desenvolupament (D-162, D-192): a l'emissora, la X minimitza la finestra (main.js) i aquí no
+// arriba res. En desenvolupament, tancar la finestra és aturar el motor. Sense connexió amb el motor no es pot aturar:
+// llavors només es tanca la finestra.
 bridge.onCloseRequested(async () => {
   const dialog = /** @type {HTMLDialogElement} */ ($('close-dialog'));
   if (dialog.open) return;
-  const development = await bridge.isDevelopment().catch(() => false);
   const connected = client?.connected ?? false;
-  $('close-dev').classList.toggle('d-none', !development);
-  $('close-stop').classList.toggle('d-none', !development);
-  /** @type {HTMLButtonElement} */ ($('close-stop')).disabled = !connected;
-  $('close-offline').classList.toggle('d-none', !development || connected);
-  // Una importació en curs (fase 3, pas 7b): la fa el motor, no la finestra
+  $('close-stop').classList.toggle('d-none', !connected);
+  $('close-window').classList.toggle('d-none', connected);
+  $('close-offline').classList.toggle('d-none', connected);
+  // Una importació en curs (fase 3, pas 7b): la fa el motor
   const importing = connected ? importView.runningText() : null;
   $('close-import').classList.toggle('d-none', !importing);
   $('close-import-text').textContent = importing
-    ? `${importing}. Si tanques la finestra, la importació continua.` + (development
-      ? ' Si atures el motor, s\'aturarà a mig fer: el que ja s\'ha importat es queda, i la pots tornar a fer després (les pistes que ja hi són se salten).'
-      : '')
+    ? `${importing}. Si atures el motor, s'aturarà a mig fer: el que ja s'ha importat es queda, i la pots tornar a fer després (les pistes que ja hi són se salten).`
     : '';
 
   const choice = await new Promise((resolve) => {
     dialog.addEventListener('close', () => resolve(dialog.returnValue), { once: true });
     dialog.returnValue = '';
     dialog.showModal();
-    $('close-window').focus(); // per defecte, l'opció que no atura res
+    dialog.querySelector('button[value="cancel"]')?.focus(); // per defecte, no aturar res
   });
 
   if (choice === 'window') {

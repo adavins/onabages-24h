@@ -27,7 +27,8 @@ Diu els forats de més d'1 s entre pistes, les pistes que sonaven si el motor es
 les vegades que s'ha arrencat el motor i els avisos del registre. Al final: CORRECTE o ATENCIÓ.
 
 TANCAR LA FINESTRA I ATURAR-HO TOT
-Tancar la finestra no atura l'emissió: el motor segueix funcionant i la ràdio continua sonant.
+El botó de tancar de la finestra (o Alt+F4) la minimitza: l'aplicació ha d'estar sempre oberta i
+la ràdio continua sonant.
 Per aturar-ho tot (la ràdio es queda en silenci), un administrador fa doble clic a
 "Atura Ona Bages 24h.cmd": demana l'usuari i la contrasenya de l'administrador i confirmació,
 tanca la finestra i atura el motor. L'aturada queda al registre.

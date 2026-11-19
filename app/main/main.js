@@ -92,16 +92,22 @@ function createWindow() {
     }
   });
 
-  // En clicar la X, la interfície pregunta si es tanca només la finestra o també s'atura l'emissió (D-054).
-  // Si la interfície està penjada o s'ha tancat, no pot preguntar: es tanca només la finestra.
+  // La X (o Alt+F4), D-192:
+  // - A l'emissora (empaquetada): minimitza la finestra, com el botó de minimitzar. L'aplicació ha d'estar sempre oberta;
+  //   per aturar-la de debò, un administrador fa servir «Atura Ona Bages 24h.cmd» (D-191).
+  // - En desenvolupament: la interfície pregunta si s'atura el motor i es tanca (D-162).
+  // Si la interfície està penjada o s'ha tancat, no pot preguntar ni fer res: es tanca la finestra (es pot tornar a obrir,
+  // i el motor continua). Si Windows s'apaga o es tanca la sessió, també es tanca, perquè no bloquegi l'apagada.
   mainWindow.on('close', (event) => {
     if (allowClose || rendererUnresponsive || mainWindow?.webContents.isCrashed()) {
       if (mainWindow) saveWindowBounds(mainWindow);
       return;
     }
     event.preventDefault();
-    mainWindow?.webContents.send('app:close-requested');
+    if (app.isPackaged) mainWindow?.minimize();
+    else mainWindow?.webContents.send('app:close-requested');
   });
+  mainWindow.on('session-end', () => { allowClose = true; });
   mainWindow.on('unresponsive', () => { rendererUnresponsive = true; });
   mainWindow.on('responsive', () => { rendererUnresponsive = false; });
 
@@ -209,9 +215,6 @@ ipcMain.handle('engine:start', () => startEngine());
 // Després de perdre la connexió: només es busca (el motor pot haver tornat a arrencar amb un altre testimoni).
 // No se n'arrenca cap sense que l'operador ho demani.
 ipcMain.handle('engine:find', () => findEngine());
-
-// En desenvolupament (no empaquetada), la X també deixa aturar el motor; a l'emissora, no (D-162: el motor no s'atura mai).
-ipcMain.handle('app:is-development', () => !app.isPackaged);
 
 // La interfície ja ha preguntat a l'operador (i, si calia, ha aturat el motor): es tanca la finestra.
 ipcMain.handle('app:close', () => {
