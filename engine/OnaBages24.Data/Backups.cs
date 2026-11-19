@@ -33,6 +33,7 @@ public sealed class Backups(Database database, string folder)
 {
     private const string Prefix = "onabages24-";
     private const string SafetyPrefix = "onabages24-abans-de-restaurar-";
+    private const string MaintenancePrefix = "onabages24-abans-del-manteniment-";
     private const string NameFormat = "yyyy-MM-dd_HHmmss";
 
     public string Folder { get; } = folder;
@@ -48,6 +49,13 @@ public sealed class Backups(Database database, string folder)
         Prune(time);
         return path;
     }
+
+    /// <summary>
+    /// La còpia d'abans d'aplicar el manteniment de la programació (D-194). Com la d'abans de restaurar, no entra a la
+    /// rotació: es queda fins que algú l'esborri. Retorna la ruta.
+    /// </summary>
+    public string CreateBeforeMaintenance(DateTime? now = null) =>
+        Copy(MaintenancePrefix + (now ?? DateTime.Now).ToString(NameFormat, CultureInfo.InvariantCulture) + ".db");
 
     /// <summary>Copia la base de dades a la carpeta de còpies amb aquest nom de fitxer.</summary>
     private string Copy(string fileName)
@@ -371,13 +379,18 @@ public sealed class Backups(Database database, string folder)
     }
 
     /// <summary>Les còpies de l'estat d'abans de cada restauració (fora de la rotació), de la més nova a la més antiga.</summary>
-    public IReadOnlyList<BackupFile> ListSafety()
+    public IReadOnlyList<BackupFile> ListSafety() => ListWithPrefix(SafetyPrefix);
+
+    /// <summary>Les còpies d'abans del manteniment de la programació (D-194), de la més nova a la més antiga.</summary>
+    public IReadOnlyList<BackupFile> ListMaintenance() => ListWithPrefix(MaintenancePrefix);
+
+    private IReadOnlyList<BackupFile> ListWithPrefix(string prefix)
     {
         if (!Directory.Exists(Folder)) return [];
         var list = new List<BackupFile>();
-        foreach (string path in Directory.EnumerateFiles(Folder, SafetyPrefix + "*.db"))
+        foreach (string path in Directory.EnumerateFiles(Folder, prefix + "*.db"))
         {
-            string stamp = System.IO.Path.GetFileNameWithoutExtension(path)[SafetyPrefix.Length..];
+            string stamp = System.IO.Path.GetFileNameWithoutExtension(path)[prefix.Length..];
             if (DateTime.TryParseExact(stamp, NameFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var created))
                 list.Add(new BackupFile(path, created));
         }

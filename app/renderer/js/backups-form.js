@@ -14,7 +14,9 @@ export function backupDateText(iso) {
 
 /** «Diària o feta a mà» o «Abans de restaurar». @param {string} kind */
 export function kindText(kind) {
-  return kind === 'safety' ? 'Abans de restaurar' : 'Diària o feta a mà';
+  if (kind === 'safety') return 'Abans de restaurar';
+  if (kind === 'maintenance') return 'Abans del manteniment';
+  return 'Diària o feta a mà';
 }
 
 /** «850 kB», «12,4 MB». @param {number | null | undefined} bytes */

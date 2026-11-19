@@ -238,6 +238,7 @@ public sealed partial class CommandRouter
                 "validity.list" => ValidityList(),
                 "validity.removeFromEvents" => ValidityRemove(msg),
                 "maintenance.scan" => MaintenanceScan(),
+                "maintenance.apply" => MaintenanceApply(msg, session),
                 "season.set" => SeasonSet(msg),
                 "station.get" => StationGet(),
                 "station.set" => StationSet(msg),

@@ -38,13 +38,14 @@ public sealed partial class CommandRouter
 
     /// <summary>
     /// Les còpies, de la més nova a la més antiga: les de cada dia i les fetes a mà (<c>auto</c>) i les de l'estat d'abans
-    /// de cada restauració (<c>safety</c>). <c>folder</c>: on són.
+    /// de cada restauració (<c>safety</c>) i d'abans del manteniment de la programació (<c>maintenance</c>, D-194). <c>folder</c>: on són.
     /// </summary>
     private JsonObject BackupsList()
     {
         var backups = BackupsOrError();
         var all = backups.List().Select(b => (b, Kind: "auto"))
             .Concat(backups.ListSafety().Select(b => (b, Kind: "safety")))
+            .Concat(backups.ListMaintenance().Select(b => (b, Kind: "maintenance")))
             .OrderByDescending(x => x.b.Created);
         return new JsonObject
         {

@@ -98,6 +98,8 @@ public static class Permissions
         ["validity.removeFromEvents"] = Programmer("Ha tret dels esdeveniments una pista o campanya caducada"),
         // Manteniment de la programació (D-194): l'anàlisi, només per a qui la pot aplicar (no s'anota: només llegeix)
         ["maintenance.scan"] = new(UserRole.Programmer, null),
+        // Aplicar-lo: cada canvi s'anota a part (MaintenanceApply), amb el motiu; aquí no cal una entrada general
+        ["maintenance.apply"] = new(UserRole.Programmer, null),
         ["season.set"] = Programmer("Ha canviat les dates de la temporada"),
         ["reserve.set"] = Programmer("Ha canviat la reserva de l'AutoDJ"),
         ["scheduler.save"] = Programmer("Ha desat l'esdeveniment"),

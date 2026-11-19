@@ -8,6 +8,7 @@ test('dates, tipus i mides', () => {
   assert.equal(backupDateText(local), '12/11/2026 03:05');
   assert.equal(kindText('safety'), 'Abans de restaurar');
   assert.equal(kindText('auto'), 'Diària o feta a mà');
+  assert.equal(kindText('maintenance'), 'Abans del manteniment');
   assert.equal(sizeText(850 * 1024), '850 kB');
   assert.equal(sizeText(13_000_000), '12,4 MB');
   assert.equal(sizeText(null), '—');

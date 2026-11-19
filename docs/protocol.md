@@ -165,7 +165,7 @@ El `message` és en català i es pot mostrar a l'operador.
 | `season.set` | `startDate` i `endDate` (`'AAAA-MM-DD'`), totes dues o cap (`null`) | Com `season.get`. Es desa a la configuració. La de fi no pot ser abans de la d'inici: `bad_params` | fase 4, pas 6a (D-145) |
 | `campaigns.exportPackage` | `campaignId`, `path` (ruta completa d'un fitxer `.json` en una carpeta que existeixi) | `{ path, spots, cells, notInFolder: [noms de fitxer] }`. Desa el paquet de la campanya (D-150): la campanya, les falques pel nom del fitxer amb les seves dades i punts, i el calendari (hores i dies on sona). `notInFolder`: les falques que no són a la carpeta del paquet (cal copiar-les-hi). Dues falques amb el mateix nom de fitxer o un stream: `bad_params` | fase 4, pas 7a (D-150) |
 | `campaigns.importPackage` | `path` (el `.json`), opcionals `dryRun` i `subcategoryId` (per a les pistes noves) | `{ campaign: { name, advertiser, startDate, endDate }, station, exported, spots: [{ file, title, artist, status, reason?, trackId? }], calendar: { cells, slots } }` i, si no és `dryRun`, també `campaignId` i `applied` (com `savedCalendars.apply`), `campaigns.changed` i, si hi ha pistes noves, `library.changed`. `status`: `existing` (ja és a la biblioteca), `new` (es crearà, apuntant al fitxer de la carpeta del paquet), `missing` (no és a la carpeta) o `unreadable` (no es pot llegir sencer; p. ex. el Drive no el pot baixar). Les falques `missing` i `unreadable` no entren a la campanya. La campanya es crea nova i en esborrany; el calendari es marca com «Afegeix». Un fitxer que no és un paquet o d'una versió més nova: `bad_params` | fase 4, pas 7a (D-150) |
-| `backups.list` | — | `{ folder, backups: [{ path, name, created, size, kind }] }`: les còpies de seguretat, de la més nova a la més antiga. `kind`: `auto` (la diària o una de feta a mà) o `safety` (l'estat d'abans d'una restauració, per poder desfer-la) | fase 4, pas 7b (D-152) |
+| `backups.list` | — | `{ folder, backups: [{ path, name, created, size, kind }] }`: les còpies de seguretat, de la més nova a la més antiga. `kind`: `auto` (la diària o una de feta a mà), `safety` (l'estat d'abans d'una restauració, per poder desfer-la) o `maintenance` (l'estat d'abans d'aplicar el manteniment de la programació, D-194; com `safety`, no entra a la rotació) | fase 4, pas 7b (D-152) |
 | `backups.create` | — | `{ path }`: fa una còpia ara (amb la rotació de sempre) | fase 4, pas 7b (D-152) |
 | `backups.inspect` | `path` (qualsevol fitxer `.db`) | `{ path, version, currentVersion, problem, tracks, events, rotations, campaigns, lastPlayed }`: què hi ha a la còpia, sense tocar-la. `problem`: per què no es pot restaurar (esquema més nou, no és d'Ona Bages 24h) o `null` | fase 4, pas 7b (D-152) |
 | `backups.restore` | `path`, opcional `keepHistory` (per defecte `true`) | `{ safety, keptHistory, keptExecutions }`. Restaura la còpia sencera: comprova l'esquema, fa una còpia de l'estat actual (`safety`), restaura i aplica les migracions que faltin. Amb `keepHistory`, hi torna a posar l'historial i el registre d'execució d'ara posteriors a la còpia. La sortida d'àudio i l'aturada dels esdeveniments es queden com ara. El motor torna a llegir la configuració sense aturar l'emissió i envia `scheduler.changed`, `rotations.changed`, `bags.changed`, `campaigns.changed`, `savedCalendars.changed`, `station.changed`, `library.changed` i `notes.changed`. Si no es pot, `bad_params` i no es toca res | fase 4, pas 7b (D-152) |
@@ -573,11 +573,12 @@ Permisos: `agendas.list` i `agendas.preview`, tothom; `agendas.save` i `agendas.
 
 ### 4.17. Manteniment de la programació (D-194)
 
-Detecta el que s'ha anat acumulant i ja no sonarà, i proposa què fer-ne. **No fa res sol**: l'anàlisi només llegeix.
+Detecta el que s'ha anat acumulant i ja no sonarà, i proposa què fer-ne. **No fa res sol**: l'anàlisi només llegeix, i només s'aplica el que es marca.
 
 | Ordre | Paràmetres | Resultat |
 |---|---|---|
 | `maintenance.scan` | — | `{ findings: [ { key, case, subject, id, name, reason, action } ] }`, en l'ordre dels casos i per nom. `key` identifica la proposta per aplicar-la (p. ex. `event:12`, `actions:12`, `exceptions:12`, `campaign-events:5`, `track-events:7`, `track:7`, `subcategory:3`). `subject`: `event`, `track`, `campaign` o `subcategory`. `reason`: el motiu, en català |
+| `maintenance.apply` | `keys`: les propostes que s'han d'aplicar (les `key` de `maintenance.scan`) | `{ backup, done: [{ key, text }], skipped: [{ key, reason }], error }`. Primer fa una còpia de seguretat (`backup`, de mena `maintenance`); si no es pot fer, `bad_params` i no es toca res. Després torna a analitzar i només fa les propostes que encara hi són (les altres, a `skipped`: han canviat des de l'anàlisi). Les fa una a una; si una falla, s'atura i `error` diu quina i per què (la còpia permet desfer-ho tot). Cada proposta feta s'anota al registre de canvis (ordre `maintenance.apply`, «Manteniment: ha esborrat l'esdeveniment «…»», amb el cas i el motiu al detall). Després, `scheduler.changed` i `library.changed` si cal. Sense `keys`: `bad_params` |
 
 Casos (`case`), amb l'acció que es proposa (`action`). Cada esdeveniment surt com a molt una vegada, pel primer motiu; les plantilles, mai:
 
@@ -594,7 +595,7 @@ Casos (`case`), amb l'acció que es proposa (`action`). Cada esdeveniment surt c
 | `PISTA_CADUCADA` | Una pista amb la data de fi passada que no fa servir cap esdeveniment. Si és d'una campanya o ha sonat els últims 2 anys, es desactiva (els certificats, D-011); si ja ho està, no surt | `ESBORRA_PISTA` o `DESACTIVA_PISTA` |
 | `SUBCATEGORIA_BUIDA` | Una subcategoria sense pistes que es pot esborrar (els mateixos motius que `subcategory.delete`) | `ESBORRA_SUBCATEGORIA` |
 
-Permisos: programador.
+Permisos: les dues, programador.
 
 ## 5. Esdeveniments
 
