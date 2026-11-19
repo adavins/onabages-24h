@@ -21,6 +21,7 @@ const IMAGES = {
   'calendari-campanya': "El calendari d'una campanya",
   certificat: "El certificat d'emissió d'una campanya",
   registre: 'El registre',
+  'configuracio-sortida': "La configuració de la sortida d'àudio",
 };
 
 let html = fs.readFileSync(MANUAL, 'utf8');

@@ -362,6 +362,18 @@ await run(`(() => {
   return true;
 })()`);
 await shot('registre');
+// La configuració: la pestanya Sortida
+await click('#menu-settings');
+await sleep(1500);
+await run(`(() => {
+  [...document.querySelectorAll('dialog[open] button')].find((x) => x.textContent.trim() === 'Sortida')?.click();
+  return true;
+})()`);
+await shot('configuracio-sortida');
+await run(`(() => {
+  for (const d of document.querySelectorAll('dialog[open]')) d.close();
+  return true;
+})()`);
 await click('#nav-emissio');
 
 if (consoleErrors.length) console.log(`Errors a la consola de la interfície:\n  ${consoleErrors.join('\n  ')}`);
