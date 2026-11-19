@@ -176,12 +176,18 @@ public static class StopCommand
         return found;
     }
 
+    /// <summary>
+    /// Tanca els processos de la interfície, un per un. <b>Mai l'arbre sencer</b>: el motor és fill de la interfície (l'hi
+    /// arrenca ella), i tancar l'arbre el mataria a la força abans de rebre l'ordre d'aturada; en tornar a arrencar, sense
+    /// el motiu desat, sortiria com un reinici inesperat (incidència greu). Tots els processos de la interfície són a la
+    /// llista (els d'Electron tenen el mateix nom i carpeta), i el motor no hi és mai.
+    /// </summary>
     private static void CloseInterface(List<Process> ui)
     {
         if (ui.Count == 0) return;
         foreach (var process in ui)
         {
-            try { process.Kill(entireProcessTree: true); }
+            try { process.Kill(entireProcessTree: false); }
             catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { } // ja s'ha tancat
         }
         Console.WriteLine("Interfície tancada.");

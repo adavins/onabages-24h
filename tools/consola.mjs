@@ -347,10 +347,14 @@ async function stopAll() {
   await pause();
 }
 
-/** Tanca la interfície a la força: la X de la finestra preguntaria què fer. No té res per desar (D-162: tot és al motor). */
+/**
+ * Tanca la interfície a la força: la X de la finestra preguntaria què fer. No té res per desar (D-162: tot és al motor).
+ * Sense /T (l'arbre): el motor és fill de la interfície, i tancar l'arbre el mataria abans de l'ordre d'aturada (sortiria
+ * com un reinici inesperat). Els processos d'Electron ja són tots a la llista.
+ */
 function closeInterface(ui) {
   if (ui.length === 0) return;
-  spawnSync('taskkill.exe', ['/F', '/T', ...ui.flatMap((pid) => ['/PID', String(pid)])], { stdio: 'ignore' });
+  spawnSync('taskkill.exe', ['/F', ...ui.flatMap((pid) => ['/PID', String(pid)])], { stdio: 'ignore' });
   console.log(color.green('\nInterfície tancada.'));
 }
 
