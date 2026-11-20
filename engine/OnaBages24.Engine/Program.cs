@@ -106,8 +106,11 @@ public static class Program
                   Emet l'entrada (el número de la llista de prova-entrada, o el nom) al servidor N segons (per defecte, 60)
                   amb el mateix emissor que el motor, i diu cada 5 s com va: connectat, enviat, nivell, reconnexions.
                   Per defecte, MP3 192 kbps estèreo 48 kHz, port 8000, usuari «source». Demana la contrasenya del
-                  servidor per pantalla. Es pot fer amb el motor en marxa; feu servir un punt de muntatge de prova (un
-                  d'on ja emet BUTT no l'accepta) (D-202).
+                  servidor per pantalla. --muntatge (només Icecast) és el nom del punt de muntatge al servidor, el final
+                  de l'adreça on s'escolta (p. ex. /prova.mp3), no un fitxer: no es llegeix ni es desa cap MP3. Amb
+                  Shoutcast, cada emissió és un --sid (per defecte, 1). Es pot fer amb el motor en marxa; feu servir un
+                  punt de muntatge o un sid de prova (on ja emet BUTT no l'accepta, i si BUTT no emet, sortiria en
+                  antena) (D-202).
 
               atura
                   Atura Ona Bages 24h sencera: tanca la interfície i atura el motor (la ràdio es queda en silenci). Si hi ha

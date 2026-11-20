@@ -21,6 +21,7 @@ public static class StreamingProbe
         string? which = null;
         double seconds = 60;
         string? title = null;
+        bool mountGiven = false;
         var output = new StreamOutput { Name = "Prova", Host = "" };
         for (int i = 0; i < args.Length; i++)
         {
@@ -48,6 +49,7 @@ public static class StreamingProbe
                 case "--port": output = output with { Port = Number("--port", 1, 65535) }; break;
                 case "--muntatge":
                     string mount = Value();
+                    mountGiven = true;
                     output = output with { Mount = mount.StartsWith('/') ? mount : "/" + mount };
                     break;
                 case "--usuari": output = output with { User = Value() }; break;
@@ -78,6 +80,8 @@ public static class StreamingProbe
             InputProbe.ShowList(inputs);
             return 1;
         }
+        if (mountGiven && output.ServerType == StreamServerType.Shoutcast)
+            Console.WriteLine("Avís: amb Shoutcast no es fa servir --muntatge (cada emissió es distingeix pel número --sid; per defecte, 1).");
         if (output.ServerProblem() is { } problem)
         {
             Console.WriteLine(problem);
