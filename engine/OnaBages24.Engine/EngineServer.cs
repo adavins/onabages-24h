@@ -184,8 +184,11 @@ public static class EngineServer
         var autoDj = new AutoDj(library, rotations, queue, new AutoDjSettings { FillAhead = TimeSpan.FromMinutes(30) });
         // Trepitjador (fase 3, pas 5): el sweeper a sobre de l'inici de la pista, amb l'atenuació desada (D-078) o −8 dB
         var sweepers = new SweeperOverlay(queue, aux) { DuckingDb = CommandRouter.ReadDucking(library).Sweepers };
-        var playback = new PlaybackEvents(queue, outputs, log, Broadcast, autoDj, sampleClock, aux);
+        // L'historial s'ha de connectar ABANS que els avisos a la interfície: els avisos de cada pista es criden en l'ordre
+        // en què s'han connectat, i la interfície torna a llegir l'historial en rebre player.trackStarted o trackEnded. Si
+        // l'avís sortia primer, de vegades el llegia abans que es desés i es quedava sense la pista nova fins a F5 (D-201)
         var history = new PlayHistory(queue, library, log, aux);
+        var playback = new PlaybackEvents(queue, outputs, log, Broadcast, autoDj, sampleClock, aux);
         // Les pistes que sonaven si el motor es va aturar de cop (fase 3, pas 2a): es tanquen com a tallades
         if (library.CloseOpenHistory() is var closed and > 0)
             log.LogInformation("Historial: {Count} pistes que sonaven quan el motor es va aturar, tancades com a tallades", closed);
