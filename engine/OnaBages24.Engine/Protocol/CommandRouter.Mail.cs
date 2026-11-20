@@ -12,13 +12,13 @@ public sealed partial class CommandRouter
     public const string MailSettingKey = "correu";
 
     /// <summary>
-    /// Si és una ordre que pot tardar (<c>mail.test</c> espera el servidor de correu fins a 30 s): el client la fa
-    /// atendre a part, perquè no faci esperar les altres.
+    /// Si és una ordre que pot tardar (<c>mail.test</c> espera el servidor de correu fins a 30 s; <c>streaming.test</c>, el
+    /// servidor d'streaming fins a uns 10 s): el client la fa atendre a part, perquè no faci esperar les altres.
     /// </summary>
     public static bool IsSlow(string text)
     {
-        if (!text.Contains("mail.test", StringComparison.Ordinal)) return false;
-        try { return JsonNode.Parse(text) is JsonObject msg && ReadString(msg["cmd"]) == "mail.test"; }
+        if (!text.Contains("mail.test", StringComparison.Ordinal) && !text.Contains("streaming.test", StringComparison.Ordinal)) return false;
+        try { return JsonNode.Parse(text) is JsonObject msg && ReadString(msg["cmd"]) is "mail.test" or "streaming.test"; }
         catch (System.Text.Json.JsonException) { return false; }
     }
 

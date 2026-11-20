@@ -37,7 +37,7 @@ Tots els missatges són objectes JSON amb el camp `"v": 1`.
 { "v": 1, "id": 7, "cmd": "engine.hello" }
 ```
 
-- `id`: valor que tria el client (número o text); la resposta porta el mateix `id`. Les respostes poden arribar en un ordre diferent del de les ordres: les que poden tardar (`mail.test`) s'atenen a part perquè no facin esperar les altres (D-160).
+- `id`: valor que tria el client (número o text); la resposta porta el mateix `id`. Les respostes poden arribar en un ordre diferent del de les ordres: les que poden tardar (`mail.test`, `streaming.test`) s'atenen a part perquè no facin esperar les altres (D-160).
 - `cmd`: nom de l'ordre, en format `àmbit.acció`.
 - Altres camps: paràmetres de l'ordre.
 
@@ -597,6 +597,28 @@ Casos (`case`), amb l'acció que es proposa (`action`). Cada esdeveniment surt c
 | `SUBCATEGORIA_BUIDA` | Una subcategoria sense pistes que es pot esborrar (els mateixos motius que `subcategory.delete`) | `ESBORRA_SUBCATEGORIA` |
 
 Permisos: les dues, programador.
+
+### 4.18. Emissió per internet (D-202)
+
+Els emissors que substitueixen BUTT (fase 5, pas 13): cadascun envia una entrada de Windows a un servidor Shoutcast v2 (mode «legacy», com BUTT) o Icecast 2.4+, en MP3. Es desen a la configuració (clau `emissors`) amb la contrasenya xifrada amb DPAPI (D-155); **la contrasenya no surt mai del motor**. Un emissor es diu amb `outputId` (`e1`, `e2`…): el camp `id` és el de l'ordre.
+
+**Emissor** (`output`): `{ id, name, enabled, continuous, serverType, host, port, user, mount, streamId, bitrateKbps, sampleRate, mono, inputDeviceId, inputDeviceName, titleMode, fixedTitle, publicName, genre, url, hasPassword, problem }`.
+- `continuous`: sempre en marxa (l'emissió de l'emissora); `false`, només quan l'engega un esdeveniment o l'operador (pas 13c).
+- `serverType`: `icecast` o `shoutcast`. `host`: només el nom del servidor (si s'hi escriu `http://` o la barra del final, es treuen; amb port o camí, `bad_params`). `port`: el mateix que a BUTT (amb Shoutcast, l'emissió va al port següent). `user` i `mount` (amb la barra; si falta, s'hi posa): només Icecast. `streamId` (sid): només Shoutcast.
+- `bitrateKbps` (una de les de `bitrates`; per defecte 192), `sampleRate` (44100 o 48000; per defecte 48000), `mono`.
+- `inputDeviceId` i `inputDeviceName`: l'entrada de Windows que s'emet (de `devices.list`); si l'identificador ja no hi és, es busca pel nom (D-038).
+- `titleMode`: `emission` (el mateix text que `NowPlaying.txt`), `fixed` (`fixedTitle`, una línia de com a molt 200 caràcters) o `none`.
+- `publicName`, `genre`, `url`: el que veuen els oients (sense nom públic, `name`). No s'anuncia als directoris públics.
+- `problem`: què li falta per poder emetre (si està actiu), o que la contrasenya desada no es pot llegir (una còpia d'un altre ordinador: s'ha de tornar a escriure); `null` si res.
+
+| Ordre | Paràmetres | Resultat |
+|---|---|---|
+| `streaming.list` | — | `{ outputs: [output], bitrates, sampleRates }` |
+| `streaming.save` | `outputId` (si no n'hi ha, en crea un), i opcionals tots els camps de l'emissor (els que no s'envien no canvien) i `password` (un text = la nova; buit = cap; si no s'envia, es conserva) | `{ output }`. Un emissor actiu ha d'estar complet (servidor, contrasenya, entrada i, amb `fixed`, el títol): si no, `bad_params` amb què falta. Un d'inactiu es pot desar a mitges. El nom no es pot repetir |
+| `streaming.delete` | `outputId` | `{ deleted }` |
+| `streaming.test` | `outputId` (opcional) i els camps del formulari, encara que no s'hagin desat; el que no s'envia, el desat (també la contrasenya) | `{ connected, error }`: es connecta al servidor, s'identifica i es desconnecta, sense enviar so. `error` en català (servidor que no respon, contrasenya no acceptada, punt de muntatge ocupat…). Espera el servidor uns 10 s com a molt; s'atén a part, com `mail.test` |
+
+Permisos: `streaming.list`, tothom; les altres, administrador.
 
 ## 5. Esdeveniments
 

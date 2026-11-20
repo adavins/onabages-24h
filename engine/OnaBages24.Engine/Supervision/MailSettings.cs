@@ -1,6 +1,4 @@
 using System.Net.Mail;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace OnaBages24.Engine.Supervision;
 
@@ -66,23 +64,9 @@ public sealed record MailSettings
 /// </summary>
 public static class MailSecret
 {
-    /// <summary>Per distingir-la de qualsevol altra dada xifrada amb DPAPI pel mateix usuari.</summary>
-    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("OnaBages24.correu");
-
     /// <summary>La contrasenya xifrada, en Base64.</summary>
-    public static string Protect(string password) =>
-        Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(password), Entropy, DataProtectionScope.CurrentUser));
+    public static string Protect(string password) => Security.Dpapi.Protect(password, "correu");
 
     /// <summary>La contrasenya, o null si no es pot desxifrar (una còpia d'un altre ordinador o d'un altre usuari).</summary>
-    public static string? Unprotect(string protectedText)
-    {
-        try
-        {
-            return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(protectedText), Entropy, DataProtectionScope.CurrentUser));
-        }
-        catch (Exception ex) when (ex is CryptographicException or FormatException or PlatformNotSupportedException)
-        {
-            return null;
-        }
-    }
+    public static string? Unprotect(string protectedText) => Security.Dpapi.Unprotect(protectedText, "correu");
 }

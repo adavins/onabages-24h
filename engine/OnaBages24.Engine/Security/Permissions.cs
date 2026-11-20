@@ -33,7 +33,7 @@ public static class Permissions
         ["campaigns.get"] = Anyone, ["campaigns.plan"] = Anyone, ["savedCalendars.list"] = Anyone, ["season.get"] = Anyone,
         ["validity.list"] = Anyone, ["station.get"] = Anyone, ["reports.programming"] = Anyone, ["reports.certificate"] = Anyone,
         ["reserve.get"] = Anyone, ["history.list"] = Anyone, ["incidents.list"] = Anyone, ["silence.get"] = Anyone,
-        ["emergency.get"] = Anyone, ["nowplaying.get"] = Anyone, ["scheduler.list"] = Anyone, ["scheduler.get"] = Anyone,
+        ["emergency.get"] = Anyone, ["nowplaying.get"] = Anyone, ["streaming.list"] = Anyone, ["scheduler.list"] = Anyone, ["scheduler.get"] = Anyone,
         ["scheduler.preview"] = Anyone, ["scheduler.occurrences"] = Anyone, ["scheduler.log"] = Anyone, ["scheduler.status"] = Anyone,
 
         // Operador: la pantalla d'emissió
@@ -116,6 +116,9 @@ public static class Permissions
         ["mail.get"] = Admin(null),
         ["mail.set"] = Admin("Ha canviat els avisos per correu"),
         ["mail.test"] = Admin(null),
+        ["streaming.save"] = Admin("Ha desat l'emissor per internet"),
+        ["streaming.delete"] = Admin("Ha esborrat l'emissor per internet"),
+        ["streaming.test"] = Admin(null),
         ["nowplaying.set"] = Admin("Ha canviat el títol per a BUTT"),
         ["nowplaying.fixed.set"] = Operator("Ha posat un títol fix per a BUTT"),
         ["nowplaying.fixed.clear"] = Operator("Ha tret el títol fix per a BUTT"),
