@@ -20,6 +20,12 @@ public sealed record QueueItem
     /// <summary>Durada del fitxer (de la biblioteca), si se sap.</summary>
     public long? FileDurationMs { get; init; }
 
+    /// <summary>
+    /// Continua una emissió tallada (D-200): comença en aquest punt (és el seu <see cref="StartMs"/>), no en el de la
+    /// biblioteca. Quan la cua pren els punts nous de la biblioteca, aquest inici no es toca. Null = una pista normal.
+    /// </summary>
+    public long? ResumeMs { get; init; }
+
     // --- Streams (fase 2, pas 7b; D-030, D-175) ---
 
     /// <summary>Quant sona un stream si no se'n sap la durada (la fitxa de la pista no en té): una hora.</summary>

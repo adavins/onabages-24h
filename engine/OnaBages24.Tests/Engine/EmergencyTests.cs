@@ -209,6 +209,133 @@ public sealed class EmergencyTests : IDisposable
     }
 
     [Fact]
+    public void Quan_es_confirma_que_la_unitat_no_respon_les_que_s_acaben_de_saltar_tornen_a_la_cua()
+    {
+        // D-199: la pista que va fallar mentre es comprovava la unitat (U2, a la prova del desenvolupador) no es perd
+        var first = Missing("nas-1");
+        var second = Missing("nas-2");
+        var program = Missing("programa") with { Origin = QueueOrigin.Event };
+        var local = Item("local", 30);
+        _player.Enqueue(first, second, program, local);
+        Run(0.5);
+        Assert.Equal(3, _failed.Count);
+
+        int back = _player.RequeueSkipped(path => path.Contains("nas-"));
+
+        Assert.Equal(2, back);
+        Assert.Equal(["nas-1", "nas-2"], _player.Upcoming.Take(2).Select(i => i.Title));
+        Assert.DoesNotContain(_player.Upcoming, i => i.Title == "programa"); // els dels esdeveniments no s'esperen
+        Assert.Equal(0, _player.RequeueSkipped(_ => true)); // i no hi tornen dues vegades
+    }
+
+    [Fact]
+    public void Les_que_tornen_a_la_cua_entren_de_seguida_quan_torna_la_unitat_encara_que_soni_una_d_emergencia()
+    {
+        // Prova del desenvolupador (20-11-2026): la pista va tornar a la cua, però la cua no ho tornava a mirar fins a prop
+        // del final de la d'emergència (minuts després que la unitat tornés)
+        bool down = false;
+        var tracks = Enumerable.Range(1, 3).Select(i => Missing($"nas-{i}")).ToArray();
+        var nas = tracks.Select(t => t.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _player.IsUnavailable = path => down && nas.Contains(path);
+        AddEmergency("E", 30);
+        _player.Enqueue(tracks);
+        Run(1.5); // fallen totes tres (encara no se sap per què) i sona la d'emergència
+        Assert.Equal("E", Assert.Single(_started).Item.Title);
+
+        down = true; // es confirma que la unitat no respon: tornen a la cua
+        Assert.Equal(3, _player.RequeueSkipped(nas.Contains));
+        Run(1);
+
+        foreach (var t in tracks) Wav(t.Title, 5); // la unitat torna, amb els fitxers
+        down = false;
+        long back = _mixer.FramesRendered;
+        Run(1.5);
+
+        Assert.Equal(["E", "nas-1"], _started.Select(s => s.Item.Title));
+        Assert.InRange(Seconds(_started[1].StartFrame - back), 0, 0.6);
+    }
+
+    [Fact]
+    public void Un_programa_tallat_perque_la_unitat_no_respon_torna_a_la_cua_i_continua_uns_segons_abans_del_tall()
+    {
+        // D-200 (prova del desenvolupador, 20-11-2026: «Capital Tropical», de 50 minuts, es va tallar al minut 1:48 i no va tornar)
+        var stuck = new List<QueueStuck>();
+        _player.Stuck += stuck.Add;
+        AddEmergency("E", 30);
+        var program = Item("programa", 60) with { TrackId = 7, FileDurationMs = 50 * 60_000 }; // la biblioteca diu que dura 50 minuts
+        _player.Enqueue(program);
+        Run(8);
+
+        _player.SetCurrentReadingForTests(false); // la unitat deixa de respondre: s'encalla
+        for (int i = 0; i < 200 && stuck.Count == 0; i++) Run(0.1);
+        Assert.Single(stuck);
+        Run(1); // sona la d'emergència mentre es comprova la unitat
+
+        Assert.Equal(1, _player.RequeueSkipped(path => path == program.Path)); // es confirma que la unitat no respon
+        var rest = _player.Upcoming[0];
+        Assert.Equal("programa", rest.Title);
+        Assert.NotEqual(program.Id, rest.Id); // és una emissió nova
+        // Ha sonat uns 8 s (més el que hi havia llegit): continua 5 s abans
+        double played = stuck[0].Position.TotalSeconds;
+        Assert.InRange(rest.StartMs!.Value / 1000.0, 2.5, played - 4);
+
+        // La revisió de la cua (D-102) li torna a passar els punts de la biblioteca: l'inici no es toca (tercera prova del
+        // desenvolupador: tornava a començar pel principi)
+        _player.RefreshTrack(new Track { Id = 7, Path = program.Path, StartMs = 100, MixMs = 49 * 60_000, DurationMs = 50 * 60_000 });
+        Assert.Equal(rest.StartMs, _player.Upcoming[0].StartMs);
+        Assert.Equal(49 * 60_000, _player.Upcoming[0].MixMs); // la resta de punts, sí
+
+        Run(3); // la unitat ja respon: torna a sonar, de seguida
+        Assert.Equal(["programa", "E", "programa"], _started.Select(s => s.Item.Title));
+        Assert.Equal(rest.StartMs, _started[2].Item.StartMs);
+    }
+
+    [Fact]
+    public void El_programa_tallat_torna_davant_de_la_que_s_estava_obrint()
+    {
+        // D-200, segona prova del desenvolupador: «Dixie Chicks» s'estava obrint (encallada a la xarxa) quan es va tallar el
+        // programa, i el programa va tornar darrere seu
+        var stuck = new List<QueueStuck>();
+        _player.Stuck += stuck.Add;
+        AddEmergency("E", 30);
+        var program = Item("programa", 60) with { FileDurationMs = 50 * 60_000 };
+        _player.Enqueue(program, Item("canco", 5, slow: true)); // la cançó no s'acaba d'obrir mai (la unitat no respon)
+        Run(5);
+
+        _player.SetCurrentReadingForTests(false);
+        for (int i = 0; i < 200 && stuck.Count == 0; i++) Run(0.1);
+        Run(1); // sona la d'emergència, i la cançó s'està obrint
+        Assert.Equal(_player.Upcoming[0].Id, _player.NextInPreparation);
+        Assert.Equal(1, _player.RequeueSkipped(path => path == program.Path));
+
+        Assert.Equal(["programa", "canco"], _player.Upcoming.Select(i => i.Title));
+        Run(3);
+        Assert.Equal(["programa", "E", "programa"], _started.Select(s => s.Item.Title));
+    }
+
+    [Fact]
+    public void Una_canco_tallada_o_un_programa_d_un_esdeveniment_no_tornen_a_la_cua()
+    {
+        // D-200: d'una cançó ja se n'ha sentit un tros; un programa d'un esdeveniment que sonés tard no és el que toca (D-197)
+        foreach (var item in new[]
+        {
+            Item("canco", 60),
+            Item("programa", 60) with { FileDurationMs = 50 * 60_000, Origin = QueueOrigin.Event },
+        })
+        {
+            var stuck = new List<QueueStuck>();
+            _player.Stuck += stuck.Add;
+            _player.Enqueue(item);
+            Run(3);
+            _player.SetCurrentReadingForTests(false);
+            for (int i = 0; i < 200 && stuck.Count == 0; i++) Run(0.1);
+            Assert.Single(stuck);
+            Assert.Equal(0, _player.RequeueSkipped(_ => true));
+            _player.Stuck -= stuck.Add;
+        }
+    }
+
+    [Fact]
     public void Una_pista_que_torna_a_sonar_posa_el_comptador_de_fallades_a_zero()
     {
         _player.Enqueue(Missing("falta-1"), Missing("falta-2"), Item("A", 3), Missing("falta-3"));

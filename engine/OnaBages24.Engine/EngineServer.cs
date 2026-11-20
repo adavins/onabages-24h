@@ -509,6 +509,8 @@ public static class EngineServer
         queue.IsUnavailable = drives.IsDown;
         queue.Failed += e => { if (!e.Item.IsStream) drives.Suspect(e.Item.Path); };
         queue.Stuck += e => { if (!e.Item.IsStream) drives.Suspect(e.Item.Path); };
+        // Les que s'han saltat mentre es comprovava (abans de saber-ho) tornen a la cua (D-199)
+        drives.WentDown += (root, _) => queue.RequeueSkipped(path => string.Equals(DriveWatch.RootOf(path), root, StringComparison.OrdinalIgnoreCase));
         drives.WentDown += (root, since) => incidents.Set(IncidentKind.File, $"unitat:{root}", IncidentSeverity.Danger, IncidentRules.DriveDownText(root, since));
         drives.CameBack += (root, since) =>
         {

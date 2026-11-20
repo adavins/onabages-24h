@@ -51,6 +51,15 @@ public sealed record QueueSettings
     /// </summary>
     public TimeSpan ReadFailureWait { get; init; } = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>
+    /// Pista tallada perquè la unitat no respon (D-200): si dura més que això (un programa), torna a la cua i continua des
+    /// d'on s'ha tallat. Les més curtes (cançons) no tornen: ja se n'ha sentit un tros.
+    /// </summary>
+    public TimeSpan ResumeLongerThan { get; init; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>Quant abans del tall continua una pista tallada (D-200), perquè no es perdi cap frase.</summary>
+    public TimeSpan ResumeBack { get; init; } = TimeSpan.FromSeconds(5);
+
     /// <summary>Quan la pista que tocava ja és a punt, la d'emergència baixa en aquest temps i entra la que tocava.</summary>
     public TimeSpan EmergencyFade { get; init; } = TimeSpan.FromSeconds(2);
 
@@ -180,6 +189,40 @@ public sealed class QueuePlayer : IDisposable
 
     private bool _driveDown;         // la pista següent és d'una unitat que no respon (D-197): s'espera a la cua
     private bool _readFailed;        // la que sonava s'ha acabat o encallat per un error de lectura (D-198): sense esperar
+    private readonly List<(QueueItem Item, long Frame)> _skipped = []; // les últimes saltades (D-199): poden tornar a la cua
+
+    /// <summary>Quanta estona enrere una pista saltada pot tornar a la cua quan es confirma que la seva unitat no respon (D-199).</summary>
+    public static readonly TimeSpan RequeueWindow = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// S'ha confirmat que una unitat no respon (D-199; <see cref="DriveWatch.WentDown"/>): les pistes de la cua d'aquesta
+    /// unitat que s'han saltat fa poc (abans de saber-ho, mentre es comprovava) tornen al davant de la cua, en el seu ordre,
+    /// i s'hi esperaran com les altres. Les dels esdeveniments no (no s'esperen, D-197). Retorna quantes hi han tornat.
+    /// </summary>
+    public int RequeueSkipped(Func<string, bool> onDrive)
+    {
+        List<QueueItem> back;
+        lock (_sync)
+        {
+            long since = _mixer.FramesRendered - Frames(RequeueWindow);
+            back = _skipped.Where(s => s.Frame >= since && onDrive(s.Item.Path) && !_upcoming.Contains(s.Item)).Select(s => s.Item).ToList();
+            _skipped.Clear();
+            if (back.Count == 0) return 0;
+            _upcoming.InsertRange(0, back);
+            // La que s'estava preparant va darrere: les que tornen anaven abans (D-200, prova del desenvolupador: el programa
+            // tallat va tornar darrere de «Dixie Chicks», que s'obria, i va sonar ella primer)
+            if (_next is { HasStarted: false, Returning: false } n && (!n.Scheduled || n.StartFrame > _mixer.FramesRendered))
+            {
+                _upcoming.Insert(back.Count, n.Item);
+                n.Stuck = true; // pot estar encallada obrint un fitxer de la unitat que no respon: no s'espera el fil de lectura
+                Retire(n);
+                _next = null;
+            }
+            _driveDown = true; // s'hi espera ja (es mira a cada Tick si torna)
+        }
+        Changed?.Invoke();
+        return back.Count;
+    }
 
     /// <summary>
     /// Si la unitat d'una ruta no respon (D-197; <see cref="DriveWatch.IsDown"/>). Les pistes d'una unitat així no s'obren
@@ -190,6 +233,37 @@ public sealed class QueuePlayer : IDisposable
 
     /// <summary>Si la pista següent de la cua s'espera perquè la seva unitat no respon (D-197).</summary>
     public bool WaitingForDrive { get { lock (_sync) return _driveDown; } }
+
+    /// <summary>Recorda una pista saltada (les últimes; D-199).</summary>
+    private void Remember(QueueItem item, long now)
+    {
+        _skipped.Add((item, now));
+        if (_skipped.Count > 20) _skipped.RemoveAt(0);
+    }
+
+    /// <summary>
+    /// Una pista llarga tallada per un error de lectura (D-200): es recorda la resta (des d'uns segons abans del tall) com
+    /// una pista saltada, i si es confirma que la unitat no respon torna a la cua (<see cref="RequeueSkipped"/>). Si ja se
+    /// sap que no respon, hi torna ara mateix. Les dels esdeveniments no (no s'esperen, D-197), ni les gairebé acabades.
+    /// </summary>
+    private void RememberCut(Playing p, long now, List<Action> events)
+    {
+        var item = p.Item;
+        if (item.IsStream || item.Origin is QueueOrigin.Event or QueueOrigin.Emergency) return;
+        if ((item.PlannedMs ?? 0) < (long)_settings.ResumeLongerThan.TotalMilliseconds) return;
+        long playedMs = (long)Math.Round((Math.Max(0, p.ResumeOffset) + p.Voice.FramesPlayed) * 1000.0 / _mixer.SampleRate);
+        long resumeAt = (item.StartMs ?? 0) + Math.Max(0, playedMs - (long)_settings.ResumeBack.TotalMilliseconds);
+        long mixMs = item.MixMs ?? item.EndMs ?? item.FileDurationMs ?? long.MaxValue;
+        if (resumeAt > mixMs - 60_000) return; // gairebé acabada: no val la pena
+        var rest = item with { Id = Guid.NewGuid(), StartMs = resumeAt, ResumeMs = resumeAt, Sweeper = null };
+        if (WaitsForDrive(rest))
+        {
+            _upcoming.Insert(0, rest);
+            _driveDown = true;
+            events.Add(() => Changed?.Invoke());
+        }
+        else Remember(rest, now);
+    }
 
     /// <summary>Una pista que espera la seva unitat (D-197): de la cua, no d'un esdeveniment, i amb la unitat que no respon.</summary>
     private bool WaitsForDrive(QueueItem item) =>
@@ -571,10 +645,12 @@ public sealed class QueuePlayer : IDisposable
     /// </summary>
     public int RefreshTrack(Track track)
     {
-        QueueItem Updated(QueueItem i) => i with { StartMs = track.StartMs, MixMs = track.MixMs, EndMs = track.EndMs, FileDurationMs = track.DurationMs };
+        // Una pista que continua una emissió tallada (D-200) es queda el seu inici: si no, tornaria a començar pel principi
+        long? StartOf(QueueItem i) => i.ResumeMs ?? track.StartMs;
+        QueueItem Updated(QueueItem i) => i with { StartMs = StartOf(i), MixMs = track.MixMs, EndMs = track.EndMs, FileDurationMs = track.DurationMs };
         // Un stream no (D-180): la seva durada és la de l'esdeveniment, no la de la biblioteca (es desfaria la tornada)
         bool Differs(QueueItem i) => !i.IsStream && i.TrackId == track.Id &&
-            (i.StartMs != track.StartMs || i.MixMs != track.MixMs || i.EndMs != track.EndMs || i.FileDurationMs != track.DurationMs);
+            (i.StartMs != StartOf(i) || i.MixMs != track.MixMs || i.EndMs != track.EndMs || i.FileDurationMs != track.DurationMs);
         var events = new List<Action>();
         int count = 0;
         lock (_sync)
@@ -934,8 +1010,10 @@ public sealed class QueuePlayer : IDisposable
                 _next = null;
                 if (WaitsForDrive(item))
                 {
-                    // La seva unitat no respon (D-197): torna al davant de la cua i s'hi espera (no compta com a saltada)
+                    // La seva unitat no respon (D-197): torna al davant de la cua i s'hi espera (no compta com a saltada).
+                    // S'espera ja: es mira a cada Tick si torna (si no, fins a prop del punt de mescla de la que sona)
                     _upcoming.Insert(0, item);
+                    _driveDown = true;
                     events.Add(() => Changed?.Invoke());
                 }
                 else if (_hold is { } h && h.Stream.Id == item.Id)
@@ -951,6 +1029,7 @@ public sealed class QueuePlayer : IDisposable
                     var fallback = item.StreamFallback;
                     if (fallback is not null) _upcoming.Insert(0, fallback);
                     int inRow = item.IsStream ? _failedInRow : ++_failedInRow; // els streams tenen la seva reserva
+                    if (!item.IsStream && item.Origin != QueueOrigin.Event) Remember(item, now);
                     events.Add(() => Failed?.Invoke(new QueueFailed(item, message, fallback, inRow)));
                     events.Add(() => Changed?.Invoke());
                 }
@@ -996,6 +1075,7 @@ public sealed class QueuePlayer : IDisposable
                 Retire(slow);
                 _next = null;
                 int inRow = ++_failedInRow;
+                if (item.Origin != QueueOrigin.Event) Remember(item, now);
                 events.Add(() => Failed?.Invoke(new QueueFailed(item, message, InRow: inRow)));
                 events.Add(() => Changed?.Invoke());
             }
@@ -1037,6 +1117,7 @@ public sealed class QueuePlayer : IDisposable
                     var item = overdue.Item;
                     var position = FramesToTime(Math.Max(0, now - overdue.StartFrame));
                     if (!item.IsStream) _readFailed = true;
+                    RememberCut(overdue, now, events);
                     events.Add(() => Stuck?.Invoke(new QueueStuck(item, position, null)));
                 }
             }
@@ -1060,6 +1141,7 @@ public sealed class QueuePlayer : IDisposable
                     var position = FramesToTime(Math.Max(0, now - _current.StartFrame));
                     string? error = _current.Reader.Error;
                     if (!item.IsStream) _readFailed = true;
+                    RememberCut(_current, now, events);
                     events.Add(() => Stuck?.Invoke(new QueueStuck(item, position, error)));
                 }
                 _ending.Add(_current);
@@ -1098,6 +1180,7 @@ public sealed class QueuePlayer : IDisposable
                     var item = cur.Item;
                     var position = FramesToTime(Math.Max(0, now - cur.StartFrame));
                     long mix = cur.MixFrame, end = cur.EndFrame; // abans del salt, que els canvia
+                    RememberCut(cur, now, events); // abans del salt (fa servir el que ha sonat la veu)
                     SkipLocked(TimeSpan.Zero, events); // de cop: no té dades (un fos sense dades no avançaria)
                     // Un stream amb reconnexió (D-031): sona música mentre es prova de reconnectar
                     if (!EnterHold(item, mix, end, now,

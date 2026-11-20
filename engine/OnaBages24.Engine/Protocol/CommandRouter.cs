@@ -684,6 +684,7 @@ public sealed partial class CommandRouter
             throw new BadParamsException($"No es pot llegir el fitxer: {ex.Message}");
         }
         var info = new FileInfo(path);
+        bool manual = track.CueSource == CueSource.Manual;
         library.UpdateTrack(track with
         {
             Path = path,
@@ -691,8 +692,13 @@ public sealed partial class CommandRouter
             DurationMs = (long)duration.TotalMilliseconds,
             FileSize = info.Length,
             FileModified = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero),
-            // Els punts d'ara es fan servir fins que l'analitzador els torni a calcular (els manuals no es toquen)
-            CueSource = track.CueSource == CueSource.Manual ? CueSource.Manual : null,
+            // Els punts eren del fitxer d'abans: s'esborren, i fins que l'analitzador en calculi de nous la cua fa servir la
+            // durada del fitxer nou (D-200: un programa de 50 minuts va sonar 10 s amb el final del fitxer d'abans). Els
+            // manuals no es toquen
+            StartMs = manual ? track.StartMs : null,
+            MixMs = manual ? track.MixMs : null,
+            EndMs = manual ? track.EndMs : null,
+            CueSource = manual ? CueSource.Manual : null,
         });
         LibraryChanged?.Invoke(track.Id);
         return TrackDetail(library, TrackOrError(library, track.Id));

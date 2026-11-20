@@ -55,6 +55,8 @@ Quan estigui fet, aquest fitxer ja es pot esborrar.
   - les pistes dels **esdeveniments** no s'esperen: fallen com sempre i es continua amb música d'emergència (decisió del desenvolupador: un programa que sonés tard no és el que toca).
 
 - **D-198 — Error de lectura a mitja pista.** Si la que sona s'acaba per un error de lectura (o s'encalla) i la següent no és a punt, la d'emergència entra en 0,5 s en lloc de 2. Ho va mostrar la prova del D-197: 2,1 s de silenci entre la pista tallada i la d'emergència.
+- **D-199 — Cap pista perduda.** Les pistes que fallen mentre es comprova la unitat (abans de saber que no respon) tornen al davant de la cua quan es confirma. Ho va mostrar la mateixa prova: «U2 - Angel Of Harlem» es va perdre. (Correcció després de la segona prova: quan la unitat tornava, la cua no se n'adonava fins al final de la cançó d'emergència.)
+- **D-200 — Programa tallat.** Una pista de la cua de més de 10 minuts que es talla per un error de lectura torna a la cua quan es confirma que la unitat no respon i continua 5 s abans del tall (decisió del desenvolupador; les cançons no). De pas: «Canvia el fitxer…» ja no conserva els punts del fitxer d'abans (per això «Capital Tropical» va sonar només 10 s).
 
 Amb aquests canvis, la nit del 20-11 hauria sonat música d'emergència des de les 03:38:09 (abans d'un segon), n'haurien fallat unes poques pistes en lloc de 4.819, hi hauria hagut dues incidències greus en lloc de 4.833 i, quan el NAS va tornar, la música de la cua hauria entrat de seguida.
 

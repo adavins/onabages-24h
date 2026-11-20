@@ -126,8 +126,11 @@ public sealed class TrackManagerTests : IDisposable
         Assert.Equal(path, track["path"]!.GetValue<string>());
         Assert.Equal("ok", track["fileState"]!.GetValue<string>());
         Assert.InRange(track["durationMs"]!.GetValue<long>(), 2990, 3010);
-        Assert.Null(track["cueSource"]); // l'analitzador els tornarà a calcular (mentrestant, els d'abans)
-        Assert.Equal(2000, track["mixMs"]!.GetValue<long>());
+        // Els punts eren del fitxer d'abans: s'esborren i l'analitzador els tornarà a calcular (mentrestant, la durada; D-200)
+        Assert.Null(track["cueSource"]);
+        Assert.Null(track["mixMs"]);
+        Assert.Null(track["startMs"]);
+        Assert.Null(track["endMs"]);
 
         // Un fitxer que no existeix, o que ja és d'una altra pista
         Assert.Equal("bad_params", Error(Send(new JsonObject { ["v"] = 1, ["id"] = 2, ["cmd"] = "library.relink", ["trackId"] = id, ["path"] = path + "x.wav" }.ToJsonString())));
@@ -142,6 +145,7 @@ public sealed class TrackManagerTests : IDisposable
         _library.UpdateTrack(_library.GetTrack(id)! with { MixMs = 1500, CueSource = CueSource.Manual });
         Result(Send(new JsonObject { ["v"] = 1, ["id"] = 1, ["cmd"] = "library.relink", ["trackId"] = id, ["path"] = Wav("manual", 2) }.ToJsonString()));
         Assert.Equal(CueSource.Manual, _library.GetTrack(id)!.CueSource);
+        Assert.Equal(1500, _library.GetTrack(id)!.MixMs);
     }
 
     [Fact]
