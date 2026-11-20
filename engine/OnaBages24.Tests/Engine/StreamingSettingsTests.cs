@@ -158,4 +158,21 @@ public sealed class StreamingSettingsTests : IDisposable
         Assert.StartsWith("No es pot llegir la contrasenya desada", Error("""{ "v": 1, "id": 3, "cmd": "streaming.save", "outputId": "e1", "port": 8001 }"""));
         Assert.True(Result("""{ "v": 1, "id": 4, "cmd": "streaming.save", "outputId": "e1", "password": "bona" }""")["output"]!["hasPassword"]!.GetValue<bool>());
     }
+
+    [Fact]
+    public void La_reserva_per_silenci_i_la_mescla_del_motor_com_a_font()
+    {
+        var saved = Result($$"""{ "v": 1, "id": 1, "cmd": "streaming.save", {{Complete}}, "fallbackToMix": true }""")["output"]!;
+        Assert.True(saved["fallbackToMix"]!.GetValue<bool>());
+        Assert.Equal(30, saved["silenceSeconds"]!.GetValue<int>()); // per defecte
+        Assert.Equal(10, saved["returnSeconds"]!.GetValue<int>());
+        Assert.Contains("entre 5 i 600", Error("""{ "v": 1, "id": 2, "cmd": "streaming.save", "outputId": "e1", "silenceSeconds": 2 }"""));
+        Assert.Contains("entre 1 i 300", Error("""{ "v": 1, "id": 3, "cmd": "streaming.save", "outputId": "e1", "returnSeconds": 0 }"""));
+
+        // La mescla del motor com a font: el nom, sempre el mateix
+        var mix = Result("""{ "v": 1, "id": 4, "cmd": "streaming.save", "outputId": "e1", "inputDeviceId": "mescla-motor", "inputDeviceName": "x" }""")["output"]!;
+        Assert.Equal("Mescla del motor", mix["inputDeviceName"]!.GetValue<string>());
+        Assert.True(StreamOutputStore.Read(_library).Single().Output.IsMixSource);
+        Assert.Equal(30, StreamOutputStore.Read(_library).Single().Output.SilenceSeconds);
+    }
 }

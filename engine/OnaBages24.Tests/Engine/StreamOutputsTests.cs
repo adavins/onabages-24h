@@ -1,4 +1,5 @@
 using OnaBages.Audio;
+using OnaBages24.Data;
 using OnaBages24.Engine.Streaming;
 
 namespace OnaBages24.Tests.Engine;
@@ -17,12 +18,12 @@ public sealed class StreamOutputsTests : IDisposable
     private bool _inputMissing;
     private DateTimeOffset _now = new(2026, 11, 20, 18, 0, 0, TimeSpan.FromHours(1));
     private string? _emissionTitle = "Txarango - Som Riu";
-    private int _created;
+    private int _opened; // vegades que s'ha obert l'entrada
     private readonly StreamOutputs _outputs;
 
     public StreamOutputsTests()
     {
-        _outputs = new StreamOutputs(() => _saved, () => _emissionTitle, Create, () => _now);
+        _outputs = new StreamOutputs(() => _saved, () => _emissionTitle, null, OpenInput, (_, title) => { lock (_titles) _titles.Add(title); }, () => _now);
         _outputs.Changed += s => _changes.Add([.. s]);
     }
 
@@ -32,10 +33,11 @@ public sealed class StreamOutputsTests : IDisposable
         _server.Dispose();
     }
 
-    private Streamer Create(StreamOutput o)
+    private IAudioInput OpenInput(StreamOutput o)
     {
-        _created++;
-        return new Streamer(o.Id, _ => _inputMissing ? throw new AudioDeviceException("Entrada no disponible: no es troba «Línia» a Windows.") : _input, (_, title) => { lock (_titles) _titles.Add(title); }) { RetryDelay = TimeSpan.FromMilliseconds(200) };
+        if (_inputMissing) throw new AudioDeviceException("Entrada no disponible: no es troba «Línia» a Windows.");
+        _opened++;
+        return _input;
     }
 
     private StreamOutput Output(string id = "e1", string name = "Ona Bages") => new()
@@ -104,7 +106,8 @@ public sealed class StreamOutputsTests : IDisposable
         _outputs.Tick();
         var problem = Assert.Single(_outputs.Problems);
         Assert.Equal("emissor:e1", problem.Key);
-        Assert.Equal("L'emissor per internet «Ona Bages» no emet des de les 18:00: Entrada no disponible: no es troba «Línia» a Windows.", problem.Value);
+        Assert.Equal("L'emissor per internet «Ona Bages» no emet des de les 18:00: Entrada no disponible: no es troba «Línia» a Windows.", problem.Value.Text);
+        Assert.Equal(IncidentSeverity.Danger, problem.Value.Severity);
 
         // L'entrada torna: al cap de 10 s del darrer intent es torna a engegar sol
         _inputMissing = false;
@@ -113,7 +116,7 @@ public sealed class StreamOutputsTests : IDisposable
         WaitFor(() => Status().State == StreamOutputState.Streaming, "torna a emetre");
         Assert.Empty(_outputs.Problems);
         Assert.Null(Status().DownSince);
-        Assert.Equal(1, _created); // el mateix emissor, tornat a engegar
+        Assert.True(_opened >= 2); // s'ha tornat a obrir l'entrada
     }
 
     [Fact]
@@ -130,10 +133,10 @@ public sealed class StreamOutputsTests : IDisposable
 
         Assert.Equal([StreamOutputState.Off, StreamOutputState.Off, StreamOutputState.Incomplete, StreamOutputState.Incomplete],
             _outputs.Status.Select(s => s.State));
-        Assert.Equal(0, _created);
+        Assert.Equal(0, _opened);
         Assert.Equal(2, _outputs.Problems.Count);
-        Assert.Equal("L'emissor per internet «Sense contrasenya» no pot emetre: falta la contrasenya del servidor.", _outputs.Problems["emissor:e3"]);
-        Assert.Contains("no es pot llegir la contrasenya desada", _outputs.Problems["emissor:e4"]);
+        Assert.Equal("L'emissor per internet «Sense contrasenya» no pot emetre: falta la contrasenya del servidor.", _outputs.Problems["emissor:e3"].Text);
+        Assert.Contains("no es pot llegir la contrasenya desada", _outputs.Problems["emissor:e4"].Text);
     }
 
     [Fact]
@@ -147,16 +150,17 @@ public sealed class StreamOutputsTests : IDisposable
         _outputs.Reload();
         _outputs.Tick();
         _server.WaitForConnection(0);
-        Assert.Equal(2, _created);
         Assert.Equal(StreamOutputState.Connecting, Status().State);
         _now += StreamOutputs.ReplaceDelay;
         WaitFor(() => Status().State == StreamOutputState.Streaming, "el nou connectat");
         Assert.Contains("ice-bitrate=128", string.Join("\n", _server.Headers(1)), StringComparison.OrdinalIgnoreCase);
 
         // Sense canvis, no es refà
+        int opened = _opened;
         _outputs.Reload();
         _outputs.Tick();
-        Assert.Equal(2, _created);
+        Assert.Equal(opened, _opened);
+        Assert.Equal(2, _server.Connections);
 
         // Esborrat: s'atura
         _saved = [];

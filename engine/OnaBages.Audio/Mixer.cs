@@ -129,6 +129,8 @@ public sealed class Mixer : IWaveProvider
             var (left, right) = PeakMeter.PeakOf(mix, 2);
             Meter.Add(left, right);
             SilenceMeter.Add(left, right);
+            // Còpies de la mescla (emissió per internet, D-202): si una és plena, s'hi escriu menys (ningú no s'espera)
+            foreach (var tap in Volatile.Read(ref _taps)) tap.Write(mix);
             WriteOutput(mix, output.Slice(done * _outChannels, frames * _outChannels), frames);
 
             Interlocked.Add(ref _framesRendered, frames);
@@ -140,6 +142,27 @@ public sealed class Mixer : IWaveProvider
         // La parella per al rellotge de mostres, escrita de manera que l'altre fil no en pugui llegir una de mig feta
         _snapshot.Write(Interlocked.Read(ref _framesRendered), now);
         return buffer.Length;
+    }
+
+    // --- Còpies de la mescla (emissió per internet, fase 5, pas 13b; D-202) ---
+
+    private SampleRingBuffer[] _taps = [];
+    private readonly Lock _tapSync = new();
+
+    /// <summary>
+    /// Fil de control: a partir d'ara, el fil d'àudio hi escriu una còpia de la mescla final (estèreo, a <see cref="SampleRate"/>,
+    /// després del processador de sortida): el que surt per la sortida d'emissió. Qui la llegeix ho ha de fer sovint; si
+    /// es queda plena, es perd el que no hi cap.
+    /// </summary>
+    public void AddTap(SampleRingBuffer tap)
+    {
+        lock (_tapSync) Volatile.Write(ref _taps, [.. _taps, tap]); // una llista nova: el fil d'àudio no veu mai una de mig feta
+    }
+
+    /// <summary>Fil de control: deixa d'escriure-hi. El fil d'àudio pot fer-hi encara una última escriptura.</summary>
+    public void RemoveTap(SampleRingBuffer tap)
+    {
+        lock (_tapSync) Volatile.Write(ref _taps, _taps.Where(t => !ReferenceEquals(t, tap)).ToArray());
     }
 
     // --- Atenuació (ducking) ---

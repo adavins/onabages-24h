@@ -53,6 +53,24 @@ public sealed record StreamOutput
     public string? InputDeviceId { get; init; }
     public string? InputDeviceName { get; init; }
 
+    /// <summary>
+    /// La font «mescla del motor» (pas 13b): en lloc d'una entrada de Windows, el que surt per la sortida d'emissió (sense
+    /// els directes de la taula). Es tria posant aquest valor a <see cref="InputDeviceId"/>.
+    /// </summary>
+    public const string MixInputId = "mescla-motor";
+    public const string MixInputName = "Mescla del motor";
+
+    /// <summary>La font és la mescla del motor (no una entrada de Windows).</summary>
+    public bool IsMixSource => InputDeviceId == MixInputId;
+
+    // --- Reserva per silenci (pas 13b): si l'entrada fa estona que no porta so, s'emet la mescla del motor ---
+    public bool FallbackToMix { get; init; }
+    /// <summary>Quants segons de silenci (o sense entrada) abans de passar a la mescla.</summary>
+    public int SilenceSeconds { get; init; } = 30;
+    /// <summary>Quants segons de so seguit a l'entrada abans de tornar-hi.</summary>
+    public int ReturnSeconds { get; init; } = 10;
+    public const int MinSilenceSeconds = 5, MaxSilenceSeconds = 600, MinReturnSeconds = 1, MaxReturnSeconds = 300;
+
     // --- Títols ---
     public StreamTitleMode TitleMode { get; init; } = StreamTitleMode.Emission;
     /// <summary>El text amb <see cref="StreamTitleMode.Fixed"/>.</summary>
@@ -75,6 +93,10 @@ public sealed record StreamOutput
         if (!hasPassword) return "Falta la contrasenya del servidor.";
         if (string.IsNullOrWhiteSpace(InputDeviceId) && string.IsNullOrWhiteSpace(InputDeviceName)) return "Falta triar l'entrada que s'emet.";
         if (TitleMode == StreamTitleMode.Fixed && FixedTitle.Length == 0) return "Falta el títol fix.";
+        if (SilenceSeconds is < MinSilenceSeconds or > MaxSilenceSeconds)
+            return $"El silenci abans de passar a la mescla ha de ser entre {MinSilenceSeconds} i {MaxSilenceSeconds} s.";
+        if (ReturnSeconds is < MinReturnSeconds or > MaxReturnSeconds)
+            return $"El so seguit abans de tornar a l'entrada ha de ser entre {MinReturnSeconds} i {MaxReturnSeconds} s.";
         return null;
     }
 

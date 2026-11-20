@@ -212,7 +212,7 @@ public static class EngineServer
         log.LogInformation("Títol per a BUTT: {State} {Path}", nowPlaying.Settings.Enabled ? "s'escriu a" : "desactivat;", nowPlaying.FilePath);
         // Emissió per internet (fase 5, pas 13; D-202): els emissors que substitueixen BUTT, amb el mateix títol que NowPlaying.txt.
         // Cada emissor té els seus fils; el motor només els revisa (bucle de més avall)
-        using var streams = new Streaming.StreamOutputs(() => Streaming.StreamOutputStore.Read(library), () => nowPlaying.Text, log: log);
+        using var streams = new Streaming.StreamOutputs(() => Streaming.StreamOutputStore.Read(library), () => nowPlaying.Text, mixer, log: log);
         streams.Changed += status =>
         {
             var ev = Messages.Event("streaming.changed");
@@ -681,7 +681,7 @@ public static class EngineServer
                         // Greu (incidència del NAS, 20-11-2026): sense pistes d'emergència, una unitat de música que no respon és silenci
                         incidents.Set(IncidentKind.Emergency, "carpeta", IncidentSeverity.Danger, emergency.Problem);
                         incidents.Set(IncidentKind.Mail, "correu", IncidentSeverity.Warning, mail.Problem);
-                        incidents.SetAll(IncidentKind.Streaming, IncidentSeverity.Danger, streams.Problems);
+                        incidents.SetAll(IncidentKind.Streaming, streams.Problems);
                         var silent = silence.Problem;
                         incidents.Set(IncidentKind.Silence, "silenci", silent?.Severity ?? IncidentSeverity.Danger, silent?.Text);
                         incidents.Set(IncidentKind.Butt, "butt", IncidentSeverity.Warning,

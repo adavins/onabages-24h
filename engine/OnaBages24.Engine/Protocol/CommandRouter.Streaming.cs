@@ -52,6 +52,9 @@ public sealed partial class CommandRouter
         ["title"] = s.Title,
         ["inputActive"] = s.InputActive,
         ["bytesDropped"] = s.BytesDropped,
+        ["source"] = s.Source switch { SourceMode.Input => "input", SourceMode.Mix => "mix", _ => null },
+        ["mixSince"] = s.MixSince?.ToString("O"),
+        ["mixReason"] = s.MixReason,
     };
 
     /// <summary><c>streaming.list</c>: els emissors desats (sense contrasenyes) i les qualitats que es poden triar.</summary>
@@ -94,6 +97,9 @@ public sealed partial class CommandRouter
             ["mono"] = o.Mono,
             ["inputDeviceId"] = o.InputDeviceId,
             ["inputDeviceName"] = o.InputDeviceName,
+            ["fallbackToMix"] = o.FallbackToMix,
+            ["silenceSeconds"] = o.SilenceSeconds,
+            ["returnSeconds"] = o.ReturnSeconds,
             ["titleMode"] = o.TitleMode switch { StreamTitleMode.Fixed => "fixed", StreamTitleMode.None => "none", _ => "emission" },
             ["fixedTitle"] = o.FixedTitle,
             ["publicName"] = o.PublicName,
@@ -155,12 +161,16 @@ public sealed partial class CommandRouter
             Mono = Flag("mono", current.Mono),
             InputDeviceId = OptionalText("inputDeviceId", current.InputDeviceId),
             InputDeviceName = OptionalText("inputDeviceName", current.InputDeviceName),
+            FallbackToMix = Flag("fallbackToMix", current.FallbackToMix),
+            SilenceSeconds = Number("silenceSeconds", current.SilenceSeconds),
+            ReturnSeconds = Number("returnSeconds", current.ReturnSeconds),
             FixedTitle = StreamOutput.OneLine(Text("fixedTitle", current.FixedTitle)),
             PublicName = Text("publicName", current.PublicName),
             Genre = Text("genre", current.Genre),
             Url = Text("url", current.Url),
         };
         if (o.Mount.Length > 0 && !o.Mount.StartsWith('/')) o = o with { Mount = "/" + o.Mount };
+        if (o.IsMixSource) o = o with { InputDeviceName = StreamOutput.MixInputName }; // el nom, sempre el mateix
         if (msg["serverType"] is { } typeNode)
             o = o with
             {

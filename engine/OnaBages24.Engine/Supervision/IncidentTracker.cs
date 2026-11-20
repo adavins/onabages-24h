@@ -153,6 +153,22 @@ public sealed class IncidentTracker
         foreach (var incident in changed) Notify(incident);
     }
 
+    /// <summary>Com l'altre <see cref="SetAll(string, IncidentSeverity, IReadOnlyDictionary{string, string})"/>, amb la gravetat de cadascuna.</summary>
+    public void SetAll(string kind, IReadOnlyDictionary<string, (IncidentSeverity Severity, string Text)> current)
+    {
+        var changed = new List<Incident>();
+        lock (_sync)
+        {
+            var keys = _open.Values.Where(i => i.Kind == kind).Select(i => i.Key).Concat(current.Keys).Distinct().ToList();
+            foreach (string key in keys)
+            {
+                var (severity, text) = current.TryGetValue(key, out var c) ? c : (IncidentSeverity.Warning, (string?)null);
+                if (SetLocked(kind, key, severity, text, null) is { } incident) changed.Add(incident);
+            }
+        }
+        foreach (var incident in changed) Notify(incident);
+    }
+
     private Incident? SetLocked(string kind, string key, IncidentSeverity severity, string? text, string? detail)
     {
         _open.TryGetValue(key, out var open);
