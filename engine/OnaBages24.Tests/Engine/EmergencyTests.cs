@@ -168,6 +168,47 @@ public sealed class EmergencyTests : IDisposable
     }
 
     [Fact]
+    public void Si_la_que_sona_s_encalla_i_la_seguent_no_s_obre_la_d_emergencia_entra_en_mig_segon()
+    {
+        // D-198: abans s'esperaven els 2 s d'EmergencyWait, i hi havia 2 s de silenci (prova del desenvolupador, 20-11-2026)
+        var stuck = new List<QueueStuck>();
+        _player.Stuck += stuck.Add;
+        AddEmergency("E", 30);
+        _player.Enqueue(Item("A", 60), Item("B", 5, slow: true));
+        Run(2);
+
+        _player.SetCurrentReadingForTests(false); // la unitat deixa de respondre: A s'encalla
+        long stuckAt = 0;
+        for (int i = 0; i < 200 && stuckAt == 0; i++)
+        {
+            Run(0.1);
+            if (stuck.Count > 0) stuckAt = _mixer.FramesRendered;
+        }
+        Assert.NotEqual(0, stuckAt);
+        Run(1.5);
+
+        Assert.Equal(["A", "E"], _started.Select(s => s.Item.Title));
+        Assert.InRange(Seconds(_started[1].StartFrame - stuckAt), 0, 0.9);
+    }
+
+    [Fact]
+    public void Si_la_que_sona_s_encalla_pero_la_seguent_s_obre_de_seguida_no_sona_cap_d_emergencia()
+    {
+        // Només era aquell fitxer: la següent entra ella, sense cap tros d'emergència pel mig
+        var stuck = new List<QueueStuck>();
+        _player.Stuck += stuck.Add;
+        AddEmergency("E", 30);
+        _player.Enqueue(Item("A", 60), Item("B", 5));
+        Run(2);
+
+        _player.SetCurrentReadingForTests(false);
+        for (int i = 0; i < 200 && stuck.Count == 0; i++) Run(0.1);
+        Run(1.5);
+
+        Assert.Equal(["A", "B"], _started.Select(s => s.Item.Title));
+    }
+
+    [Fact]
     public void Una_pista_que_torna_a_sonar_posa_el_comptador_de_fallades_a_zero()
     {
         _player.Enqueue(Missing("falta-1"), Missing("falta-2"), Item("A", 3), Missing("falta-3"));

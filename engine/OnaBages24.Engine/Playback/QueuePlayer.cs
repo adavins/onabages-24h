@@ -44,6 +44,13 @@ public sealed record QueueSettings
     /// </summary>
     public int FailuresForEmergency { get; init; } = 3;
 
+    /// <summary>
+    /// Si la que sonava s'ha acabat o encallat per un error de lectura (D-198), la d'emergència entra si en aquesta estona
+    /// la següent no és a punt (en lloc de <see cref="EmergencyWait"/>). No és zero perquè, si només era aquell fitxer, la
+    /// següent sol obrir-se en uns mil·lisegons i entra ella, sense que se senti un tros d'emergència.
+    /// </summary>
+    public TimeSpan ReadFailureWait { get; init; } = TimeSpan.FromMilliseconds(500);
+
     /// <summary>Quan la pista que tocava ja és a punt, la d'emergència baixa en aquest temps i entra la que tocava.</summary>
     public TimeSpan EmergencyFade { get; init; } = TimeSpan.FromSeconds(2);
 
@@ -172,6 +179,7 @@ public sealed class QueuePlayer : IDisposable
     private int _failedInRow;        // pistes de la cua que han fallat seguides (0 quan en comença una)
 
     private bool _driveDown;         // la pista següent és d'una unitat que no respon (D-197): s'espera a la cua
+    private bool _readFailed;        // la que sonava s'ha acabat o encallat per un error de lectura (D-198): sense esperar
 
     /// <summary>
     /// Si la unitat d'una ruta no respon (D-197; <see cref="DriveWatch.IsDown"/>). Les pistes d'una unitat així no s'obren
@@ -999,6 +1007,7 @@ public sealed class QueuePlayer : IDisposable
                 _current = started;
                 _next = null;
                 _failedInRow = 0;
+                _readFailed = false;
                 var item = started.Item;
                 long frame = started.Voice.ActualStartFrame;
                 long? cutFrame = started.CutFrame;
@@ -1027,6 +1036,7 @@ public sealed class QueuePlayer : IDisposable
                     overdue.Stuck = true;
                     var item = overdue.Item;
                     var position = FramesToTime(Math.Max(0, now - overdue.StartFrame));
+                    if (!item.IsStream) _readFailed = true;
                     events.Add(() => Stuck?.Invoke(new QueueStuck(item, position, null)));
                 }
             }
@@ -1049,6 +1059,7 @@ public sealed class QueuePlayer : IDisposable
                     var item = _current.Item;
                     var position = FramesToTime(Math.Max(0, now - _current.StartFrame));
                     string? error = _current.Reader.Error;
+                    if (!item.IsStream) _readFailed = true;
                     events.Add(() => Stuck?.Invoke(new QueueStuck(item, position, error)));
                 }
                 _ending.Add(_current);
@@ -1091,7 +1102,10 @@ public sealed class QueuePlayer : IDisposable
                     // Un stream amb reconnexió (D-031): sona música mentre es prova de reconnectar
                     if (!EnterHold(item, mix, end, now,
                         $"S'ha tallat al minut {(int)position.TotalMinutes}:{position.Seconds:00} i no s'ha recuperat en {_settings.StallTimeout.TotalSeconds:0} s.", events))
+                    {
+                        if (!item.IsStream) _readFailed = true;
                         events.Add(() => Stuck?.Invoke(new QueueStuck(item, position, null)));
+                    }
                     events.Add(() => Changed?.Invoke());
                 }
             }
@@ -1303,6 +1317,7 @@ public sealed class QueuePlayer : IDisposable
                 _current = f;
                 _filler = null;
                 _waitingSince = -1;
+                _readFailed = false;
                 var waiting = _next?.Item;
                 var item = f.Item;
                 long frame = f.Voice.ActualStartFrame;
@@ -1319,7 +1334,7 @@ public sealed class QueuePlayer : IDisposable
         // Fallades seguides (incidència del NAS, 20-11-2026): les pistes fallen a l'instant i l'una darrere l'altra, i entre
         // una i la següent no n'hi ha cap preparant-se. No s'espera: la d'emergència entra de seguida.
         bool failing = _failedInRow >= _settings.FailuresForEmergency || _driveDown;
-        bool needed = (_next is { Scheduled: false } || (failing && _next is null)) && _paused is null && _resume is null
+        bool needed = (_next is { Scheduled: false } || ((failing || _readFailed) && _next is null)) && _paused is null && _resume is null
             && (_current is null || now >= _current.MixFrame || chaining);
         if (!needed)
         {
@@ -1327,7 +1342,9 @@ public sealed class QueuePlayer : IDisposable
             return;
         }
         if (_waitingSince < 0) _waitingSince = now;
-        if (!chaining && !failing && now - _waitingSince < Frames(_settings.EmergencyWait)) return;
+        // Si la que sonava s'ha acabat per un error de lectura (D-198), el disc o la xarxa fallen: s'espera menys
+        var wait = _readFailed ? _settings.ReadFailureWait : _settings.EmergencyWait;
+        if (!chaining && !failing && now - _waitingSince < Frames(wait)) return;
         _waitingSince = now; // si no n'hi ha cap o no hi ha veu lliure, es torna a provar d'aquí a una estona
         if (EmergencyPicker?.Invoke() is { } emergencyItem) _filler = Open(emergencyItem);
     }

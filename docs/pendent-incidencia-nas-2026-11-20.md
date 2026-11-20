@@ -54,7 +54,9 @@ Quan estigui fet, aquest fitxer ja es pot esborrar.
   - una incidència greu per unitat, «La unitat O:\ no respon…», que es tanca amb quanta estona no ha respost;
   - les pistes dels **esdeveniments** no s'esperen: fallen com sempre i es continua amb música d'emergència (decisió del desenvolupador: un programa que sonés tard no és el que toca).
 
-Amb aquests dos canvis, la nit del 20-11 hauria sonat música d'emergència des de les 03:38:09 (abans d'un segon), n'haurien fallat unes poques pistes en lloc de 4.819, hi hauria hagut dues incidències greus en lloc de 4.833 i, quan el NAS va tornar, la música de la cua hauria entrat de seguida.
+- **D-198 — Error de lectura a mitja pista.** Si la que sona s'acaba per un error de lectura (o s'encalla) i la següent no és a punt, la d'emergència entra en 0,5 s en lloc de 2. Ho va mostrar la prova del D-197: 2,1 s de silenci entre la pista tallada i la d'emergència.
+
+Amb aquests canvis, la nit del 20-11 hauria sonat música d'emergència des de les 03:38:09 (abans d'un segon), n'haurien fallat unes poques pistes en lloc de 4.819, hi hauria hagut dues incidències greus en lloc de 4.833 i, quan el NAS va tornar, la música de la cua hauria entrat de seguida.
 
 **Com provar-ho a l'ordinador de proves:** fer sonar música d'una carpeta compartida d'un altre ordinador, treure'n la compartició i esperar més que una cançó d'emergència (3 o 4 minuts). Comprovar que sonen les d'emergència, que surt «La unitat … no respon» i que la cua no es buida. Tornar a compartir-la i comprovar que la música de la cua entra de seguida i que la incidència es tanca amb la durada.
 
