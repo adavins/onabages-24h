@@ -125,7 +125,7 @@ public static class InputProbe
     private static readonly CultureInfo Ca = CultureInfo.GetCultureInfo("ca-ES");
 
     /// <summary>L'entrada pel número de la llista, l'identificador o el nom (primer l'exacte i després el que el contingui).</summary>
-    private static AudioDevice? Find(IReadOnlyList<AudioDevice> inputs, string which)
+    internal static AudioDevice? Find(IReadOnlyList<AudioDevice> inputs, string which)
     {
         if (int.TryParse(which, out int number) && number >= 1 && number <= inputs.Count) return inputs[number - 1];
         return inputs.FirstOrDefault(d => d.Id == which)
@@ -133,7 +133,7 @@ public static class InputProbe
             ?? inputs.FirstOrDefault(d => d.Name.Contains(which, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static void ShowList(IReadOnlyList<AudioDevice> inputs)
+    internal static void ShowList(IReadOnlyList<AudioDevice> inputs)
     {
         if (inputs.Count == 0)
         {

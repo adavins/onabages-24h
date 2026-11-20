@@ -25,6 +25,7 @@ export const KINDS = [
   ['BUTT', 'Títol per a BUTT'],
   ['CORREU', 'Avisos per correu'],
   ['STREAM', 'Stream'],
+  ['EMISSIO', 'Emissió per internet'],
 ];
 
 /** El nom d'un tipus («Sortida d'àudio»); si és un de nou que la interfície no coneix, el codi. @param {string} kind */

@@ -219,7 +219,7 @@ public class StreamerTests
     /// Servidor Icecast fals: accepta connexions una darrere l'altra, respon «100 Continue» i desa el que rep.
     /// Amb <see cref="CloseFirstAfterBytes"/>, talla la primera connexió després de rebre aquests bytes.
     /// </summary>
-    private sealed class FakeIcecast : IDisposable
+    internal sealed class FakeIcecast : IDisposable
     {
         private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
         private readonly ConcurrentDictionary<int, (List<string> Headers, MemoryStream Data, TaskCompletionSource Done)> _connections = new();

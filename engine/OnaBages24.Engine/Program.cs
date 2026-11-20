@@ -30,6 +30,7 @@ public static class Program
                 "restableix-administrador" => ResetAdministrator(args[1..]),
                 "prova-stream" => StreamProbe.Run(args[1..]),
                 "prova-entrada" => InputProbe.Run(args[1..]),
+                "prova-emissio" => StreamingProbe.Run(args[1..]),
                 "atura" => StopCommand.Run(args[1..]),
                 "ajuda" or "--help" or "-h" or "/?" => Help(),
                 _ => EngineServer.Run(args),
@@ -99,6 +100,14 @@ public static class Program
                   sense fer sonar res, i diu si funciona, el format, el nivell, el silenci i a quina velocitat va el seu
                   rellotge respecte del de l'ordinador (D-185), i la sonoritat amb el guany recomanat per arribar a
                   l'objectiu (per defecte, −13 LUFS; D-188). Es pot fer amb el motor en marxa.
+
+              prova-emissio ENTRADA --servidor icecast|shoutcast --adreca SERVIDOR [--port N] [--muntatge /NOM]
+                            [--usuari NOM] [--sid N] [--kbps N] [--hz N] [--mono] [--titol TEXT] [--segons N]
+                  Emet l'entrada (el número de la llista de prova-entrada, o el nom) al servidor N segons (per defecte, 60)
+                  amb el mateix emissor que el motor, i diu cada 5 s com va: connectat, enviat, nivell, reconnexions.
+                  Per defecte, MP3 192 kbps estèreo 48 kHz, port 8000, usuari «source». Demana la contrasenya del
+                  servidor per pantalla. Es pot fer amb el motor en marxa; feu servir un punt de muntatge de prova (un
+                  d'on ja emet BUTT no l'accepta) (D-202).
 
               atura
                   Atura Ona Bages 24h sencera: tanca la interfície i atura el motor (la ràdio es queda en silenci). Si hi ha

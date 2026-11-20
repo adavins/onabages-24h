@@ -25,13 +25,49 @@ public sealed partial class CommandRouter
     /// <summary>Es crida quan canvien els emissors desats (perquè el motor els torni a llegir; pas 13a-2).</summary>
     public event Action? StreamOutputsChanged;
 
+    /// <summary>Els emissors en marxa (per dir-ne l'estat a <c>streaming.list</c>). Null a les proves que no en necessiten.</summary>
+    public StreamOutputs? Streams { get; set; }
+
+    /// <summary>L'estat dels emissors (<c>streaming.list</c> i l'esdeveniment <c>streaming.changed</c>).</summary>
+    public static JsonArray StreamStatusJson(IEnumerable<StreamOutputStatus> status) =>
+        new(status.Select(s => (JsonNode?)StreamStatusJson(s)).ToArray());
+
+    private static JsonObject StreamStatusJson(StreamOutputStatus s) => new()
+    {
+        ["id"] = s.Id,
+        ["name"] = s.Name,
+        ["state"] = s.State switch
+        {
+            StreamOutputState.Off => "off",
+            StreamOutputState.Incomplete => "incomplete",
+            StreamOutputState.Connecting => "connecting",
+            StreamOutputState.Streaming => "streaming",
+            StreamOutputState.Reconnecting => "reconnecting",
+            _ => "failed",
+        },
+        ["error"] = s.Error,
+        ["connectedAt"] = s.ConnectedAt?.ToString("O"),
+        ["downSince"] = s.DownSince?.ToString("O"),
+        ["reconnects"] = s.Reconnects,
+        ["title"] = s.Title,
+        ["inputActive"] = s.InputActive,
+        ["bytesDropped"] = s.BytesDropped,
+    };
+
     /// <summary><c>streaming.list</c>: els emissors desats (sense contrasenyes) i les qualitats que es poden triar.</summary>
     private JsonObject StreamingList()
     {
         var saved = StreamOutputStore.Read(LibraryOrError());
+        var status = Streams?.Status ?? [];
         return new JsonObject
         {
-            ["outputs"] = new JsonArray(saved.Select(s => (JsonNode?)StreamOutputJson(s)).ToArray()),
+            ["outputs"] = new JsonArray(saved.Select(s =>
+            {
+                var json = StreamOutputJson(s);
+                // L'estat d'ara (si un emissor s'acaba de desar, encara no en té: al cap de mig segon, streaming.changed)
+                if (status.FirstOrDefault(x => x.Id == s.Output.Id) is { } st) json["status"] = StreamStatusJson(st);
+                return (JsonNode?)json;
+            }).ToArray()),
             ["bitrates"] = new JsonArray(Streamer.Bitrates.Select(b => (JsonNode?)b).ToArray()),
             ["sampleRates"] = new JsonArray(Streamer.SampleRates.Select(r => (JsonNode?)r).ToArray()),
         };

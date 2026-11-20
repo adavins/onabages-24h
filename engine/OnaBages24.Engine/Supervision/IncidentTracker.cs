@@ -38,6 +38,8 @@ public static class IncidentKind
     public const string Mail = "CORREU";
     /// <summary>Un stream que no connecta (i s'ha saltat), que s'ha tallat o que s'ha acabat perquè arribava en silenci (D-030, D-175).</summary>
     public const string Stream = "STREAM";
+    /// <summary>Un emissor per internet que no emet (no es connecta al servidor, l'entrada no hi és…; D-202).</summary>
+    public const string Streaming = "EMISSIO";
 
     /// <summary>El nom de cada tipus en català, per als correus (els mateixos que a la interfície, <c>incidents-form.js</c>).</summary>
     public static string Name(string kind) => kind switch
@@ -58,6 +60,7 @@ public static class IncidentKind
         Butt => "Títol per a BUTT",
         Mail => "Avisos per correu",
         Stream => "Stream",
+        Streaming => "Emissió per internet",
         _ => kind,
     };
 }

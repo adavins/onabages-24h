@@ -234,7 +234,7 @@ public static class StopCommand
     }
 
     /// <summary>Demana una contrasenya sense que es vegi en escriure-la (si l'entrada no és el teclat, com una línia normal).</summary>
-    private static string ReadHidden(string question)
+    internal static string ReadHidden(string question)
     {
         Console.Write(question);
         if (Console.IsInputRedirected) return Console.ReadLine() ?? "";

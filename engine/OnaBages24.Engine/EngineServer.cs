@@ -210,6 +210,15 @@ public static class EngineServer
         using var nowPlaying = new NowPlaying(queue, Path.Combine(RuntimeFile.DirectoryPath, "NowPlaying.txt"),
             ReadNowPlayingSettings(library, log), log);
         log.LogInformation("Títol per a BUTT: {State} {Path}", nowPlaying.Settings.Enabled ? "s'escriu a" : "desactivat;", nowPlaying.FilePath);
+        // Emissió per internet (fase 5, pas 13; D-202): els emissors que substitueixen BUTT, amb el mateix títol que NowPlaying.txt.
+        // Cada emissor té els seus fils; el motor només els revisa (bucle de més avall)
+        using var streams = new Streaming.StreamOutputs(() => Streaming.StreamOutputStore.Read(library), () => nowPlaying.Text, log: log);
+        streams.Changed += status =>
+        {
+            var ev = Messages.Event("streaming.changed");
+            ev["outputs"] = CommandRouter.StreamStatusJson(status);
+            Broadcast(ev);
+        };
         // Títol fix (D-184): es desa cada vegada que canvia i, si el motor s'ha reiniciat a mig programa, es recupera
         try
         {
@@ -330,6 +339,8 @@ public static class EngineServer
             campaigns: campaigns, savedCalendars: new SavedCalendars(database), backups: backups,
             incidentStore: incidentStore, incidents: incidents, silence: silence, emergency: emergency, mail: mail, sessions: sessions, users: userStore, activity: new ActivityLog(database),
             agendas: agendaRunner);
+        router.Streams = streams;
+        router.StreamOutputsChanged += streams.Reload;
         // Editor de rotacions (fase 3, pas 8a): les interfícies tornen a demanar les rotacions
         router.RotationsChanged += () => Broadcast(Messages.Event("rotations.changed"));
         // Agenda de bosses (D-170): les interfícies tornen a demanar les agendes
@@ -383,6 +394,7 @@ public static class EngineServer
             ConfigureSilence(silence, library);
             _ = Task.Run(() => emergency.SetFolder(CommandRouter.ReadEmergencyFolder(library)));
             CommandRouter.ConfigureMail(mail, library);
+            streams.Reload(); // els emissors de la còpia (si la contrasenya és d'un altre ordinador, ho diran)
             sessions.Refresh(); // els usuaris no canvien en restaurar (D-164), però per si de cas
             sessions.Inactivity = CommandRouter.ReadInactivity(library);
             nowPlaying.Configure(ReadNowPlayingSettings(library, log));
@@ -669,6 +681,7 @@ public static class EngineServer
                         // Greu (incidència del NAS, 20-11-2026): sense pistes d'emergència, una unitat de música que no respon és silenci
                         incidents.Set(IncidentKind.Emergency, "carpeta", IncidentSeverity.Danger, emergency.Problem);
                         incidents.Set(IncidentKind.Mail, "correu", IncidentSeverity.Warning, mail.Problem);
+                        incidents.SetAll(IncidentKind.Streaming, IncidentSeverity.Danger, streams.Problems);
                         var silent = silence.Problem;
                         incidents.Set(IncidentKind.Silence, "silenci", silent?.Severity ?? IncidentSeverity.Danger, silent?.Text);
                         incidents.Set(IncidentKind.Butt, "butt", IncidentSeverity.Warning,
@@ -678,6 +691,31 @@ public static class EngineServer
                     catch (Exception ex)
                     {
                         log.LogWarning("Incidències: no s'ha pogut revisar l'estat ({Message})", ex.Message);
+                    }
+                }
+            }
+            catch (OperationCanceledException) { }
+        });
+
+        // Emissió per internet (D-202): cada mig segon, els emissors (engegar, tornar a engegar, títol, estat). Un error aquí
+        // no atura res: es torna a provar a la volta següent
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+            string? lastError = null;
+            try
+            {
+                while (await timer.WaitForNextTickAsync(stopping))
+                {
+                    try
+                    {
+                        streams.Tick();
+                        lastError = null;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (ex.Message != lastError) log.LogWarning("Emissió per internet: no s'ha pogut revisar ({Message})", ex.Message);
+                        lastError = ex.Message;
                     }
                 }
             }
