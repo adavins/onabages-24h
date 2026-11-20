@@ -36,6 +36,14 @@ public sealed record QueueSettings
     /// </summary>
     public TimeSpan EmergencyWait { get; init; } = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// Fallades seguides (incidència del NAS del 20-11-2026): si han fallat aquestes pistes seguides (fitxers que no es
+    /// troben o no es poden llegir) i la següent ja hauria de sonar, la d'emergència entra de seguida, sense esperar
+    /// <see cref="EmergencyWait"/>. Quan una unitat de xarxa desapareix, cada pista falla a l'instant i l'espera no
+    /// s'arribava a complir mai.
+    /// </summary>
+    public int FailuresForEmergency { get; init; } = 3;
+
     /// <summary>Quan la pista que tocava ja és a punt, la d'emergència baixa en aquest temps i entra la que tocava.</summary>
     public TimeSpan EmergencyFade { get; init; } = TimeSpan.FromSeconds(2);
 
@@ -87,7 +95,8 @@ public sealed record QueueStuck(QueueItem Item, TimeSpan Position, string? Error
 
 /// <summary>Una pista que no s'ha pogut fer sonar (fitxer que falta o il·legible): se salta.</summary>
 /// <summary>Una pista que no s'ha pogut obrir i s'ha saltat; si és un stream amb pista de reserva, <paramref name="Fallback"/> sona al seu lloc (D-178).</summary>
-public sealed record QueueFailed(QueueItem Item, string Message, QueueItem? Fallback = null)
+/// <paramref name="InRow"/>: quantes pistes han fallat seguides comptant aquesta (es torna a 0 quan en comença una de la cua).
+public sealed record QueueFailed(QueueItem Item, string Message, QueueItem? Fallback = null, int InRow = 1)
 {
     /// <summary>El motiu acabat en punt (per posar-hi una frase darrere sense «..»).</summary>
     public string Sentence => Message.TrimEnd() is var m && m.EndsWith('.') ? m : m + ".";
@@ -160,6 +169,26 @@ public sealed class QueuePlayer : IDisposable
     // Pistes d'emergència (fase 5, pas 4; D-159)
     private Playing? _filler;        // la pista d'emergència que s'està obrint (encara no sona)
     private long _waitingSince = -1; // des de quin fotograma la pista següent ja hauria de sonar i no és a punt (-1 = no espera)
+    private int _failedInRow;        // pistes de la cua que han fallat seguides (0 quan en comença una)
+
+    private bool _driveDown;         // la pista següent és d'una unitat que no respon (D-197): s'espera a la cua
+
+    /// <summary>
+    /// Si la unitat d'una ruta no respon (D-197; <see cref="DriveWatch.IsDown"/>). Les pistes d'una unitat així no s'obren
+    /// ni es treuen de la cua: s'hi esperen, i mentrestant sonen les d'emergència. Les dels esdeveniments no s'esperen
+    /// (fallen com sempre: un programa que sonés tard no és el que toca). Null = no se'n sap res.
+    /// </summary>
+    public Func<string, bool>? IsUnavailable { get; set; }
+
+    /// <summary>Si la pista següent de la cua s'espera perquè la seva unitat no respon (D-197).</summary>
+    public bool WaitingForDrive { get { lock (_sync) return _driveDown; } }
+
+    /// <summary>Una pista que espera la seva unitat (D-197): de la cua, no d'un esdeveniment, i amb la unitat que no respon.</summary>
+    private bool WaitsForDrive(QueueItem item) =>
+        !item.IsStream && item.Origin != QueueOrigin.Event && IsUnavailable?.Invoke(item.Path) == true;
+
+    /// <summary>Quantes pistes de la cua han fallat seguides des de l'última que ha començat a sonar.</summary>
+    public int FailedInRow { get { lock (_sync) return _failedInRow; } }
 
     /// <summary>
     /// D'on surten les pistes d'emergència (fase 5, pas 4): retorna una pista del disc local, o null si no n'hi ha. Es crida
@@ -895,7 +924,13 @@ public sealed class QueuePlayer : IDisposable
                 string message = failed.Reader.Error ?? "No s'ha pogut obrir el fitxer.";
                 Retire(failed);
                 _next = null;
-                if (_hold is { } h && h.Stream.Id == item.Id)
+                if (WaitsForDrive(item))
+                {
+                    // La seva unitat no respon (D-197): torna al davant de la cua i s'hi espera (no compta com a saltada)
+                    _upcoming.Insert(0, item);
+                    events.Add(() => Changed?.Invoke());
+                }
+                else if (_hold is { } h && h.Stream.Id == item.Id)
                 {
                     // El stream que tornava ha tornat a caure abans de sonar (D-031): continua la música i es torna a provar
                     h.Returning = false;
@@ -907,7 +942,8 @@ public sealed class QueuePlayer : IDisposable
                     // Un stream que no connecta i té pista de reserva (D-010): sona la reserva al seu lloc
                     var fallback = item.StreamFallback;
                     if (fallback is not null) _upcoming.Insert(0, fallback);
-                    events.Add(() => Failed?.Invoke(new QueueFailed(item, message, fallback)));
+                    int inRow = item.IsStream ? _failedInRow : ++_failedInRow; // els streams tenen la seva reserva
+                    events.Add(() => Failed?.Invoke(new QueueFailed(item, message, fallback, inRow)));
                     events.Add(() => Changed?.Invoke());
                 }
             }
@@ -951,7 +987,8 @@ public sealed class QueuePlayer : IDisposable
                 slow.Stuck = true;
                 Retire(slow);
                 _next = null;
-                events.Add(() => Failed?.Invoke(new QueueFailed(item, message)));
+                int inRow = ++_failedInRow;
+                events.Add(() => Failed?.Invoke(new QueueFailed(item, message, InRow: inRow)));
                 events.Add(() => Changed?.Invoke());
             }
 
@@ -961,6 +998,7 @@ public sealed class QueuePlayer : IDisposable
                 if (_current is not null) _ending.Add(_current);
                 _current = started;
                 _next = null;
+                _failedInRow = 0;
                 var item = started.Item;
                 long frame = started.Voice.ActualStartFrame;
                 long? cutFrame = started.CutFrame;
@@ -1150,15 +1188,28 @@ public sealed class QueuePlayer : IDisposable
 
             // 4. Preparar la següent: si no sona res, de seguida; si no, uns segons abans del punt de mescla.
             // No durant una pausa ni mentre s'obre la pista en un altre punt (el punt de mescla encara no se sap).
+            // Si falla tot seguit i ja s'obre una d'emergència, no se'n prova cap més fins que soni (no es buida la cua en va)
+            // Si s'espera una unitat que no responia (D-197), es mira a cada Tick (no obre res) perquè, quan torni, la de la cua
+            // entri de seguida, encara que soni una d'emergència
             if (_next is null && _upcoming.Count > 0 && _paused is null && _resume is null
-                && (_current is null || now >= _current.MixFrame - Frames(_settings.PrepareAhead))
-                && !WaitingForFill(now))
+                && (_current is null || now >= _current.MixFrame - Frames(_settings.PrepareAhead) || _driveDown)
+                && !WaitingForFill(now)
+                && !(_filler is not null && _failedInRow >= _settings.FailuresForEmergency))
             {
                 var item = _upcoming[0];
-                _upcoming.RemoveAt(0);
-                _next = Open(item);
-                if (_next is null) _upcoming.Insert(0, item); // cap veu lliure: es torna a provar al pròxim Tick
+                // La seva unitat no respon (D-197): es queda a la cua; sonen les d'emergència fins que torni
+                bool wasDown = _driveDown;
+                _driveDown = WaitsForDrive(item);
+                if (_driveDown != wasDown) events.Add(() => Changed?.Invoke());
+                if (!_driveDown)
+                {
+                    _upcoming.RemoveAt(0);
+                    _next = Open(item);
+                    if (_next is null) _upcoming.Insert(0, item); // cap veu lliure: es torna a provar al pròxim Tick
+                }
             }
+            else if (_driveDown && (_upcoming.Count == 0 || !WaitsForDrive(_upcoming[0])))
+                _driveDown = false;
 
             // 5. Programar-la quan el fitxer ja és obert
             if (_next is { Scheduled: false } ready && ready.Reader.State is ReaderState.Ready or ReaderState.Finished)
@@ -1265,7 +1316,10 @@ public sealed class QueuePlayer : IDisposable
         // Si ja sona una pista d'emergència i la que tocava encara no és a punt, la següent d'emergència es prepara abans,
         // com qualsevol pista, perquè entri al seu punt de mescla
         bool chaining = _current is { Item.Origin: QueueOrigin.Emergency, Scheduled: true } e && now >= e.MixFrame - Frames(_settings.PrepareAhead);
-        bool needed = _next is { Scheduled: false } && _paused is null && _resume is null
+        // Fallades seguides (incidència del NAS, 20-11-2026): les pistes fallen a l'instant i l'una darrere l'altra, i entre
+        // una i la següent no n'hi ha cap preparant-se. No s'espera: la d'emergència entra de seguida.
+        bool failing = _failedInRow >= _settings.FailuresForEmergency || _driveDown;
+        bool needed = (_next is { Scheduled: false } || (failing && _next is null)) && _paused is null && _resume is null
             && (_current is null || now >= _current.MixFrame || chaining);
         if (!needed)
         {
@@ -1273,7 +1327,7 @@ public sealed class QueuePlayer : IDisposable
             return;
         }
         if (_waitingSince < 0) _waitingSince = now;
-        if (!chaining && now - _waitingSince < Frames(_settings.EmergencyWait)) return;
+        if (!chaining && !failing && now - _waitingSince < Frames(_settings.EmergencyWait)) return;
         _waitingSince = now; // si no n'hi ha cap o no hi ha veu lliure, es torna a provar d'aquí a una estona
         if (EmergencyPicker?.Invoke() is { } emergencyItem) _filler = Open(emergencyItem);
     }

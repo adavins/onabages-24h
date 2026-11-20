@@ -47,6 +47,25 @@ public static class IncidentRules
     public static string EmergencyText(string waiting, string emergency) =>
         $"«{waiting}» no s'ha pogut obrir a temps (disc o xarxa lents): ha sonat «{emergency}», del disc local";
 
+    /// <summary>Una unitat de la música que no respon (D-197): la incidència greu mentre dura.</summary>
+    public static string DriveDownText(string root, DateTimeOffset since) =>
+        $"La unitat {root} no respon (des de les {since.ToLocalTime():HH:mm:ss}): les pistes de la cua que hi són s'hi esperen i " +
+        "mentrestant sonen pistes d'emergència. Comprova que el disc o la unitat de xarxa estigui en marxa i connectat.";
+
+    /// <summary>La mateixa incidència quan la unitat torna (D-197), amb quanta estona no ha respost.</summary>
+    public static string DriveBackText(string root, DateTimeOffset since, DateTimeOffset now) =>
+        $"La unitat {root} no ha respost entre les {since.ToLocalTime():HH:mm:ss} i les {now.ToLocalTime():HH:mm:ss} " +
+        $"({Span(now - since)}): mentrestant han sonat pistes d'emergència. Ja torna a respondre.";
+
+    /// <summary>«45 s», «2 min 24 s», «1 h 5 min».</summary>
+    public static string Span(TimeSpan t)
+    {
+        int s = Math.Max(0, (int)Math.Round(t.TotalSeconds));
+        if (s < 60) return $"{s} s";
+        if (s < 3600) return s % 60 == 0 ? $"{s / 60} min" : $"{s / 60} min {s % 60} s";
+        return (s / 60) % 60 == 0 ? $"{s / 3600} h" : $"{s / 3600} h {(s / 60) % 60} min";
+    }
+
     /// <summary>El text d'una pista que sonava en silenci i s'ha saltat (D-158).</summary>
     public static string SilenceSkipText(string track, TimeSpan position, double seconds) =>
         $"«{track}» sonava en silenci a {Clock(position)} (més de {seconds:0} s sense so) i s'ha passat a la següent";

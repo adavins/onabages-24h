@@ -1204,8 +1204,9 @@
       saltar unes quantes pistes, és una incidència greu: el problema no és la pista.</li>
     <li><strong>Pistes d'emergència</strong>: una carpeta amb unes quantes cançons en un disc d'aquest ordinador (no de la
       xarxa). Si una pista tarda a obrir-se (p. ex. un programa que és en una unitat de xarxa lenta), en sona una d'aquestes
-      fins que la que tocava és a punt, i llavors baixa amb un fos. També sonen en arrencar, mentre el motor es prepara. Diu
-      quantes cançons hi ha. <strong>Tria la carpeta…</strong> la canvia, i <strong>La per defecte</strong> torna a la carpeta
+      fins que la que tocava és a punt, i llavors baixa amb un fos. També sonen en arrencar, mentre el motor es prepara, i de
+      seguida si fallen moltes pistes seguides (p. ex. si el NAS de la música no respon). Diu quantes cançons hi ha. Si la
+      carpeta és buida, és una incidència greu: posa-hi entre 20 i 30 cançons. <strong>Tria la carpeta…</strong> la canvia, i <strong>La per defecte</strong> torna a la carpeta
       <code>dades\emergencia</code> de l'aplicació.</li>
   </ul>
   <p class="note">Les pistes d'emergència no són la <a href="#les-rotacions">reserva</a> de l'AutoDJ: la reserva és el que
@@ -1343,6 +1344,11 @@
     <li><strong>Talls de so</strong>: la pista ha sonat però s'ha quedat uns moments sense dades (la xarxa va lenta).</li>
     <li>Si un fitxer tarda a obrir-se, sona una <a href="#silenci-i-pistes-d-emergencia">pista d'emergència</a> mentre
       s'acaba d'obrir.</li>
+    <li><strong>La unitat de la música no respon</strong> (incidència greu «La unitat O:\ no respon…» o «No es poden fer
+      sonar les pistes…»): el NAS o la carpeta de xarxa s'ha desconnectat o s'està reiniciant. Sonen pistes d'emergència de
+      seguida; les pistes de la cua s'hi esperen (no se salten) i, quan la unitat torna, la música de la cua entra sola i la
+      incidència es tanca amb quanta estona ha durat. Els programes dels esdeveniments que toquin mentrestant no sonen. Mira
+      que la unitat estigui en marxa i connectada.</li>
   </ul>
 
   <h3 id="el-motor-s-ha-reiniciat">El motor s'ha reiniciat</h3>

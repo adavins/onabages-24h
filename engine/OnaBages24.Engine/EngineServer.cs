@@ -500,12 +500,28 @@ public static class EngineServer
         // Incidències que duren (fase 5, pas 1): cada 2 s es mira com estan la sortida, l'AutoDJ, el títol per a BUTT i les
         // carpetes vigilades, i s'obren o es tanquen. Les d'un moment (una pista saltada, una pausa que continua sola) s'anoten
         // quan passen, fora del fil de control.
-        queue.Failed += e => _ = Task.Run(() => incidents.Report(e.Item.IsStream ? IncidentKind.Stream : IncidentKind.File, $"fitxer:{e.Item.Path}",
+        // Les pistes que fallen seguides (incidència del NAS, 20-11-2026): a partir de la tercera, una sola incidència greu
+        var failureBurst = new FailureBurst(incidents, new QueueSettings().FailuresForEmergency);
+        queue.Started += failureBurst.Started;
+        // Unitats de la música que no responen (D-197): una pista que falla o s'encalla en fa comprovar la unitat; mentre no
+        // respon, les seves pistes s'esperen a la cua (sonen les d'emergència), amb una sola incidència greu per unitat
+        var drives = new DriveWatch();
+        queue.IsUnavailable = drives.IsDown;
+        queue.Failed += e => { if (!e.Item.IsStream) drives.Suspect(e.Item.Path); };
+        queue.Stuck += e => { if (!e.Item.IsStream) drives.Suspect(e.Item.Path); };
+        drives.WentDown += (root, since) => incidents.Set(IncidentKind.File, $"unitat:{root}", IncidentSeverity.Danger, IncidentRules.DriveDownText(root, since));
+        drives.CameBack += (root, since) =>
+        {
+            // Primer el text amb el resum i després es tanca (així el registre diu quanta estona no ha respost)
+            incidents.Set(IncidentKind.File, $"unitat:{root}", IncidentSeverity.Danger, IncidentRules.DriveBackText(root, since, DateTimeOffset.Now));
+            incidents.Set(IncidentKind.File, $"unitat:{root}", IncidentSeverity.Danger, null);
+        };
+        queue.Failed += e => { if (failureBurst.Failed(e)) return; _ = Task.Run(() => incidents.Report(e.Item.IsStream ? IncidentKind.Stream : IncidentKind.File, $"fitxer:{e.Item.Path}",
             IncidentSeverity.Warning, e.Item.IsStream
                 ? e.Fallback is { } fallback
                     ? $"No s'ha pogut {(e.Item.IsInput ? "obrir l'entrada" : "connectar al stream")} «{e.Item}»: {e.Sentence} Ha sonat la pista de reserva, «{fallback}»."
                     : $"No s'ha pogut {(e.Item.IsInput ? "obrir l'entrada" : "connectar al stream")} «{e.Item}» i s'ha saltat (sona la pista següent): {e.Message}"
-                : $"No s'ha pogut fer sonar «{e.Item}» i s'ha saltat: {e.Message}", e.Item.Path, recovered: true));
+                : $"No s'ha pogut fer sonar «{e.Item}» i s'ha saltat: {e.Message}", e.Item.Path, recovered: true)); };
         // Streams (fase 2, pas 7b; D-030): talls (oberta fins que es recupera o se salta), recuperacions i final per silenci
         queue.StreamNotice += e => _ = Task.Run(() =>
         {
@@ -645,7 +661,8 @@ public static class EngineServer
                     {
                         incidents.Set(IncidentKind.Output, "sortida", IncidentSeverity.Danger, outputs.Problem);
                         incidents.Set(IncidentKind.AutoDj, "autodj", IncidentSeverity.Warning, autoDj.Problem);
-                        incidents.Set(IncidentKind.Emergency, "carpeta", IncidentSeverity.Warning, emergency.Problem);
+                        // Greu (incidència del NAS, 20-11-2026): sense pistes d'emergència, una unitat de música que no respon és silenci
+                        incidents.Set(IncidentKind.Emergency, "carpeta", IncidentSeverity.Danger, emergency.Problem);
                         incidents.Set(IncidentKind.Mail, "correu", IncidentSeverity.Warning, mail.Problem);
                         var silent = silence.Problem;
                         incidents.Set(IncidentKind.Silence, "silenci", silent?.Severity ?? IncidentSeverity.Danger, silent?.Text);

@@ -89,6 +89,95 @@ public sealed class EmergencyTests : IDisposable
 
     private string? NextPath() => _player.NextInPreparation is { } id ? _player.Upcoming.FirstOrDefault(i => i.Id == id)?.Path : null;
 
+    /// <summary>Una pista el fitxer de la qual no existeix (com quan la unitat de xarxa desapareix: falla a l'instant).</summary>
+    private QueueItem Missing(string name) => new() { Path = _temp.File(name + ".wav"), Title = name, Origin = QueueOrigin.AutoDj };
+
+    [Fact]
+    public void Si_les_pistes_fallen_seguides_a_l_instant_sona_una_d_emergencia_de_seguida()
+    {
+        // La nit del NAS (20-11-2026): totes les pistes fallaven en uns ms i l'espera de 2 s no s'arribava a complir mai
+        AddEmergency("E", 30);
+        _player.Enqueue(Enumerable.Range(1, 50).Select(i => Missing($"falta-{i}")).ToArray());
+
+        Run(1);
+
+        var e = Assert.Single(_started);
+        Assert.Equal(("E", QueueOrigin.Emergency), (e.Item.Title, e.Item.Origin));
+        Assert.InRange(Seconds(e.StartFrame), 0, 1);
+        // Només n'han fallat unes quantes (fins que la d'emergència sona; després, la següent es prepara prop del seu punt de mescla)
+        Assert.InRange(_failed.Count, 3, 10);
+        Assert.Equal(Enumerable.Range(1, _failed.Count), _failed.Select(f => f.InRow));
+    }
+
+    [Fact]
+    public void Mentre_continuen_fallant_les_d_emergencia_s_encadenen_sense_silenci()
+    {
+        AddEmergency("E1", 3);
+        AddEmergency("E2", 30);
+        _player.Enqueue(Enumerable.Range(1, 50).Select(i => Missing($"falta-{i}")).ToArray());
+
+        Run(5);
+
+        Assert.Equal(["E1", "E2"], _started.Select(s => s.Item.Title));
+        // E2 entra quan E1 s'acaba (al seu punt de mescla), sense forat
+        Assert.InRange(Seconds(_started[1].StartFrame - _started[0].StartFrame), 2.8, 3.1);
+    }
+
+    [Fact]
+    public void Si_la_unitat_no_respon_les_pistes_s_esperen_a_la_cua_i_quan_torna_entren_de_seguida()
+    {
+        // D-197: la unitat de la música no respon (ja se sap): no s'obre ni se salta cap pista; sonen les d'emergència
+        bool down = true;
+        var tracks = Enumerable.Range(1, 50).Select(i => Item($"nas-{i}", 3)).ToArray();
+        var nas = tracks.Select(t => t.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _player.IsUnavailable = path => down && nas.Contains(path);
+        AddEmergency("E", 30);
+        _player.Enqueue(tracks);
+
+        Run(2);
+
+        var e = Assert.Single(_started);
+        Assert.Equal("E", e.Item.Title);
+        Assert.InRange(Seconds(e.StartFrame), 0, 1);
+        Assert.Empty(_failed);
+        Assert.Equal(50, _player.Upcoming.Count);
+        Assert.True(_player.WaitingForDrive);
+
+        // Torna: la primera de la cua entra de seguida (la d'emergència baixa amb un fos), no en acabar la cançó
+        down = false;
+        long back = _mixer.FramesRendered;
+        Run(1.5);
+
+        Assert.Equal(["E", "nas-1"], _started.Select(s => s.Item.Title));
+        Assert.InRange(Seconds(_started[1].StartFrame - back), 0, 0.5);
+        Assert.False(_player.WaitingForDrive);
+    }
+
+    [Fact]
+    public void Les_pistes_d_un_esdeveniment_no_s_esperen_la_unitat()
+    {
+        // Un programa que sonés tard no és el que toca: falla com sempre (decisió del desenvolupador, D-197)
+        var program = Missing("programa") with { Origin = QueueOrigin.Event };
+        _player.IsUnavailable = path => path == program.Path;
+        _player.Enqueue(program);
+
+        Run(0.5);
+
+        Assert.Equal("programa", Assert.Single(_failed).Item.Title);
+        Assert.Empty(_player.Upcoming);
+    }
+
+    [Fact]
+    public void Una_pista_que_torna_a_sonar_posa_el_comptador_de_fallades_a_zero()
+    {
+        _player.Enqueue(Missing("falta-1"), Missing("falta-2"), Item("A", 3), Missing("falta-3"));
+
+        Run(4);
+
+        Assert.Equal(["A"], _started.Select(s => s.Item.Title));
+        Assert.Equal([1, 2, 1], _failed.Select(f => f.InRow));
+    }
+
     [Fact]
     public void Si_la_seguent_tarda_a_obrir_se_sona_una_d_emergencia_i_quan_es_a_punt_entra_amb_un_fos()
     {
