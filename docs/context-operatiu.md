@@ -85,6 +85,8 @@ Com que el motor sap en tot moment què sona i on és, la supervisió pot ser in
 - **Enviament:** correu per SMTP configurable, amb un resum agrupat per no rebre'n massa, i un correu de prova des de la configuració. Més endavant es podria afegir Telegram.
 
 ### 2.4. Streaming a internet
+**Canvi (D-202):** l'aplicació substituirà BUTT (fase 5, pas 13), amb diversos emissors (el continu de l'emissora i d'altres programables, com «Ona Bages Directe» des de Ràdio Sant Fruitós), cadascun amb la seva entrada i, si l'entrada queda en silenci, la mescla del motor de reserva. El que segueix és com funciona ara.
+
 Es continua amb BUTT. BUTT capta l'**entrada de línia** (la sortida de la taula), no la sortida del PC 24h, perquè el que s'emet per internet ha d'incloure els directes.
 
 Si més endavant es vol que l'aplicació substitueixi BUTT, el codi ja hi és a Ona Bages Play: l'enregistrador capta una entrada amb WASAPI i la codifica a MP3 amb LAME. Caldria afegir-hi l'enviament a Icecast/Shoutcast. Per tant, el codificador intern s'ha de connectar a l'**entrada**, no a la mescla del motor.
